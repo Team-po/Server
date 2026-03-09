@@ -1,0 +1,8 @@
+- Commit Convention
+  - feat: 새로운 기능
+  - fix: 버그 수정
+  - refactor: 리팩토링
+  - docs: 문서 수정
+  - chore: 기타 작업
+  - test: 테스트 코드
+  - style: 코드 스타일 수정
