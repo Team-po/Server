@@ -6,12 +6,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
-@ActiveProfiles("ci")
+@ActiveProfiles("flyway")
 @EnabledIfEnvironmentVariable(named = "RUN_DB_TESTS", matches = "true")
-class PmateApplicationMySqlTests {
+class PmateApplicationFlywayTests {
 
 	@Test
-	void contextLoadsWithMySqlAndFlyway() {
+	void contextLoadsWithFlywayProfile() {
 	}
 
 }
