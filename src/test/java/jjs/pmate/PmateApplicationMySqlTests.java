@@ -8,7 +8,7 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest
 @ActiveProfiles("ci")
 @EnabledIfEnvironmentVariable(named = "RUN_DB_TESTS", matches = "true")
-class PmateApplicationMySqlIntegrationTests {
+class PmateApplicationMySqlTests {
 
 	@Test
 	void contextLoadsWithMySqlAndFlyway() {
