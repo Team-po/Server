@@ -1,6 +1,8 @@
 spring:
+  config:
+    import: optional:classpath:jwt-secret.yml
   datasource:
-    url: jdbc:mysql://localhost:3307/pmate?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    url: jdbc:mysql://localhost:3307/teampo?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -16,6 +18,11 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
+
+logging:
+  level:
+    org.springframework: info
+    team.po: debug
 
 server:
   port: 8080
