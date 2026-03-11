@@ -2,12 +2,14 @@ package jjs.pmate;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
-class PmateApplicationTests {
+@ActiveProfiles("h2")
+class PmateApplicationH2Tests {
 
 	@Test
-	void contextLoads() {
+	void contextLoadsWithH2Profile() {
 	}
 
 }
