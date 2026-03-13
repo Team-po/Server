@@ -42,9 +42,9 @@ public class JwtTokenProvider {
 		this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtProperties.getSecret()));
 	}
 
-	public JwtToken generateToken(String username, Collection<? extends GrantedAuthority> authorities) {
+	public JwtToken generateToken(String email, Collection<? extends GrantedAuthority> authorities) {
 		Date now = new Date();
-		String subject = username;
+		String subject = email;
 		String authorityClaim = authorities.stream()
 			.map(GrantedAuthority::getAuthority)
 			.reduce((left, right) -> left + AUTHORITIES_DELIMITER + right)
@@ -67,7 +67,7 @@ public class JwtTokenProvider {
 			.signWith(key)
 			.compact();
 
-		redisDao.setValue(createRefreshTokenKey(username), refreshToken, jwtProperties.getRefreshTokenExpiration());
+		redisDao.setValue(createRefreshTokenKey(email), refreshToken, jwtProperties.getRefreshTokenExpiration());
 
 		return new JwtToken(BEARER_TYPE, accessToken, refreshToken);
 	}
@@ -110,12 +110,12 @@ public class JwtTokenProvider {
 		return validateToken(refreshToken, "refresh");
 	}
 
-	public String getUsername(String token) {
+	public String getEmail(String token) {
 		return parseClaims(token).getSubject();
 	}
 
-	public void deleteRefreshToken(String username) {
-		redisDao.deleteValue(createRefreshTokenKey(username));
+	public void deleteRefreshToken(String email) {
+		redisDao.deleteValue(createRefreshTokenKey(email));
 	}
 
 	private boolean validateToken(String token, String tokenType) {
@@ -133,7 +133,7 @@ public class JwtTokenProvider {
 		return false;
 	}
 
-	private String createRefreshTokenKey(String username) {
-		return REFRESH_TOKEN_PREFIX + username;
+	private String createRefreshTokenKey(String email) {
+		return REFRESH_TOKEN_PREFIX + email;
 	}
 }

@@ -15,7 +15,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import team.po.common.jwt.JwtAuthenticationFilter;
 import team.po.common.jwt.JwtTokenProvider;
 
@@ -28,11 +27,6 @@ public class SecurityConfig {
 		HttpSecurity http,
 		JwtTokenProvider jwtTokenProvider
 	) throws Exception {
-		PathPatternRequestMatcher.Builder path = PathPatternRequestMatcher.withDefaults();
-		PathPatternRequestMatcher[] permitAllList = {
-			path.matcher("/"),
-		};
-
 		http
 			.httpBasic(AbstractHttpConfigurer::disable)
 			.csrf(AbstractHttpConfigurer::disable)
@@ -41,9 +35,11 @@ public class SecurityConfig {
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.exceptionHandling(exception -> exception.authenticationEntryPoint(this::writeUnauthorizedResponse))
 			.authorizeHttpRequests(authorize -> authorize
-				.requestMatchers(permitAllList).permitAll()
+				.requestMatchers(HttpMethod.POST, "/api/users/sign-up").permitAll()
+				.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
 				.requestMatchers(HttpMethod.DELETE, "/user").hasRole("ADMIN")
 				.requestMatchers("/members/role").hasRole("USER")
+				.requestMatchers("/error").permitAll()
 				.anyRequest().authenticated()
 			)
 			.addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class);

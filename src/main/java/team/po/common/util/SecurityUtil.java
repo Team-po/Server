@@ -10,7 +10,7 @@ public final class SecurityUtil {
 	private SecurityUtil() {
 	}
 
-	public static String getCurrentUsername() {
+	public static String getCurrentEmail() {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
 		if (authentication == null
@@ -29,6 +29,6 @@ public final class SecurityUtil {
 			return principalValue;
 		}
 
-		throw new IllegalStateException("Cannot extract current username from authentication.");
+		throw new IllegalStateException("Cannot extract current email from authentication.");
 	}
 }

@@ -20,15 +20,13 @@ public class Users {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
-	@Column(name = "user_id")
-	private String userId;
-
 	private String password;
 
 	@Column(name = "profileImage")
 	private String profileImage;
 
 	private String description;
+
 
 	private String email;
 
@@ -40,7 +38,6 @@ public class Users {
 
 	@Builder
 	public Users(String userId, String password, String profileImage, String description, String email, String nickname, Integer temperature, Integer level) {
-		this.userId = userId;
 		this.password = password;
 		this.profileImage = profileImage;
 		this.description = description;
