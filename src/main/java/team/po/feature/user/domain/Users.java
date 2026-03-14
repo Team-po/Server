@@ -22,7 +22,6 @@ public class Users {
 
 	private String password;
 
-	@Column(name = "profileImage")
 	private String profileImage;
 
 	private String description;

@@ -29,6 +29,9 @@ public class JwtTokenProvider {
 
 	public static final String BEARER_TYPE = "Bearer";
 	public static final String AUTHORITIES_KEY = "auth";
+	private static final String TOKEN_TYPE_KEY = "tokenType";
+	private static final String ACCESS_TOKEN_TYPE = "access";
+	private static final String REFRESH_TOKEN_TYPE = "refresh";
 	private static final String REFRESH_TOKEN_PREFIX = "RT:";
 	private static final String AUTHORITIES_DELIMITER = ",";
 
@@ -53,6 +56,7 @@ public class JwtTokenProvider {
 		Date accessTokenExpiresAt = new Date(now.getTime() + jwtProperties.getAccessTokenExpiration().toMillis());
 		String accessToken = Jwts.builder()
 			.subject(subject)
+			.claim(TOKEN_TYPE_KEY, ACCESS_TOKEN_TYPE)
 			.claim(AUTHORITIES_KEY, authorityClaim)
 			.issuedAt(now)
 			.expiration(accessTokenExpiresAt)
@@ -62,6 +66,7 @@ public class JwtTokenProvider {
 		Date refreshTokenExpiresAt = new Date(now.getTime() + jwtProperties.getRefreshTokenExpiration().toMillis());
 		String refreshToken = Jwts.builder()
 			.subject(subject)
+			.claim(TOKEN_TYPE_KEY, REFRESH_TOKEN_TYPE)
 			.issuedAt(now)
 			.expiration(refreshTokenExpiresAt)
 			.signWith(key)
@@ -103,11 +108,11 @@ public class JwtTokenProvider {
 	}
 
 	public boolean validateAccessToken(String accessToken) {
-		return validateToken(accessToken, "access");
+		return validateToken(accessToken, ACCESS_TOKEN_TYPE);
 	}
 
 	public boolean validateRefreshToken(String refreshToken) {
-		return validateToken(refreshToken, "refresh");
+		return validateToken(refreshToken, REFRESH_TOKEN_TYPE);
 	}
 
 	public String getEmail(String token) {
@@ -120,10 +125,22 @@ public class JwtTokenProvider {
 
 	private boolean validateToken(String token, String tokenType) {
 		try {
-			Jwts.parser()
+			Claims claims = Jwts.parser()
 				.verifyWith(key)
 				.build()
-				.parseSignedClaims(token);
+				.parseSignedClaims(token)
+				.getPayload();
+
+			if (!tokenType.equals(claims.get(TOKEN_TYPE_KEY, String.class))) {
+				log.debug("{} token type mismatch", tokenType);
+				return false;
+			}
+
+			if (ACCESS_TOKEN_TYPE.equals(tokenType) && claims.get(AUTHORITIES_KEY) == null) {
+				log.debug("access token missing authorities");
+				return false;
+			}
+
 			return true;
 		} catch (ExpiredJwtException exception) {
 			log.debug("{} token expired", tokenType, exception);
