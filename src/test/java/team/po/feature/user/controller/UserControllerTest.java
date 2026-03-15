@@ -9,12 +9,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.nio.charset.StandardCharsets;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -38,9 +41,7 @@ class UserControllerTest {
 	@Test
 	void signUp_returnsOk_whenRequestIsValid() throws Exception {
 		mockMvc.perform(multipart("/api/users/sign-up")
-				.param("email", "test@email.com")
-				.param("password", "password123")
-				.param("nickname", "tester")
+				.file(signUpRequestPart("test@email.com", "password123", "tester"))
 				.with(csrf()))
 			.andExpect(status().isOk());
 
@@ -50,9 +51,7 @@ class UserControllerTest {
 	@Test
 	void signUp_returnsBadRequestWithFieldErrors_whenRequestIsInvalid() throws Exception {
 		mockMvc.perform(multipart("/api/users/sign-up")
-				.param("email", "invalid-email")
-				.param("password", "123")
-				.param("nickname", "")
+				.file(signUpRequestPart("invalid-email", "123", ""))
 				.with(csrf()))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
@@ -70,9 +69,7 @@ class UserControllerTest {
 		)).when(userService).signUp(any(), isNull());
 
 		mockMvc.perform(multipart("/api/users/sign-up")
-				.param("email", "test@email.com")
-				.param("password", "password123")
-				.param("nickname", "tester")
+				.file(signUpRequestPart("test@email.com", "password123", "tester"))
 				.with(csrf()))
 			.andExpect(status().isConflict())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.EMAIL_ALREADY_EXISTS))
@@ -85,13 +82,24 @@ class UserControllerTest {
 			new MockMultipartFile("profileImage", "profile.png", "image/png", "image".getBytes());
 
 		mockMvc.perform(multipart("/api/users/sign-up")
+				.file(signUpRequestPart("test@email.com", "password123", "tester"))
 				.file(profileImage)
-				.param("email", "test@email.com")
-				.param("password", "password123")
-				.param("nickname", "tester")
 				.with(csrf()))
 			.andExpect(status().isOk());
 
 		verify(userService).signUp(any(), any());
+	}
+
+	private MockMultipartFile signUpRequestPart(String email, String password, String nickname) {
+		String json = """
+			{"email":"%s","password":"%s","nickname":"%s"}
+			""".formatted(email, password, nickname);
+
+		return new MockMultipartFile(
+			"signUpRequest",
+			"",
+			MediaType.APPLICATION_JSON_VALUE,
+			json.getBytes(StandardCharsets.UTF_8)
+		);
 	}
 }
