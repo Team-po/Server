@@ -22,11 +22,12 @@ public class Users {
 
 	private String password;
 
+	@Column(name = "profile_image")
 	private String profileImage;
 
 	private String description;
 
-
+	@Column(unique = true)
 	private String email;
 
 	private String nickname;
@@ -36,7 +37,7 @@ public class Users {
 	private Integer level;
 
 	@Builder
-	public Users(String userId, String password, String profileImage, String description, String email, String nickname, Integer temperature, Integer level) {
+	public Users(String password, String profileImage, String description, String email, String nickname, Integer temperature, Integer level) {
 		this.password = password;
 		this.profileImage = profileImage;
 		this.description = description;

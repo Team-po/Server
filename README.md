@@ -6,3 +6,6 @@
   - chore: 기타 작업
   - test: 테스트 코드
   - style: 코드 스타일 수정
+
+- Local Infra
+  - `docker compose up -d` 로 MySQL(3307)과 Redis(6380 -> container 6379)를 함께 실행

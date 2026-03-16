@@ -1,8 +1,12 @@
 spring:
   config:
     import: optional:classpath:jwt-secret.yml
+  jackson:
+    # API 에서 내려가는 시간 직렬화 기준을 UTC 로 통일한다.
+    time-zone: UTC
   datasource:
-    url: jdbc:mysql://localhost:3307/teampo?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+    # DB 연결 해석 기준도 UTC 로 맞춰 환경별 시간 차이를 줄인다.
+    url: jdbc:mysql://localhost:3307/teampo?serverTimezone=UTC&characterEncoding=UTF-8
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -14,6 +18,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        # JDBC 레벨에서 읽고 쓰는 시간을 UTC 기준으로 고정한다.
+        jdbc.time_zone: UTC
 
   flyway:
     enabled: true
