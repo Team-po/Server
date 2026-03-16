@@ -1,17 +1,11 @@
 package team.po.common.jwt;
 
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.Date;
 
 import javax.crypto.SecretKey;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import io.jsonwebtoken.Claims;
@@ -28,12 +22,11 @@ import team.po.common.redis.RedisDao;
 public class JwtTokenProvider {
 
 	public static final String BEARER_TYPE = "Bearer";
-	public static final String AUTHORITIES_KEY = "auth";
+	private static final String USER_ID_KEY = "userId";
 	private static final String TOKEN_TYPE_KEY = "tokenType";
 	private static final String ACCESS_TOKEN_TYPE = "access";
 	private static final String REFRESH_TOKEN_TYPE = "refresh";
 	private static final String REFRESH_TOKEN_PREFIX = "RT:";
-	private static final String AUTHORITIES_DELIMITER = ",";
 
 	private final JwtProperties jwtProperties;
 	private final RedisDao redisDao;
@@ -45,19 +38,14 @@ public class JwtTokenProvider {
 		this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtProperties.getSecret()));
 	}
 
-	public JwtToken generateToken(String email, Collection<? extends GrantedAuthority> authorities) {
+	public JwtToken generateToken(Long userId, String email) {
 		Date now = new Date();
-		String subject = email;
-		String authorityClaim = authorities.stream()
-			.map(GrantedAuthority::getAuthority)
-			.reduce((left, right) -> left + AUTHORITIES_DELIMITER + right)
-			.orElse("");
 
 		Date accessTokenExpiresAt = new Date(now.getTime() + jwtProperties.getAccessTokenExpiration().toMillis());
 		String accessToken = Jwts.builder()
-			.subject(subject)
+			.subject(email)
+			.claim(USER_ID_KEY, userId)
 			.claim(TOKEN_TYPE_KEY, ACCESS_TOKEN_TYPE)
-			.claim(AUTHORITIES_KEY, authorityClaim)
 			.issuedAt(now)
 			.expiration(accessTokenExpiresAt)
 			.signWith(key)
@@ -65,7 +53,8 @@ public class JwtTokenProvider {
 
 		Date refreshTokenExpiresAt = new Date(now.getTime() + jwtProperties.getRefreshTokenExpiration().toMillis());
 		String refreshToken = Jwts.builder()
-			.subject(subject)
+			.subject(email)
+			.claim(USER_ID_KEY, userId)
 			.claim(TOKEN_TYPE_KEY, REFRESH_TOKEN_TYPE)
 			.issuedAt(now)
 			.expiration(refreshTokenExpiresAt)
@@ -79,20 +68,15 @@ public class JwtTokenProvider {
 
 	public Authentication getAuthentication(String accessToken) {
 		Claims claims = parseClaims(accessToken);
-		Object authoritiesClaim = claims.get(AUTHORITIES_KEY);
+		Number userIdClaim = claims.get(USER_ID_KEY, Number.class);
 
-		if (authoritiesClaim == null) {
-			throw new IllegalArgumentException("Token does not contain authorities.");
+		if (userIdClaim == null) {
+			throw new IllegalArgumentException("Token does not contain user id.");
 		}
 
-		Collection<? extends GrantedAuthority> authorities = Arrays.stream(authoritiesClaim.toString().split(AUTHORITIES_DELIMITER))
-			.filter(authority -> !authority.isBlank())
-			.map(SimpleGrantedAuthority::new)
-			.toList();
+		UserPrincipal principal = new UserPrincipal(userIdClaim.longValue(), claims.getSubject());
 
-		UserDetails principal = new User(claims.getSubject(), "", authorities);
-
-		return new UsernamePasswordAuthenticationToken(principal, accessToken, authorities);
+		return new UsernamePasswordAuthenticationToken(principal, accessToken, principal.getAuthorities());
 	}
 
 	public Claims parseClaims(String token) {
@@ -119,6 +103,14 @@ public class JwtTokenProvider {
 		return parseClaims(token).getSubject();
 	}
 
+	public Long getUserId(String token) {
+		Number userIdClaim = parseClaims(token).get(USER_ID_KEY, Number.class);
+		if (userIdClaim == null) {
+			throw new IllegalArgumentException("Token does not contain user id.");
+		}
+		return userIdClaim.longValue();
+	}
+
 	public void deleteRefreshToken(String email) {
 		redisDao.deleteValue(createRefreshTokenKey(email));
 	}
@@ -136,8 +128,8 @@ public class JwtTokenProvider {
 				return false;
 			}
 
-			if (ACCESS_TOKEN_TYPE.equals(tokenType) && claims.get(AUTHORITIES_KEY) == null) {
-				log.debug("access token missing authorities");
+			if (claims.get(USER_ID_KEY, Number.class) == null || claims.getSubject() == null) {
+				log.debug("{} token missing principal claims", tokenType);
 				return false;
 			}
 
