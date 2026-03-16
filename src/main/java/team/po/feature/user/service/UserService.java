@@ -1,17 +1,28 @@
 package team.po.feature.user.service;
 
+import java.time.LocalDateTime;
 import java.util.Locale;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import team.po.common.jwt.JwtProperties;
+import team.po.common.jwt.JwtToken;
+import team.po.common.jwt.JwtTokenProvider;
+import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.dto.SignInRequest;
+import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.repository.UserRepository;
@@ -22,6 +33,9 @@ import team.po.feature.user.repository.UserRepository;
 public class UserService {
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
+	private final AuthenticationManager authenticationManager;
+	private final JwtTokenProvider jwtTokenProvider;
+	private final JwtProperties jwtProperties;
 
 	public void signUp(SignUpRequest signUpRequest, MultipartFile profileImage) {
 		String normalizedEmail = normalizeEmail(signUpRequest.email());
@@ -41,6 +55,27 @@ public class UserService {
 				throw new DuplicatedEmailException(HttpStatus.CONFLICT, ErrorCodeConstants.EMAIL_ALREADY_EXISTS, "중복된 이메일이 존재합니다.");
 			}
 			throw e;
+		}
+	}
+
+	public SignInResponse signIn(SignInRequest request) {
+		String normalizedEmail = normalizeEmail(request.email());
+
+		try {
+			Authentication authentication = authenticationManager.authenticate(
+				new UsernamePasswordAuthenticationToken(normalizedEmail, request.password())
+			);
+			UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+
+			JwtToken jwtToken = jwtTokenProvider.generateToken(principal.id(), principal.email());
+
+			return new SignInResponse(
+				jwtToken.accessToken(),
+				jwtToken.refreshToken(),
+				LocalDateTime.now().plus(jwtProperties.getAccessTokenExpiration())
+			);
+		} catch (org.springframework.security.core.AuthenticationException exception) {
+			throw new BadCredentialsException("이메일 또는 비밀번호가 올바르지 않습니다.", exception);
 		}
 	}
 

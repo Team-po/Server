@@ -6,7 +6,17 @@ import java.util.List;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
-public record UserPrincipal(Long id, String email) implements UserDetails {
+import team.po.feature.user.domain.Users;
+
+public record UserPrincipal(Long id, String email, String password) implements UserDetails {
+
+	public UserPrincipal(Long id, String email) {
+		this(id, email, "");
+	}
+
+	public static UserPrincipal from(Users user) {
+		return new UserPrincipal(user.getId(), user.getEmail(), user.getPassword());
+	}
 
 	@Override
 	public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -15,7 +25,7 @@ public record UserPrincipal(Long id, String email) implements UserDetails {
 
 	@Override
 	public String getPassword() {
-		return "";
+		return password;
 	}
 
 	@Override

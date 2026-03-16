@@ -6,10 +6,12 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,11 +21,13 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import team.po.exception.CustomExceptionHandler;
 import team.po.exception.ErrorCodeConstants;
+import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.service.UserService;
 
@@ -88,6 +92,36 @@ class UserControllerTest {
 			.andExpect(status().isOk());
 
 		verify(userService).signUp(any(), any());
+	}
+
+	@Test
+	void signIn_returnsOk_whenCredentialsAreValid() throws Exception {
+		org.mockito.Mockito.when(userService.signIn(any()))
+			.thenReturn(new SignInResponse("access-token", "refresh-token", LocalDateTime.of(2026, 3, 16, 20, 0)));
+
+		mockMvc.perform(post("/api/users/sign-in")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"email":"test@email.com","password":"password123"}
+					"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.accessToken").value("access-token"))
+			.andExpect(jsonPath("$.refreshToken").value("refresh-token"));
+	}
+
+	@Test
+	void signIn_returnsUnauthorized_whenCredentialsAreInvalid() throws Exception {
+		doThrow(new BadCredentialsException("이메일 또는 비밀번호가 올바르지 않습니다."))
+			.when(userService).signIn(any());
+
+		mockMvc.perform(post("/api/users/sign-in")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"email":"test@email.com","password":"wrong-password"}
+					"""))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_CREDENTIALS))
+			.andExpect(jsonPath("$.message").value("이메일 또는 비밀번호가 올바르지 않습니다."));
 	}
 
 	private MockMultipartFile signUpRequestPart(String email, String password, String nickname) {
