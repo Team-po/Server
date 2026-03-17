@@ -17,12 +17,23 @@ jobs:
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: pmate
+          # Flyway 테스트 설정과 동일한 DB 이름으로 맞춘다.
+          MYSQL_DATABASE: teampo
           TZ: Asia/Seoul
         ports:
           - 3307:3306
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
@@ -52,6 +63,15 @@ jobs:
             sleep 2
           done
           echo "MySQL did not become ready in time."
+          exit 1
+
+      - name: Wait for Redis
+        run: |
+          for i in {1..30}; do
+            (echo > /dev/tcp/127.0.0.1/6379) >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          echo "Redis did not become ready in time."
           exit 1
 
       - name: Build and test with Gradle
