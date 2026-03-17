@@ -32,7 +32,7 @@ public class UserService {
 		// TODO : AWS 배포 후 S3 사용시 ProfileImage 저장 로직 개발
 		String password = passwordEncoder.encode(signUpRequest.password());
 		Users user = Users.builder().email(normalizedEmail).password(password)
-			.profileImage(null).nickname(signUpRequest.nickname()).description("").level(3).temperature(50).build(); // level과 temperature은 기본값
+			.profileImage(null).nickname(signUpRequest.nickname()).description(null).level(3).temperature(50).build(); // level과 temperature은 기본값
 
 		try {
 			userRepository.save(user);
