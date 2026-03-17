@@ -39,10 +39,7 @@ public class UserService {
 
 	public void signUp(SignUpRequest signUpRequest, MultipartFile profileImage) {
 		String normalizedEmail = normalizeEmail(signUpRequest.email());
-
-		if (userRepository.existsByEmail(normalizedEmail))
-			throw new DuplicatedEmailException(HttpStatus.CONFLICT, ErrorCodeConstants.EMAIL_ALREADY_EXISTS, "중복된 이메일이 존재합니다.");
-
+		checkEmailDuplication(normalizedEmail);
 		// TODO : AWS 배포 후 S3 사용시 ProfileImage 저장 로직 개발
 		String password = passwordEncoder.encode(signUpRequest.password());
 		Users user = Users.builder().email(normalizedEmail).password(password)
@@ -77,6 +74,14 @@ public class UserService {
 		} catch (org.springframework.security.core.AuthenticationException exception) {
 			throw new BadCredentialsException("이메일 또는 비밀번호가 올바르지 않습니다.", exception);
 		}
+	}
+
+	public void checkEmailDuplication(String email) {
+		String normalizedEmail = normalizeEmail(email);
+
+		if (userRepository.existsByEmail(normalizedEmail))
+			throw new DuplicatedEmailException(HttpStatus.CONFLICT, ErrorCodeConstants.EMAIL_ALREADY_EXISTS, "중복된 이메일이 존재합니다.");
+
 	}
 
 	private String normalizeEmail(String email) {

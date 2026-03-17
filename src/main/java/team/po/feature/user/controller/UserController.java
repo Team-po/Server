@@ -4,9 +4,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.Errors;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,6 +21,7 @@ import team.po.exception.InvalidFieldException;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
+import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.service.UserService;
 
 @RestController
@@ -36,6 +39,13 @@ public class UserController {
 		}
 
 		userService.signUp(signUpRequest, profileImage);
+		return ResponseEntity.ok().build();
+	}
+
+	@Operation(summary = "이메일 중복 검사 API")
+	@GetMapping(value = "/users/check-email")
+	public ResponseEntity<Void> checkEmailDuplicate(@RequestParam String email) {
+		userService.checkEmailDuplication(email);
 		return ResponseEntity.ok().build();
 	}
 

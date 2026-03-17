@@ -86,6 +86,26 @@ class UserServiceTest {
 	}
 
 	@Test
+	void checkEmailDuplication_passesWhenEmailDoesNotExist() {
+		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
+
+		userService.checkEmailDuplication(" Test@Email.com ");
+
+		verify(userRepository).existsByEmail("test@email.com");
+	}
+
+	@Test
+	void checkEmailDuplication_throwsWhenEmailAlreadyExists() {
+		when(userRepository.existsByEmail("test@email.com")).thenReturn(true);
+
+		assertThatThrownBy(() -> userService.checkEmailDuplication(" Test@Email.com "))
+			.isInstanceOf(DuplicatedEmailException.class)
+			.hasMessage("중복된 이메일이 존재합니다.");
+
+		verify(userRepository).existsByEmail("test@email.com");
+	}
+
+	@Test
 	void signIn_returnsTokensWhenAuthenticationSucceeds() {
 		SignInRequest request = new SignInRequest(" Test@Email.com ", "password123");
 		UserPrincipal principal = new UserPrincipal(1L, "test@email.com", "encoded-password");

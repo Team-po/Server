@@ -3,7 +3,9 @@ package team.po.feature.user.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -92,6 +94,32 @@ class UserControllerTest {
 			.andExpect(status().isOk());
 
 		verify(userService).signUp(any(), any());
+	}
+
+	@Test
+	void checkEmailDuplicate_returnsOk_whenEmailIsAvailable() throws Exception {
+		doNothing().when(userService).checkEmailDuplication("test@email.com");
+
+		mockMvc.perform(get("/api/users/check-email")
+				.param("email", "test@email.com"))
+			.andExpect(status().isOk());
+
+		verify(userService).checkEmailDuplication("test@email.com");
+	}
+
+	@Test
+	void checkEmailDuplicate_returnsConflict_whenEmailAlreadyExists() throws Exception {
+		doThrow(new DuplicatedEmailException(
+			HttpStatus.CONFLICT,
+			ErrorCodeConstants.EMAIL_ALREADY_EXISTS,
+			"중복된 이메일이 존재합니다."
+		)).when(userService).checkEmailDuplication("test@email.com");
+
+		mockMvc.perform(get("/api/users/check-email")
+				.param("email", "test@email.com"))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.EMAIL_ALREADY_EXISTS))
+			.andExpect(jsonPath("$.message").value("중복된 이메일이 존재합니다."));
 	}
 
 	@Test
