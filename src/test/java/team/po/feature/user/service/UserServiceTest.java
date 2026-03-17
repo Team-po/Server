@@ -47,7 +47,7 @@ class UserServiceTest {
 		assertThat(savedUser.getEmail()).isEqualTo("test@email.com");
 		assertThat(savedUser.getPassword()).isEqualTo("encoded-password");
 		assertThat(savedUser.getNickname()).isEqualTo("tester");
-		assertThat(savedUser.getDescription()).isEqualTo("");
+		assertThat(savedUser.getDescription()).isNull();
 		assertThat(savedUser.getTemperature()).isEqualTo(50);
 		assertThat(savedUser.getLevel()).isEqualTo(3);
 	}
