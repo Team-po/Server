@@ -54,6 +54,14 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Create jwt-secret.yml from repository secret
+        env:
+          JWT_SECRET_YML_BASE64: ${{ secrets.JWT_SECRET_YML_BASE64 }}
+        run: |
+          test -n "$JWT_SECRET_YML_BASE64" || { echo "JWT_SECRET_YML_BASE64 is not set"; exit 1; }
+          mkdir -p src/main/resources
+          printf '%s' "$JWT_SECRET_YML_BASE64" | base64 --decode > src/main/resources/jwt-secret.yml
+
       # MySQL 포트가 실제로 열릴 때까지 한 번 더 대기
       # health check만으로 간헐 타이밍 이슈가 날 수 있어서 추가
       - name: Wait for MySQL
