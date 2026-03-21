@@ -18,10 +18,9 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import team.po.exception.ErrorCodeConstants;
 import team.po.exception.InvalidFieldException;
-import team.po.feature.user.dto.SignInRequest;
-import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
-import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.dto.SignInResponse;
+import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.service.UserService;
 
 @RestController
