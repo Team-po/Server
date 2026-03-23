@@ -1,0 +1,191 @@
+name: Discord PR Review Reminder
+
+on:
+  schedule:
+    # KST 10:00 every day
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: discord-pr-review-reminder
+  cancel-in-progress: true
+
+jobs:
+  remind-pending-reviewers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Send pending review reminders to Discord
+        uses: actions/github-script@v7
+        env:
+          # Required secret:
+          # - DISCORD_WEBHOOK_URL
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # Optional repository variable:
+          # - DISCORD_USER_MAP_JSON: {"github-login":"discord-user-id"}
+          DISCORD_USER_MAP_JSON: ${{ vars.DISCORD_USER_MAP_JSON }}
+        with:
+          script: |
+            const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+            if (!webhookUrl) {
+              core.setFailed('DISCORD_WEBHOOK_URL secret is not configured.');
+              return;
+            }
+
+            function parseJson(value, fallback, name) {
+              if (!value || !value.trim()) {
+                return fallback;
+              }
+
+              try {
+                return JSON.parse(value);
+              } catch (error) {
+                core.setFailed(`${name} is not valid JSON.`);
+                throw error;
+              }
+            }
+
+            function truncate(text, maxLength) {
+              if (!text) {
+                return '';
+              }
+
+              if (text.length <= maxLength) {
+                return text;
+              }
+
+              return `${text.slice(0, maxLength - 1)}…`;
+            }
+
+            function formatElapsed(isoDate) {
+              const diffMs = Date.now() - new Date(isoDate).getTime();
+              const totalMinutes = Math.max(0, Math.floor(diffMs / 60000));
+              const days = Math.floor(totalMinutes / 1440);
+              const hours = Math.floor((totalMinutes % 1440) / 60);
+              const minutes = totalMinutes % 60;
+
+              if (days > 0) {
+                return hours > 0 ? `${days}일 ${hours}시간` : `${days}일`;
+              }
+
+              if (hours > 0) {
+                return minutes > 0 ? `${hours}시간 ${minutes}분` : `${hours}시간`;
+              }
+
+              return `${Math.max(1, minutes)}분`;
+            }
+
+            const userMap = parseJson(process.env.DISCORD_USER_MAP_JSON, {}, 'DISCORD_USER_MAP_JSON');
+            const pulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            let sentCount = 0;
+            let skippedCount = 0;
+            const failures = [];
+
+            for (const pr of pulls) {
+              if (pr.draft) {
+                skippedCount += 1;
+                continue;
+              }
+
+              const { data: requestedReviewers } = await github.rest.pulls.listRequestedReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+              });
+
+              const users = requestedReviewers.users || [];
+
+              // Personal reminders only: team review requests are intentionally ignored.
+              if (users.length === 0) {
+                skippedCount += 1;
+                continue;
+              }
+
+              const userMentions = users.map((user) => {
+                const discordId = userMap[user.login];
+                return discordId ? `<@${discordId}>` : `@${user.login}`;
+              });
+              const pendingReviewerParts = [...userMentions];
+              const contentPrefix = pendingReviewerParts.length > 0
+                ? `${pendingReviewerParts.join(' ')} 리뷰 확인 부탁드립니다.`
+                : '리뷰 확인 부탁드립니다.';
+
+              const descriptionLines = [
+                `작성자: @${pr.user.login}`,
+                `대기 리뷰어: ${pendingReviewerParts.join(', ')}`,
+                `생성 후 경과: ${formatElapsed(pr.created_at)}`,
+                `마지막 업데이트: ${formatElapsed(pr.updated_at)} 전`,
+              ];
+
+              const payload = {
+                content: contentPrefix,
+                allowed_mentions: {
+                  parse: [],
+                  users: users
+                    .map((user) => userMap[user.login])
+                    .filter(Boolean),
+                  roles: [],
+                },
+                embeds: [
+                  {
+                    title: truncate(pr.title, 256),
+                    url: pr.html_url,
+                    description: descriptionLines.join('\n'),
+                    color: 3447003,
+                    footer: {
+                      text: `${context.repo.owner}/${context.repo.repo} • PR #${pr.number}`,
+                    },
+                    timestamp: new Date().toISOString(),
+                  },
+                ],
+              };
+
+              const response = await fetch(`${webhookUrl}?wait=true`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+              });
+
+              if (!response.ok) {
+                failures.push(`PR #${pr.number}: Discord returned ${response.status}`);
+                continue;
+              }
+
+              sentCount += 1;
+            }
+
+            core.summary
+              .addHeading('Discord PR Review Reminder')
+              .addTable([
+                [{ data: '항목', header: true }, { data: '수치', header: true }],
+                ['전송 성공', String(sentCount)],
+                ['전송 제외', String(skippedCount)],
+                ['전송 실패', String(failures.length)],
+              ]);
+
+            if (failures.length > 0) {
+              core.summary.addHeading('실패 항목');
+              for (const failure of failures) {
+                core.summary.addRaw(`- ${failure}\n`);
+              }
+            }
+
+            await core.summary.write();
+
+            if (failures.length > 0) {
+              core.setFailed(`Some Discord reminders failed: ${failures.join('; ')}`);
+            } else {
+              core.notice(`Discord reminders sent: ${sentCount}, skipped: ${skippedCount}`);
+            }
