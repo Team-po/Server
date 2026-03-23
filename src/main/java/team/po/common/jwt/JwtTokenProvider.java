@@ -1,5 +1,6 @@
 package team.po.common.jwt;
 
+import java.time.Instant;
 import java.util.Date;
 
 import javax.crypto.SecretKey;
@@ -63,7 +64,7 @@ public class JwtTokenProvider {
 
 		redisDao.setValue(createRefreshTokenKey(email), refreshToken, jwtProperties.getRefreshTokenExpiration());
 
-		return new JwtToken(BEARER_TYPE, accessToken, refreshToken);
+		return new JwtToken(BEARER_TYPE, accessToken, refreshToken, Instant.ofEpochMilli(accessTokenExpiresAt.getTime()));
 	}
 
 	public Authentication getAuthentication(String accessToken) {

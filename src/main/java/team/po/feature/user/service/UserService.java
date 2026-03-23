@@ -1,6 +1,5 @@
 package team.po.feature.user.service;
 
-import java.time.LocalDateTime;
 import java.util.Locale;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -15,7 +14,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import team.po.common.jwt.JwtProperties;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
@@ -35,7 +33,6 @@ public class UserService {
 	private final PasswordEncoder passwordEncoder;
 	private final AuthenticationManager authenticationManager;
 	private final JwtTokenProvider jwtTokenProvider;
-	private final JwtProperties jwtProperties;
 
 	public void signUp(SignUpRequest signUpRequest, MultipartFile profileImage) {
 		String normalizedEmail = normalizeEmail(signUpRequest.email());
@@ -69,7 +66,7 @@ public class UserService {
 			return new SignInResponse(
 				jwtToken.accessToken(),
 				jwtToken.refreshToken(),
-				LocalDateTime.now().plus(jwtProperties.getAccessTokenExpiration())
+				jwtToken.accessTokenExpiresAt()
 			);
 		} catch (org.springframework.security.core.AuthenticationException exception) {
 			throw new BadCredentialsException("이메일 또는 비밀번호가 올바르지 않습니다.", exception);

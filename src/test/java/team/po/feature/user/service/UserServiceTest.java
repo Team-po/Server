@@ -7,8 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,7 +20,6 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import team.po.common.jwt.JwtProperties;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
@@ -46,9 +44,6 @@ class UserServiceTest {
 
 	@Mock
 	private JwtTokenProvider jwtTokenProvider;
-
-	@Mock
-	private JwtProperties jwtProperties;
 
 	@InjectMocks
 	private UserService userService;
@@ -111,20 +106,17 @@ class UserServiceTest {
 		UserPrincipal principal = new UserPrincipal(1L, "test@email.com", "encoded-password");
 		UsernamePasswordAuthenticationToken authentication =
 			new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+		Instant expiresAt = Instant.parse("2026-03-16T11:30:00Z");
 
 		when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(authentication);
 		when(jwtTokenProvider.generateToken(1L, "test@email.com"))
-			.thenReturn(new JwtToken("Bearer", "access-token", "refresh-token"));
-		when(jwtProperties.getAccessTokenExpiration()).thenReturn(Duration.ofMinutes(30));
+			.thenReturn(new JwtToken("Bearer", "access-token", "refresh-token", expiresAt));
 
-		LocalDateTime before = LocalDateTime.now();
 		SignInResponse response = userService.signIn(request);
-		LocalDateTime after = LocalDateTime.now();
 
 		assertThat(response.accessToken()).isEqualTo("access-token");
 		assertThat(response.refreshToken()).isEqualTo("refresh-token");
-		assertThat(response.expiresAt()).isAfterOrEqualTo(before.plusMinutes(30));
-		assertThat(response.expiresAt()).isBeforeOrEqualTo(after.plusMinutes(30));
+		assertThat(response.expiresAt()).isEqualTo(expiresAt);
 
 		ArgumentCaptor<UsernamePasswordAuthenticationToken> authenticationCaptor =
 			ArgumentCaptor.forClass(UsernamePasswordAuthenticationToken.class);

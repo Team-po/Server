@@ -13,7 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -125,7 +125,7 @@ class UserControllerTest {
 	@Test
 	void signIn_returnsOk_whenCredentialsAreValid() throws Exception {
 		org.mockito.Mockito.when(userService.signIn(any()))
-			.thenReturn(new SignInResponse("access-token", "refresh-token", LocalDateTime.of(2026, 3, 16, 20, 0)));
+			.thenReturn(new SignInResponse("access-token", "refresh-token", Instant.parse("2026-03-16T11:00:00Z")));
 
 		mockMvc.perform(post("/api/users/sign-in")
 				.contentType(MediaType.APPLICATION_JSON)
@@ -134,7 +134,8 @@ class UserControllerTest {
 					"""))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.accessToken").value("access-token"))
-			.andExpect(jsonPath("$.refreshToken").value("refresh-token"));
+			.andExpect(jsonPath("$.refreshToken").value("refresh-token"))
+			.andExpect(jsonPath("$.expiresAt").value("2026-03-16T11:00:00Z"));
 	}
 
 	@Test

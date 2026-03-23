@@ -1,6 +1,6 @@
 package team.po.feature.user.dto;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
-public record SignInResponse(String accessToken, String refreshToken, LocalDateTime expiresAt) {
+public record SignInResponse(String accessToken, String refreshToken, Instant expiresAt) {
 }
