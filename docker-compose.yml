@@ -3,16 +3,26 @@ version: "3.8"
 services:
   mysql:
     image: mysql:8.0
-    container_name: pmate-mysql
+    container_name: team-po-mysql
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: pmate
-      TZ: Asia/Seoul
+      MYSQL_DATABASE: teampo
+      TZ: UTC
     ports:
       - "3307:3306"
     volumes:
       - mysql-data:/var/lib/mysql
 
+  redis:
+    image: redis:7-alpine
+    container_name: team-po-redis
+    restart: always
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+
 volumes:
   mysql-data:
+  redis-data:
