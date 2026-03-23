@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import team.po.feature.user.exception.DuplicatedEmailException;
 
 @RestControllerAdvice
-public class CustomExceptionHandler {
+public class CustomUserExceptionHandler {
 	@ExceptionHandler(InvalidFieldException.class)
 	protected ResponseEntity<ExceptionResponse> invalidFieldException(InvalidFieldException e) {
 		Map<String, String> fieldErrors = new LinkedHashMap<>();

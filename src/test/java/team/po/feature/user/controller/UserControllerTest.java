@@ -27,7 +27,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import team.po.exception.CustomExceptionHandler;
+import team.po.exception.CustomUserExceptionHandler;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.exception.DuplicatedEmailException;
@@ -35,7 +35,7 @@ import team.po.feature.user.service.UserService;
 
 @WebMvcTest(UserController.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(CustomExceptionHandler.class)
+@Import(CustomUserExceptionHandler.class)
 class UserControllerTest {
 
 	@Autowired
