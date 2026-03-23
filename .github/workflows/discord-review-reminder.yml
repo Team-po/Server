@@ -91,8 +91,7 @@ jobs:
             let messageCount = 0;
             let skippedCount = 0;
             const failures = [];
-            const reminderEmbeds = [];
-            const allowedUserIds = new Set();
+            const reminders = [];
 
             for (const pr of pulls) {
               if (pr.draft) {
@@ -118,13 +117,9 @@ jobs:
                 const discordId = userMap[user.login];
                 return discordId ? `<@${discordId}>` : `@${user.login}`;
               });
-
-              for (const user of users) {
-                const discordId = userMap[user.login];
-                if (discordId) {
-                  allowedUserIds.add(discordId);
-                }
-              }
+              const mappedUserIds = users
+                .map((user) => userMap[user.login])
+                .filter(Boolean);
 
               const pendingReviewerParts = [...userMentions];
 
@@ -135,29 +130,36 @@ jobs:
                 `마지막 업데이트: ${formatElapsed(pr.updated_at)} 전`,
               ];
 
-              reminderEmbeds.push({
-                title: truncate(pr.title, 256),
-                url: pr.html_url,
-                description: descriptionLines.join('\n'),
-                color: 3447003,
-                footer: {
-                  text: `${context.repo.owner}/${context.repo.repo} • PR #${pr.number}`,
+              reminders.push({
+                embed: {
+                  title: truncate(pr.title, 256),
+                  url: pr.html_url,
+                  description: descriptionLines.join('\n'),
+                  color: 3447003,
+                  footer: {
+                    text: `${context.repo.owner}/${context.repo.repo} • PR #${pr.number}`,
+                  },
+                  timestamp: new Date().toISOString(),
                 },
-                timestamp: new Date().toISOString(),
+                mappedUserIds,
               });
               reminderCount += 1;
             }
 
-            for (let i = 0; i < reminderEmbeds.length; i += 10) {
-              const embedChunk = reminderEmbeds.slice(i, i + 10);
+            for (let i = 0; i < reminders.length; i += 10) {
+              const reminderChunk = reminders.slice(i, i + 10);
+              const chunkUserIds = Array.from(new Set(
+                reminderChunk.flatMap((reminder) => reminder.mappedUserIds)
+              ));
+              const mentionLine = chunkUserIds.map((id) => `<@${id}>`).join(' ');
               const payload = {
-                content: 'PR Review Reminder',
+                content: mentionLine ? `PR Review Reminder\n${mentionLine}` : 'PR Review Reminder',
                 allowed_mentions: {
                   parse: [],
-                  users: Array.from(allowedUserIds),
+                  users: chunkUserIds,
                   roles: [],
                 },
-                embeds: embedChunk,
+                embeds: reminderChunk.map((reminder) => reminder.embed),
               };
 
               const response = await fetch(`${webhookUrl}?wait=true`, {
