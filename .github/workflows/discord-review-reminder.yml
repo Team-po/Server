@@ -93,9 +93,12 @@ jobs:
               per_page: 100,
             });
 
-            let sentCount = 0;
+            let reminderCount = 0;
+            let messageCount = 0;
             let skippedCount = 0;
             const failures = [];
+            const reminderEmbeds = [];
+            const allowedUserIds = new Set();
 
             for (const pr of pulls) {
               if (pr.draft) {
@@ -121,10 +124,15 @@ jobs:
                 const discordId = userMap[user.login];
                 return discordId ? `<@${discordId}>` : `@${user.login}`;
               });
+
+              for (const user of users) {
+                const discordId = userMap[user.login];
+                if (discordId) {
+                  allowedUserIds.add(discordId);
+                }
+              }
+
               const pendingReviewerParts = [...userMentions];
-              const contentPrefix = pendingReviewerParts.length > 0
-                ? `${pendingReviewerParts.join(' ')} 리뷰 확인 부탁드립니다.`
-                : '리뷰 확인 부탁드립니다.';
 
               const descriptionLines = [
                 `작성자: @${pr.user.login}`,
@@ -133,27 +141,29 @@ jobs:
                 `마지막 업데이트: ${formatElapsed(pr.updated_at)} 전`,
               ];
 
+              reminderEmbeds.push({
+                title: truncate(pr.title, 256),
+                url: pr.html_url,
+                description: descriptionLines.join('\n'),
+                color: 3447003,
+                footer: {
+                  text: `${context.repo.owner}/${context.repo.repo} • PR #${pr.number}`,
+                },
+                timestamp: new Date().toISOString(),
+              });
+              reminderCount += 1;
+            }
+
+            for (let i = 0; i < reminderEmbeds.length; i += 10) {
+              const embedChunk = reminderEmbeds.slice(i, i + 10);
               const payload = {
-                content: contentPrefix,
+                content: 'PR Review Reminder',
                 allowed_mentions: {
                   parse: [],
-                  users: users
-                    .map((user) => userMap[user.login])
-                    .filter(Boolean),
+                  users: Array.from(allowedUserIds),
                   roles: [],
                 },
-                embeds: [
-                  {
-                    title: truncate(pr.title, 256),
-                    url: pr.html_url,
-                    description: descriptionLines.join('\n'),
-                    color: 3447003,
-                    footer: {
-                      text: `${context.repo.owner}/${context.repo.repo} • PR #${pr.number}`,
-                    },
-                    timestamp: new Date().toISOString(),
-                  },
-                ],
+                embeds: embedChunk,
               };
 
               const response = await fetch(`${webhookUrl}?wait=true`, {
@@ -165,18 +175,19 @@ jobs:
               });
 
               if (!response.ok) {
-                failures.push(`PR #${pr.number}: Discord returned ${response.status}`);
+                failures.push(`Embed batch ${Math.floor(i / 10) + 1}: Discord returned ${response.status}`);
                 continue;
               }
 
-              sentCount += 1;
+              messageCount += 1;
             }
 
             core.summary
               .addHeading('Discord PR Review Reminder')
               .addTable([
                 [{ data: '항목', header: true }, { data: '수치', header: true }],
-                ['전송 성공', String(sentCount)],
+                ['대상 PR', String(reminderCount)],
+                ['전송 메시지', String(messageCount)],
                 ['전송 제외', String(skippedCount)],
                 ['전송 실패', String(failures.length)],
               ]);
@@ -193,5 +204,5 @@ jobs:
             if (failures.length > 0) {
               core.setFailed(`Some Discord reminders failed: ${failures.join('; ')}`);
             } else {
-              core.notice(`Discord reminders sent: ${sentCount}, skipped: ${skippedCount}`);
+              core.notice(`Discord reminders sent: ${reminderCount} PRs in ${messageCount} message(s), skipped: ${skippedCount}`);
             }
