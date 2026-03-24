@@ -1,0 +1,94 @@
+name: 기능 요청
+description: 새로운 기능, 개선안, 리팩터링 제안을 등록합니다.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        구현 요청이 아니라 문제와 목적 중심으로 작성해 주세요.
+        개인정보, 운영 데이터, 비밀값은 포함하지 마세요.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 배경 / 해결하려는 문제
+      description: 왜 이 작업이 필요한지 작성해 주세요.
+      placeholder: 현재 로그인 이후 토큰 재발급 흐름이 없어 사용자가 자주 다시 로그인해야 합니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 제안 내용
+      description: 원하는 동작 또는 변경 방향을 설명해 주세요.
+      placeholder: 리프레시 토큰 기반 재발급 API를 추가하고, 만료 시 재로그인을 유도합니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: value
+    attributes:
+      label: 기대 효과
+      description: 사용자 가치, 운영 효율, 유지보수성 측면의 효과를 작성해 주세요.
+      placeholder: 로그인 이탈 감소, 세션 관리 일관성 향상
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 조건
+      description: 리뷰어가 완료 여부를 판단할 수 있는 기준을 작성해 주세요.
+      placeholder: |
+        - 재발급 API 명세가 정의되어 있다
+        - 만료/위조/정상 토큰 케이스 테스트가 있다
+        - 보안상 취약한 응답이나 로그가 없다
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: 영향 영역
+      description: 해당하는 항목을 체크해 주세요.
+      options:
+        - label: API 스펙 변경이 있습니다.
+        - label: DB 스키마 또는 마이그레이션 변경이 있습니다.
+        - label: 인증/인가/권한에 영향이 있습니다.
+        - label: Redis/캐시/세션 처리에 영향이 있습니다.
+        - label: 성능 또는 트래픽 처리량에 영향이 있습니다.
+        - label: 기존 클라이언트와의 하위 호환성을 검토해야 합니다.
+
+  - type: textarea
+    id: api
+    attributes:
+      label: API / DB / 인프라 고려사항
+      description: 예상되는 엔드포인트, 스키마, 마이그레이션, 외부 의존성을 작성해 주세요.
+      placeholder: |
+        - POST /auth/refresh 추가
+        - refresh token 저장 정책 정의 필요
+        - Redis TTL 정책 검토 필요
+
+  - type: textarea
+    id: security
+    attributes:
+      label: 보안 고려사항
+      description: 인증, 인가, 입력 검증, 민감정보 처리 관점의 고려사항을 작성해 주세요.
+      placeholder: 토큰은 로그에 남기지 않고, 재사용 공격 방지 정책을 포함해야 합니다.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 고려한 대안
+      description: 다른 접근 방법이나 보류한 대안이 있으면 작성해 주세요.
+      placeholder: Access Token 만료 시간을 늘리는 방식은 보안상 제외
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: 필요한 테스트
+      description: 단위 / 통합 / API 테스트 관점에서 필요한 항목을 작성해 주세요.
+      placeholder: 토큰 정상/만료/위조/권한 없음 케이스 테스트

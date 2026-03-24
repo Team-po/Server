@@ -1,0 +1,114 @@
+name: 버그 리포트
+description: 재현 가능한 버그, 장애, 의도와 다른 동작을 제보합니다.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        문제를 빠르게 파악할 수 있도록 가능한 한 구체적으로 작성해 주세요.
+        민감정보, 토큰, 개인정보, 실제 운영 데이터는 절대 포함하지 마세요.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 문제 요약
+      description: 무엇이 잘못되었는지 한두 문장으로 설명해 주세요.
+      placeholder: 회원가입 요청 시 중복 이메일 검증 없이 500 에러가 발생합니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작
+      description: 원래 어떻게 동작해야 하는지 작성해 주세요.
+      placeholder: 중복 이메일이면 409 응답과 명확한 에러 메시지를 반환해야 합니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+      description: 현재 실제로 발생하는 현상을 작성해 주세요.
+      placeholder: 500 응답이 내려오고, 클라이언트는 원인을 알 수 없습니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 절차
+      description: 다른 사람이 그대로 따라 했을 때 재현 가능해야 합니다.
+      placeholder: |
+        1. `docker compose up -d` 실행
+        2. 중복된 이메일로 `POST /users/signup` 요청
+        3. 응답 상태 코드와 메시지 확인
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 영향 범위
+      description: 어떤 사용자, API, 화면, 배치, 데이터에 영향이 있는지 작성해 주세요.
+      placeholder: 회원가입 API 전반에 영향이 있으며, 신규 사용자 유입이 막힙니다.
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: 심각도
+      description: 사용자 영향 기준으로 선택해 주세요.
+      options:
+        - critical - 서비스 장애 또는 데이터 손상 가능성
+        - high - 핵심 기능 오작동
+        - medium - 우회 가능하지만 수정 필요
+        - low - 경미한 문제 또는 표시 오류
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: risk
+    attributes:
+      label: 위험 징후
+      description: 해당하면 체크해 주세요.
+      options:
+        - label: 보안 이슈 가능성이 있습니다. (인가, 인증, 권한 누락, 정보 노출 등)
+        - label: 동시성 이슈 가능성이 있습니다. (중복 저장, 경쟁 조건, 캐시 불일치 등)
+        - label: 성능 저하 가능성이 있습니다. (N+1, 느린 쿼리, 불필요한 외부 호출 등)
+        - label: 데이터 정합성 문제 가능성이 있습니다. (중복, 유실, 잘못된 상태 전이 등)
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 로그 / 스크린샷 / 응답 본문
+      description: 필요한 최소 정보만 첨부해 주세요. 민감정보는 반드시 제거해 주세요.
+      placeholder: sanitized log, stack trace, response body
+      render: shell
+
+  - type: input
+    id: branch
+    attributes:
+      label: 발견 브랜치
+      description: 버그를 확인한 브랜치 또는 커밋이 있다면 작성해 주세요.
+      placeholder: main 또는 a1b2c3d
+
+  - type: textarea
+    id: env
+    attributes:
+      label: 실행 환경
+      description: 로컬/개발/스테이징, DB, 브라우저, OS 등 재현에 필요한 정보를 작성해 주세요.
+      placeholder: |
+        - 환경: local
+        - DB: MySQL via docker compose
+        - OS: macOS
+        - 앱 버전/커밋: a1b2c3d
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: 추가로 필요한 테스트
+      description: 어떤 테스트가 있으면 재발 방지에 도움이 되는지 작성해 주세요.
+      placeholder: UserService 중복 이메일 테스트, Controller 예외 응답 테스트
