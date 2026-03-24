@@ -25,12 +25,12 @@ import team.po.feature.user.service.UserService;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api")
+@RequestMapping("/api/users")
 public class UserController {
 	private final UserService userService;
 
 	@Operation(summary = "회원 가입 API")
-	@PostMapping(value = "/users/sign-up", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+	@PostMapping(value = "/sign-up", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<Void> signUp(@Valid @RequestPart("signUpRequest") SignUpRequest signUpRequest,
 		Errors errors, @RequestPart(required = false) MultipartFile profileImage) {
 		if (errors.hasErrors()) {
@@ -42,14 +42,14 @@ public class UserController {
 	}
 
 	@Operation(summary = "이메일 중복 검사 API")
-	@GetMapping(value = "/users/check-email")
+	@GetMapping(value = "/check-email")
 	public ResponseEntity<Void> checkEmailDuplicate(@RequestParam String email) {
 		userService.checkEmailDuplication(email);
 		return ResponseEntity.ok().build();
 	}
 
 	@Operation(summary = "로그인 API")
-	@PostMapping(value = "/users/sign-in")
+	@PostMapping(value = "/sign-in")
 	public ResponseEntity<SignInResponse> signIn(@Valid @RequestBody SignInRequest request, Errors errors) {
 		if (errors.hasErrors()) {
 			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
