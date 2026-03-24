@@ -50,7 +50,10 @@ public class UserController {
 
 	@Operation(summary = "로그인 API")
 	@PostMapping(value = "/users/sign-in")
-	public ResponseEntity<SignInResponse> signIn(@Valid @RequestBody SignInRequest request) {
+	public ResponseEntity<SignInResponse> signIn(@Valid @RequestBody SignInRequest request, Errors errors) {
+		if (errors.hasErrors()) {
+			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
+		}
 		SignInResponse response = userService.signIn(request);
 		return ResponseEntity.ok().body(response);
 	}
