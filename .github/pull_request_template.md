@@ -1,11 +1,11 @@
 ## 📌 Related Issue
 
-be-57
+Closes #이슈번호
 
 ## 🚀 Description
 
-내피드 최신댓글 작성자가 나인경우 제외하였습니다.  
-내 피드를 최신댓글 순으로 정렬했습니다.
+<!-- PR에 대한 소개를 써주세요 -->
+
 
 ## 📢 Review Point
 
