@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.InvalidTokenException;
 
 @RestControllerAdvice
 public class CustomUserExceptionHandler {
@@ -40,5 +41,11 @@ public class CustomUserExceptionHandler {
 	protected ResponseEntity<ExceptionResponse> badCredentialsException(BadCredentialsException e) {
 		return ResponseEntity.status(401)
 			.body(new ExceptionResponse(ErrorCodeConstants.INVALID_CREDENTIALS, e.getMessage(), Optional.empty()));
+	}
+
+	@ExceptionHandler(InvalidTokenException.class)
+	protected ResponseEntity<ExceptionResponse> invalidTokenException(InvalidTokenException e) {
+		return ResponseEntity.status(e.getCode())
+			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
 	}
 }

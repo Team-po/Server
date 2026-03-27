@@ -40,31 +40,36 @@ public class JwtTokenProvider {
 	}
 
 	public JwtToken generateToken(Long userId, String email) {
-		Date now = new Date();
-
-		Date accessTokenExpiresAt = new Date(now.getTime() + jwtProperties.getAccessTokenExpiration().toMillis());
-		String accessToken = Jwts.builder()
-			.subject(email)
-			.claim(USER_ID_KEY, userId)
-			.claim(TOKEN_TYPE_KEY, ACCESS_TOKEN_TYPE)
-			.issuedAt(now)
-			.expiration(accessTokenExpiresAt)
-			.signWith(key)
-			.compact();
-
-		Date refreshTokenExpiresAt = new Date(now.getTime() + jwtProperties.getRefreshTokenExpiration().toMillis());
-		String refreshToken = Jwts.builder()
-			.subject(email)
-			.claim(USER_ID_KEY, userId)
-			.claim(TOKEN_TYPE_KEY, REFRESH_TOKEN_TYPE)
-			.issuedAt(now)
-			.expiration(refreshTokenExpiresAt)
-			.signWith(key)
-			.compact();
-
+		String accessToken = generateAccessToken(userId, email);
+		String refreshToken = generateRefreshToken(userId, email);
 		redisDao.setValue(createRefreshTokenKey(email), refreshToken, jwtProperties.getRefreshTokenExpiration());
 
-		return new JwtToken(BEARER_TYPE, accessToken, refreshToken, Instant.ofEpochMilli(accessTokenExpiresAt.getTime()));
+		return new JwtToken(BEARER_TYPE, accessToken, refreshToken, getExpiration(accessToken));
+	}
+
+	public String generateAccessToken(Long userId, String email) {
+		Instant expiresAt = Instant.now().plus(jwtProperties.getAccessTokenExpiration());
+		return generateToken(userId, email, ACCESS_TOKEN_TYPE, expiresAt);
+	}
+
+	public String generateRefreshToken(Long userId, String email) {
+		Instant expiresAt = Instant.now().plus(jwtProperties.getRefreshTokenExpiration());
+		return generateToken(userId, email, REFRESH_TOKEN_TYPE, expiresAt);
+	}
+
+	public Instant getExpiration(String token) {
+		Date expiration = parseClaims(token).getExpiration();
+
+		if (expiration == null) {
+			throw new IllegalArgumentException("Token does not contain expiration.");
+		}
+
+		return expiration.toInstant();
+	}
+
+	public boolean isRefreshTokenMatched(String email, String refreshToken) {
+		Object savedToken = redisDao.getValue(createRefreshTokenKey(email));
+		return savedToken != null && refreshToken.equals(savedToken.toString());
 	}
 
 	public Authentication getAuthentication(String accessToken) {
@@ -114,6 +119,19 @@ public class JwtTokenProvider {
 
 	public void deleteRefreshToken(String email) {
 		redisDao.deleteValue(createRefreshTokenKey(email));
+	}
+
+	private String generateToken(Long userId, String email, String tokenType, Instant expiresAt) {
+		Date now = new Date();
+
+		return Jwts.builder()
+			.subject(email)
+			.claim(USER_ID_KEY, userId)
+			.claim(TOKEN_TYPE_KEY, tokenType)
+			.issuedAt(now)
+			.expiration(Date.from(expiresAt))
+			.signWith(key)
+			.compact();
 	}
 
 	private boolean validateToken(String token, String tokenType) {
