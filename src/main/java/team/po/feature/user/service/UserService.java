@@ -35,8 +35,8 @@ public class UserService {
 	private final JwtTokenProvider jwtTokenProvider;
 
 	public void signUp(SignUpRequest signUpRequest, MultipartFile profileImage) {
-		String normalizedEmail = normalizeEmail(signUpRequest.email());
-		checkEmailDuplication(normalizedEmail);
+		String normalizedEmail = this.normalizeEmail(signUpRequest.email());
+		this.checkEmailDuplication(normalizedEmail);
 		// TODO : AWS 배포 후 S3 사용시 ProfileImage 저장 로직 개발
 		String password = passwordEncoder.encode(signUpRequest.password());
 		Users user = Users.builder().email(normalizedEmail).password(password)
@@ -53,7 +53,7 @@ public class UserService {
 	}
 
 	public SignInResponse signIn(SignInRequest request) {
-		String normalizedEmail = normalizeEmail(request.email());
+		String normalizedEmail = this.normalizeEmail(request.email());
 
 		try {
 			Authentication authentication = authenticationManager.authenticate(
@@ -74,7 +74,7 @@ public class UserService {
 	}
 
 	public void checkEmailDuplication(String email) {
-		String normalizedEmail = normalizeEmail(email);
+		String normalizedEmail = this.normalizeEmail(email);
 
 		if (userRepository.existsByEmail(normalizedEmail))
 			throw new DuplicatedEmailException(HttpStatus.CONFLICT, ErrorCodeConstants.EMAIL_ALREADY_EXISTS, "중복된 이메일이 존재합니다.");
