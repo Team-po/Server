@@ -1,5 +1,7 @@
 package team.po.feature.user.domain;
 
+import java.time.Instant;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -35,6 +37,12 @@ public class Users {
 	private Integer temperature;
 
 	private Integer level;
+
+	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+	private Instant createdAt;
+
+	@Column(name = "deleted_at")
+	private Instant deletedAt;
 
 	@Builder
 	public Users(String password, String profileImage, String description, String email, String nickname, Integer temperature, Integer level) {
