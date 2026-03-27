@@ -19,6 +19,8 @@ import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.dto.RefreshTokenRequest;
+import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
@@ -81,6 +83,12 @@ public class UserService {
 
 	}
 
+	public RefreshTokenResponse refreshToken(RefreshTokenRequest request) {
+		if (jwtTokenProvider.validateRefreshToken(request.refreshToken())) {
+
+		}
+	}
+
 	private String normalizeEmail(String email) {
 		return email.trim().toLowerCase(Locale.ROOT);
 	}
@@ -98,5 +106,7 @@ public class UserService {
 
 		return false;
 	}
+
+
 
 }
