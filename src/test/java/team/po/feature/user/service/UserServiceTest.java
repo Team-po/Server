@@ -173,7 +173,7 @@ class UserServiceTest {
 
 		assertThatThrownBy(() -> userService.refreshToken(request))
 			.isInstanceOf(InvalidTokenException.class)
-			.hasMessage("유효하지 않은 리프레스 토큰입니다.");
+			.hasMessage("유효하지 않은 리프레시 토큰입니다.");
 	}
 
 	@Test
@@ -186,7 +186,7 @@ class UserServiceTest {
 
 		assertThatThrownBy(() -> userService.refreshToken(request))
 			.isInstanceOf(InvalidTokenException.class)
-			.hasMessage("존재하지 않는 유저의 리프레스 토큰입니다.");
+			.hasMessage("존재하지 않는 유저의 리프레시 토큰입니다.");
 
 		verify(jwtTokenProvider, never()).isRefreshTokenMatched(any(), any());
 		verify(jwtTokenProvider, never()).generateAccessToken(any(), any());
@@ -211,7 +211,7 @@ class UserServiceTest {
 
 		assertThatThrownBy(() -> userService.refreshToken(request))
 			.isInstanceOf(InvalidTokenException.class)
-			.hasMessage("유효하지 않은 리프레스 토큰입니다.");
+			.hasMessage("유효하지 않은 리프레시 토큰입니다.");
 
 		verify(jwtTokenProvider, never()).generateAccessToken(any(), any());
 		verify(jwtTokenProvider, never()).getExpiration(any());
