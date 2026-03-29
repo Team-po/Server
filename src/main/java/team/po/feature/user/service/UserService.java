@@ -87,20 +87,20 @@ public class UserService {
 	public RefreshTokenResponse refreshToken(RefreshTokenRequest request) {
 		String token = request.refreshToken();
 		if (!jwtTokenProvider.validateRefreshToken(token)) {
-			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN, "유효하지 않은 리프레스 토큰입니다.");
+			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
 		}
 
 		Long userId = jwtTokenProvider.getUserId(token);
 		String email = jwtTokenProvider.getEmail(token);
 
 		Users user = userRepository.findById(userId)
-			.orElseThrow(() -> new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레스 토큰입니다."));
+			.orElseThrow(() -> new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레시 토큰입니다."));
 
 		if (user.getDeletedAt() != null)
-			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레스 토큰입니다.");
+			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레시 토큰입니다.");
 
 		if (!jwtTokenProvider.isRefreshTokenMatched(email, token)) {
-			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN, "유효하지 않은 리프레스 토큰입니다.");
+			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
 		}
 
 		String accessToken = jwtTokenProvider.generateAccessToken(userId, user.getEmail());
