@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,10 +25,13 @@ import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.dto.RefreshTokenRequest;
+import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -134,5 +138,82 @@ class UserServiceTest {
 		assertThatThrownBy(() -> userService.signIn(request))
 			.isInstanceOf(BadCredentialsException.class)
 			.hasMessage("이메일 또는 비밀번호가 올바르지 않습니다.");
+	}
+
+	@Test
+	void refreshToken_returnsNewAccessTokenWhenRefreshTokenIsValid() {
+		RefreshTokenRequest request = new RefreshTokenRequest("refresh-token");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		Instant accessTokenExpiresAt = Instant.parse("2026-03-16T12:00:00Z");
+
+		when(jwtTokenProvider.validateRefreshToken("refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.getUserId("refresh-token")).thenReturn(1L);
+		when(jwtTokenProvider.getEmail("refresh-token")).thenReturn("test@email.com");
+		when(userRepository.findById(1L)).thenReturn(java.util.Optional.of(user));
+		when(jwtTokenProvider.isRefreshTokenMatched("test@email.com", "refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.generateAccessToken(1L, "test@email.com")).thenReturn("new-access-token");
+		when(jwtTokenProvider.getExpiration("new-access-token")).thenReturn(accessTokenExpiresAt);
+
+		RefreshTokenResponse response = userService.refreshToken(request);
+
+		assertThat(response.accessToken()).isEqualTo("new-access-token");
+		assertThat(response.expiresAt()).isEqualTo(accessTokenExpiresAt);
+	}
+
+	@Test
+	void refreshToken_throwsWhenRefreshTokenIsInvalid() {
+		RefreshTokenRequest request = new RefreshTokenRequest("invalid-refresh-token");
+		when(jwtTokenProvider.validateRefreshToken("invalid-refresh-token")).thenReturn(false);
+
+		assertThatThrownBy(() -> userService.refreshToken(request))
+			.isInstanceOf(InvalidTokenException.class)
+			.hasMessage("유효하지 않은 리프레시 토큰입니다.");
+	}
+
+	@Test
+	void refreshToken_throwsWhenUserDoesNotExist() {
+		RefreshTokenRequest request = new RefreshTokenRequest("refresh-token");
+		when(jwtTokenProvider.validateRefreshToken("refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.getUserId("refresh-token")).thenReturn(1L);
+		when(jwtTokenProvider.getEmail("refresh-token")).thenReturn("test@email.com");
+		when(userRepository.findById(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> userService.refreshToken(request))
+			.isInstanceOf(InvalidTokenException.class)
+			.hasMessage("존재하지 않는 유저의 리프레시 토큰입니다.");
+
+		verify(jwtTokenProvider, never()).isRefreshTokenMatched(any(), any());
+		verify(jwtTokenProvider, never()).generateAccessToken(any(), any());
+	}
+
+	@Test
+	void refreshToken_throwsWhenRefreshTokenDoesNotMatchStoredToken() {
+		RefreshTokenRequest request = new RefreshTokenRequest("refresh-token");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+
+		when(jwtTokenProvider.validateRefreshToken("refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.getUserId("refresh-token")).thenReturn(1L);
+		when(jwtTokenProvider.getEmail("refresh-token")).thenReturn("test@email.com");
+		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+		when(jwtTokenProvider.isRefreshTokenMatched("test@email.com", "refresh-token")).thenReturn(false);
+
+		assertThatThrownBy(() -> userService.refreshToken(request))
+			.isInstanceOf(InvalidTokenException.class)
+			.hasMessage("유효하지 않은 리프레시 토큰입니다.");
+
+		verify(jwtTokenProvider, never()).generateAccessToken(any(), any());
+		verify(jwtTokenProvider, never()).getExpiration(any());
 	}
 }

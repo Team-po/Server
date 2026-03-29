@@ -18,9 +18,11 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import team.po.exception.ErrorCodeConstants;
 import team.po.exception.InvalidFieldException;
+import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignInRequest;
+import team.po.feature.user.dto.RefreshTokenRequest;
 import team.po.feature.user.service.UserService;
 
 @RestController
@@ -55,6 +57,16 @@ public class UserController {
 			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
 		}
 		SignInResponse response = userService.signIn(request);
+		return ResponseEntity.ok().body(response);
+	}
+
+	@Operation(summary = "토큰 재발급 API")
+	@PostMapping(value = "/refresh-token")
+	public ResponseEntity<RefreshTokenResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request, Errors errors) {
+		if (errors.hasErrors()) {
+			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
+		}
+		RefreshTokenResponse response = userService.refreshToken(request);
 		return ResponseEntity.ok().body(response);
 	}
 }

@@ -29,8 +29,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import team.po.exception.CustomUserExceptionHandler;
 import team.po.exception.ErrorCodeConstants;
+import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.service.UserService;
 
 @WebMvcTest(UserController.class)
@@ -151,6 +153,51 @@ class UserControllerTest {
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_CREDENTIALS))
 			.andExpect(jsonPath("$.message").value("이메일 또는 비밀번호가 올바르지 않습니다."));
+	}
+
+	@Test
+	void refreshToken_returnsOk_whenRefreshTokenIsValid() throws Exception {
+		org.mockito.Mockito.when(userService.refreshToken(any()))
+			.thenReturn(new RefreshTokenResponse("new-access-token", Instant.parse("2026-03-16T12:00:00Z")));
+
+		mockMvc.perform(post("/api/users/refresh-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"refreshToken":"refresh-token"}
+					"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.accessToken").value("new-access-token"))
+			.andExpect(jsonPath("$.expiresAt").value("2026-03-16T12:00:00Z"));
+	}
+
+	@Test
+	void refreshToken_returnsBadRequest_whenRefreshTokenIsBlank() throws Exception {
+		mockMvc.perform(post("/api/users/refresh-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"refreshToken":""}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.fieldErrors.refreshToken").exists());
+	}
+
+	@Test
+	void refreshToken_returnsUnauthorized_whenRefreshTokenIsInvalid() throws Exception {
+		doThrow(new InvalidTokenException(
+			HttpStatus.UNAUTHORIZED,
+			ErrorCodeConstants.INVALID_TOKEN,
+			"유효하지 않은 리프레스 토큰입니다."
+		)).when(userService).refreshToken(any());
+
+		mockMvc.perform(post("/api/users/refresh-token")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"refreshToken":"invalid-refresh-token"}
+					"""))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_TOKEN))
+			.andExpect(jsonPath("$.message").value("유효하지 않은 리프레스 토큰입니다."));
 	}
 
 	private MockMultipartFile signUpRequestPart(String email, String password, String nickname) {

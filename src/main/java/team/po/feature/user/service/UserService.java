@@ -19,10 +19,13 @@ import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.dto.RefreshTokenRequest;
+import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.repository.UserRepository;
 
 @Slf4j
@@ -81,6 +84,29 @@ public class UserService {
 
 	}
 
+	public RefreshTokenResponse refreshToken(RefreshTokenRequest request) {
+		String token = request.refreshToken();
+		if (!jwtTokenProvider.validateRefreshToken(token)) {
+			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
+		}
+
+		Long userId = jwtTokenProvider.getUserId(token);
+		String email = jwtTokenProvider.getEmail(token);
+
+		Users user = userRepository.findById(userId)
+			.orElseThrow(() -> new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레시 토큰입니다."));
+
+		if (user.getDeletedAt() != null)
+			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레시 토큰입니다.");
+
+		if (!jwtTokenProvider.isRefreshTokenMatched(email, token)) {
+			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
+		}
+
+		String accessToken = jwtTokenProvider.generateAccessToken(userId, user.getEmail());
+		return new RefreshTokenResponse(accessToken, jwtTokenProvider.getExpiration(accessToken));
+	}
+
 	private String normalizeEmail(String email) {
 		return email.trim().toLowerCase(Locale.ROOT);
 	}
@@ -98,5 +124,7 @@ public class UserService {
 
 		return false;
 	}
+
+
 
 }
