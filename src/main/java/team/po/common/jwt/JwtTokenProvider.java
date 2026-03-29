@@ -49,12 +49,12 @@ public class JwtTokenProvider {
 
 	public String generateAccessToken(Long userId, String email) {
 		Instant expiresAt = Instant.now().plus(jwtProperties.getAccessTokenExpiration());
-		return generateToken(userId, email, ACCESS_TOKEN_TYPE, expiresAt);
+		return generateJwt(userId, email, ACCESS_TOKEN_TYPE, expiresAt);
 	}
 
 	public String generateRefreshToken(Long userId, String email) {
 		Instant expiresAt = Instant.now().plus(jwtProperties.getRefreshTokenExpiration());
-		return generateToken(userId, email, REFRESH_TOKEN_TYPE, expiresAt);
+		return generateJwt(userId, email, REFRESH_TOKEN_TYPE, expiresAt);
 	}
 
 	public Instant getExpiration(String token) {
@@ -121,7 +121,7 @@ public class JwtTokenProvider {
 		redisDao.deleteValue(createRefreshTokenKey(email));
 	}
 
-	private String generateToken(Long userId, String email, String tokenType, Instant expiresAt) {
+	private String generateJwt(Long userId, String email, String tokenType, Instant expiresAt) {
 		Date now = new Date();
 
 		return Jwts.builder()
