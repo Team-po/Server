@@ -95,8 +95,9 @@ public class UserService {
 
 		Users user = userRepository.findById(userId)
 			.orElseThrow(() -> new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레스 토큰입니다."));
-
-		//TODO : deletedAt Field 추가 PR 반영시 해당 부분에 대한 에러처리 추가
+		
+		if (user.getDeletedAt() != null)
+			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레스 토큰입니다.");
 
 		if (!jwtTokenProvider.isRefreshTokenMatched(email, token)) {
 			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN, "유효하지 않은 리프레스 토큰입니다.");
