@@ -95,7 +95,7 @@ public class UserService {
 
 		Users user = userRepository.findById(userId)
 			.orElseThrow(() -> new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레스 토큰입니다."));
-		
+
 		if (user.getDeletedAt() != null)
 			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레스 토큰입니다.");
 

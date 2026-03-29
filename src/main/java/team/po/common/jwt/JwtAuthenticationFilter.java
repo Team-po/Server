@@ -18,6 +18,7 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 
 	private static final String AUTHORIZATION_HEADER = "Authorization";
 	private static final String BEARER_PREFIX = "Bearer ";
+	private static final String REFRESH_TOKEN_PATH = "/api/users/refresh-token";
 
 	private final JwtTokenProvider jwtTokenProvider;
 
@@ -28,7 +29,14 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 	@Override
 	public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
 		throws IOException, ServletException {
-		String token = resolveToken((HttpServletRequest) request);
+		HttpServletRequest httpServletRequest = (HttpServletRequest) request;
+		
+		if (isRefreshTokenRequest(httpServletRequest)) {
+			chain.doFilter(request, response);
+			return;
+		}
+
+		String token = resolveToken(httpServletRequest);
 
 		if (StringUtils.hasText(token)) {
 			if (!jwtTokenProvider.validateAccessToken(token)) {
@@ -56,6 +64,10 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 		}
 
 		return null;
+	}
+
+	private boolean isRefreshTokenRequest(HttpServletRequest request) {
+		return REFRESH_TOKEN_PATH.equals(request.getRequestURI());
 	}
 
 	private void writeUnauthorizedResponse(HttpServletResponse response) throws IOException {
