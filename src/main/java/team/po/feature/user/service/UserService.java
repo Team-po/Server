@@ -14,11 +14,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import team.po.common.auth.LoginUserInfo;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.dto.GetMyProfileResponse;
 import team.po.feature.user.dto.RefreshTokenRequest;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
@@ -26,6 +28,7 @@ import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidTokenException;
+import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
 
 @Slf4j
@@ -96,8 +99,9 @@ public class UserService {
 		Users user = userRepository.findById(userId)
 			.orElseThrow(() -> new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레시 토큰입니다."));
 
-		if (user.getDeletedAt() != null)
+		if (user.getDeletedAt() != null) {
 			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레시 토큰입니다.");
+		}
 
 		if (!jwtTokenProvider.isRefreshTokenMatched(email, token)) {
 			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
@@ -105,6 +109,20 @@ public class UserService {
 
 		String accessToken = jwtTokenProvider.generateAccessToken(userId, user.getEmail());
 		return new RefreshTokenResponse(accessToken, jwtTokenProvider.getExpiration(accessToken));
+	}
+
+	public GetMyProfileResponse getMyProfile(LoginUserInfo loginUser) {
+		Users user = this.getActiveUser(loginUser.id(), () ->
+			new UserNotFoundException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않은 유저입니다."));
+
+		return GetMyProfileResponse.builder()
+			.email(user.getEmail())
+			.nickname(user.getNickname())
+			.temperature(user.getTemperature())
+			.level(user.getLevel())
+			.description(user.getDescription())
+			.profileImage(user.getProfileImage())
+			.build();
 	}
 
 	private String normalizeEmail(String email) {
@@ -123,6 +141,17 @@ public class UserService {
 		}
 
 		return false;
+	}
+
+	private Users getActiveUser(Long userId, java.util.function.Supplier<? extends RuntimeException> exceptionSupplier) {
+		Users user = userRepository.findById(userId)
+			.orElseThrow(exceptionSupplier);
+
+		if (user.getDeletedAt() != null) {
+			throw exceptionSupplier.get();
+		}
+
+		return user;
 	}
 
 

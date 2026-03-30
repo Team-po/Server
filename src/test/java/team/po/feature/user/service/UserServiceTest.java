@@ -20,10 +20,13 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import team.po.common.auth.LoginUserInfo;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
+import team.po.feature.user.dto.GetMyProfileResponse;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.RefreshTokenRequest;
 import team.po.feature.user.dto.RefreshTokenResponse;
@@ -32,6 +35,7 @@ import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidTokenException;
+import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -215,5 +219,57 @@ class UserServiceTest {
 
 		verify(jwtTokenProvider, never()).generateAccessToken(any(), any());
 		verify(jwtTokenProvider, never()).getExpiration(any());
+	}
+
+	@Test
+	void getMyProfile_returnsProfileWhenUserExists() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.profileImage("profile.png")
+			.description("hello")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+		GetMyProfileResponse response = userService.getMyProfile(loginUser);
+
+		assertThat(response.email()).isEqualTo("test@email.com");
+		assertThat(response.profileImage()).isEqualTo("profile.png");
+		assertThat(response.description()).isEqualTo("hello");
+		assertThat(response.nickname()).isEqualTo("tester");
+		assertThat(response.temperature()).isEqualTo(50);
+		assertThat(response.level()).isEqualTo(3);
+	}
+
+	@Test
+	void getMyProfile_throwsWhenUserDoesNotExist() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		when(userRepository.findById(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> userService.getMyProfile(loginUser))
+			.isInstanceOf(UserNotFoundException.class)
+			.hasMessage("존재하지 않은 유저입니다.");
+	}
+
+	@Test
+	void getMyProfile_throwsWhenUserIsSoftDeleted() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		ReflectionTestUtils.setField(user, "deletedAt", Instant.parse("2026-03-30T00:00:00Z"));
+		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+		assertThatThrownBy(() -> userService.getMyProfile(loginUser))
+			.isInstanceOf(UserNotFoundException.class)
+			.hasMessage("존재하지 않은 유저입니다.");
 	}
 }

@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -24,15 +25,21 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import team.po.common.auth.LoginUserInfo;
+import team.po.common.jwt.UserPrincipal;
 import team.po.exception.CustomUserExceptionHandler;
 import team.po.exception.ErrorCodeConstants;
+import team.po.feature.user.dto.GetMyProfileResponse;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidTokenException;
+import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.service.UserService;
 
 @WebMvcTest(UserController.class)
@@ -45,6 +52,11 @@ class UserControllerTest {
 
 	@MockitoBean
 	private UserService userService;
+
+	@AfterEach
+	void tearDown() {
+		SecurityContextHolder.clearContext();
+	}
 
 	@Test
 	void signUp_returnsOk_whenRequestIsValid() throws Exception {
@@ -200,6 +212,44 @@ class UserControllerTest {
 			.andExpect(jsonPath("$.message").value("유효하지 않은 리프레스 토큰입니다."));
 	}
 
+	@Test
+	void getMyProfile_returnsOk_whenAuthenticatedUserExists() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+		org.mockito.Mockito.when(userService.getMyProfile(new LoginUserInfo(1L, "test@email.com")))
+			.thenReturn(GetMyProfileResponse.builder()
+				.email("test@email.com")
+				.profileImage("profile.png")
+				.description("hello")
+				.nickname("tester")
+				.temperature(50)
+				.level(3)
+				.build());
+
+		mockMvc.perform(get("/api/users/me"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.email").value("test@email.com"))
+			.andExpect(jsonPath("$.profileImage").value("profile.png"))
+			.andExpect(jsonPath("$.description").value("hello"))
+			.andExpect(jsonPath("$.nickname").value("tester"))
+			.andExpect(jsonPath("$.temperature").value(50))
+			.andExpect(jsonPath("$.level").value(3));
+	}
+
+	@Test
+	void getMyProfile_returnsUnauthorized_whenAuthenticatedUserDoesNotExist() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+		doThrow(new UserNotFoundException(
+			HttpStatus.UNAUTHORIZED,
+			ErrorCodeConstants.UNEXISTED_USER,
+			"존재하지 않은 유저입니다."
+		)).when(userService).getMyProfile(new LoginUserInfo(1L, "test@email.com"));
+
+		mockMvc.perform(get("/api/users/me"))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNEXISTED_USER))
+			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
+	}
+
 	private MockMultipartFile signUpRequestPart(String email, String password, String nickname) {
 		String json = """
 			{"email":"%s","password":"%s","nickname":"%s"}
@@ -211,5 +261,12 @@ class UserControllerTest {
 			MediaType.APPLICATION_JSON_VALUE,
 			json.getBytes(StandardCharsets.UTF_8)
 		);
+	}
+
+	private void setAuthenticatedUser(Long id, String email) {
+		UserPrincipal principal = new UserPrincipal(id, email);
+		UsernamePasswordAuthenticationToken authentication =
+			new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+		SecurityContextHolder.getContext().setAuthentication(authentication);
 	}
 }

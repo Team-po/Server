@@ -14,10 +14,14 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import team.po.common.auth.LoginUser;
+import team.po.common.auth.LoginUserInfo;
 import team.po.exception.ErrorCodeConstants;
 import team.po.exception.InvalidFieldException;
+import team.po.feature.user.dto.GetMyProfileResponse;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.dto.SignInResponse;
@@ -71,8 +75,9 @@ public class UserController {
 	}
 
 	@Operation(summary = "유저 프로필 조회 API")
-	@PostMapping(value = "/me")
-	public ResponseEntity<Void> getMyProfile() {
-		return ResponseEntity.ok().build();
+	@GetMapping(value = "/me")
+	public ResponseEntity<GetMyProfileResponse> getMyProfile(@Parameter(hidden = true) @LoginUser LoginUserInfo user) {
+		GetMyProfileResponse response = userService.getMyProfile(user);
+		return ResponseEntity.ok().body(response);
 	}
 }
