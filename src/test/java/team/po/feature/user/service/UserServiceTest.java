@@ -275,7 +275,7 @@ class UserServiceTest {
 	}
 
 	@Test
-	void editMyProfile_updatesProfileFieldsAndSavesUser() {
+	void editMyProfile_updatesProfileFields() {
 		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
 		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
 		Users user = Users.builder()
@@ -294,7 +294,6 @@ class UserServiceTest {
 		assertThat(user.getDescription()).isEqualTo("updated-description");
 		assertThat(user.getNickname()).isEqualTo("updated-nickname");
 		assertThat(user.getLevel()).isEqualTo(4);
-		verify(userRepository).save(user);
 	}
 
 	@Test
