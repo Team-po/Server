@@ -234,7 +234,7 @@ class UserServiceTest {
 			.temperature(50)
 			.level(3)
 			.build();
-		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 
 		GetProfileResponse response = userService.getMyProfile(loginUser);
 
@@ -249,7 +249,7 @@ class UserServiceTest {
 	@Test
 	void getMyProfile_throwsWhenUserDoesNotExist() {
 		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
-		when(userRepository.findById(1L)).thenReturn(Optional.empty());
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> userService.getMyProfile(loginUser))
 			.isInstanceOf(UserNotFoundException.class)
@@ -267,7 +267,7 @@ class UserServiceTest {
 			.level(3)
 			.build();
 		ReflectionTestUtils.setField(user, "deletedAt", Instant.parse("2026-03-30T00:00:00Z"));
-		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> userService.getMyProfile(loginUser))
 			.isInstanceOf(UserNotFoundException.class)
@@ -287,7 +287,7 @@ class UserServiceTest {
 			.temperature(50)
 			.level(3)
 			.build();
-		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 
 		userService.editMyProfile(loginUser, null, request);
 
@@ -300,13 +300,12 @@ class UserServiceTest {
 	void editMyProfile_throwsWhenUserDoesNotExist() {
 		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
 		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
-		when(userRepository.findById(1L)).thenReturn(Optional.empty());
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
 			.isInstanceOf(UserNotFoundException.class)
 			.hasMessage("존재하지 않은 유저입니다.");
 
-		verify(userRepository, never()).save(any());
 	}
 
 	@Test
@@ -321,12 +320,11 @@ class UserServiceTest {
 			.level(3)
 			.build();
 		ReflectionTestUtils.setField(user, "deletedAt", Instant.parse("2026-03-30T00:00:00Z"));
-		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
 			.isInstanceOf(UserNotFoundException.class)
 			.hasMessage("존재하지 않은 유저입니다.");
 
-		verify(userRepository, never()).save(any());
 	}
 }

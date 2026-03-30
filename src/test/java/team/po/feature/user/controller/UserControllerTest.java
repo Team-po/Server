@@ -283,7 +283,7 @@ class UserControllerTest {
 				.with(csrf()))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
-			.andExpect(jsonPath("$.fieldErrors.nickName").value("닉네임 입력은 필수입니다."))
+			.andExpect(jsonPath("$.fieldErrors.nickname").value("닉네임 입력은 필수입니다."))
 			.andExpect(jsonPath("$.fieldErrors.level").value("레벨은 1 이상이어야 합니다."));
 	}
 
@@ -325,12 +325,12 @@ class UserControllerTest {
 		);
 	}
 
-	private MockMultipartFile editProfileRequestPart(String description, String nickName, Integer level) {
+	private MockMultipartFile editProfileRequestPart(String description, String nickname, Integer level) {
 		String json = """
-			{"description":%s,"nickName":%s,"level":%s}
+			{"description":%s,"nickname":%s,"level":%s}
 			""".formatted(
 			description == null ? "null" : "\"%s\"".formatted(description),
-			nickName == null ? "null" : "\"%s\"".formatted(nickName),
+			nickname == null ? "null" : "\"%s\"".formatted(nickname),
 			level == null ? "null" : level
 		);
 

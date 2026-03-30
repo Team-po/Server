@@ -116,8 +116,7 @@ public class UserService {
 	}
 
 	public GetProfileResponse getMyProfile(LoginUserInfo loginUser) {
-		Users user = this.getActiveUser(loginUser.id(), () ->
-			new UserNotFoundException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않은 유저입니다."));
+		Users user = this.getActiveUser(loginUser.id());
 
 		return GetProfileResponse.builder()
 			.email(user.getEmail())
@@ -131,12 +130,11 @@ public class UserService {
 
 	@Transactional
 	public void editMyProfile(LoginUserInfo loginUser, MultipartFile profileImage, EditProfileRequest request) {
-		Users user = this.getActiveUser(loginUser.id(), () ->
-			new UserNotFoundException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않은 유저입니다."));
+		Users user = this.getActiveUser(loginUser.id());
 
 		user.editDescription(request.description());
 		user.editLevel(request.level());
-		user.editNickname(request.nickName());
+		user.editNickname(request.nickname());
 		// TODO : AWS 배포 후 S3 사용시 ProfileImage 수정하는 부분 추가
 	}
 
@@ -158,14 +156,12 @@ public class UserService {
 		return false;
 	}
 
-	private Users getActiveUser(Long userId, java.util.function.Supplier<? extends RuntimeException> exceptionSupplier) {
-		Users user = userRepository.findById(userId)
-			.orElseThrow(exceptionSupplier);
-
-		if (user.getDeletedAt() != null) {
-			throw exceptionSupplier.get();
-		}
-
-		return user;
+	private Users getActiveUser(Long userId) {
+		return userRepository.findByIdAndDeletedAtIsNull(userId)
+			.orElseThrow(() -> new UserNotFoundException(
+				HttpStatus.UNAUTHORIZED,
+				ErrorCodeConstants.UNEXISTED_USER,
+				"존재하지 않은 유저입니다."
+			));
 	}
 }
