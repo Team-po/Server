@@ -63,7 +63,7 @@ class UserControllerTest {
 	@Test
 	void signUp_returnsOk_whenRequestIsValid() throws Exception {
 		mockMvc.perform(multipart("/api/users/sign-up")
-				.file(signUpRequestPart("test@email.com", "password123", "tester"))
+				.file(signUpRequestPart("test@email.com", "password123", "tester", 3))
 				.with(csrf()))
 			.andExpect(status().isOk());
 
@@ -73,13 +73,14 @@ class UserControllerTest {
 	@Test
 	void signUp_returnsBadRequestWithFieldErrors_whenRequestIsInvalid() throws Exception {
 		mockMvc.perform(multipart("/api/users/sign-up")
-				.file(signUpRequestPart("invalid-email", "123", ""))
+				.file(signUpRequestPart("invalid-email", "123", "", 0))
 				.with(csrf()))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
 			.andExpect(jsonPath("$.fieldErrors.email").value("이메일 형식이 올바르지 않습니다."))
 			.andExpect(jsonPath("$.fieldErrors.password").value("비밀번호는 8글자 이상이어야 합니다."))
-			.andExpect(jsonPath("$.fieldErrors.nickname").value("닉네임 입력은 필수입니다."));
+			.andExpect(jsonPath("$.fieldErrors.nickname").value("닉네임 입력은 필수입니다."))
+			.andExpect(jsonPath("$.fieldErrors.level").value("레벨은 1 이상이어야 합니다."));
 	}
 
 	@Test
@@ -91,7 +92,7 @@ class UserControllerTest {
 		)).when(userService).signUp(any(), isNull());
 
 		mockMvc.perform(multipart("/api/users/sign-up")
-				.file(signUpRequestPart("test@email.com", "password123", "tester"))
+				.file(signUpRequestPart("test@email.com", "password123", "tester", 3))
 				.with(csrf()))
 			.andExpect(status().isConflict())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.EMAIL_ALREADY_EXISTS))
@@ -104,7 +105,7 @@ class UserControllerTest {
 			new MockMultipartFile("profileImage", "profile.png", "image/png", "image".getBytes());
 
 		mockMvc.perform(multipart("/api/users/sign-up")
-				.file(signUpRequestPart("test@email.com", "password123", "tester"))
+				.file(signUpRequestPart("test@email.com", "password123", "tester", 3))
 				.file(profileImage)
 				.with(csrf()))
 			.andExpect(status().isOk());
@@ -257,7 +258,7 @@ class UserControllerTest {
 		setAuthenticatedUser(1L, "test@email.com");
 
 		mockMvc.perform(multipart("/api/users/me")
-				.file(editProfileRequestPart("updated-description", "updated-nickname", 7))
+				.file(editProfileRequestPart("updated-description", "updated-nickname", 4))
 				.with(request -> {
 					request.setMethod("PUT");
 					return request;
@@ -266,7 +267,7 @@ class UserControllerTest {
 			.andExpect(status().isOk());
 
 		verify(userService).editMyProfile(new LoginUserInfo(1L, "test@email.com"), null,
-			new EditProfileRequest("updated-description", "updated-nickname", 7));
+			new EditProfileRequest("updated-description", "updated-nickname", 4));
 	}
 
 	@Test
@@ -274,7 +275,7 @@ class UserControllerTest {
 		setAuthenticatedUser(1L, "test@email.com");
 
 		mockMvc.perform(multipart("/api/users/me")
-				.file(editProfileRequestPart("updated-description", "", null))
+				.file(editProfileRequestPart("updated-description", "", 0))
 				.with(request -> {
 					request.setMethod("PUT");
 					return request;
@@ -282,8 +283,8 @@ class UserControllerTest {
 				.with(csrf()))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
-			.andExpect(jsonPath("$.fieldErrors.nickName").exists())
-			.andExpect(jsonPath("$.fieldErrors.level").exists());
+			.andExpect(jsonPath("$.fieldErrors.nickName").value("닉네임 입력은 필수입니다."))
+			.andExpect(jsonPath("$.fieldErrors.level").value("레벨은 1 이상이어야 합니다."));
 	}
 
 	@Test
@@ -296,11 +297,11 @@ class UserControllerTest {
 		)).when(userService).editMyProfile(
 			new LoginUserInfo(1L, "test@email.com"),
 			null,
-			new EditProfileRequest("updated-description", "updated-nickname", 7)
+			new EditProfileRequest("updated-description", "updated-nickname", 4)
 		);
 
 		mockMvc.perform(multipart("/api/users/me")
-				.file(editProfileRequestPart("updated-description", "updated-nickname", 7))
+				.file(editProfileRequestPart("updated-description", "updated-nickname", 4))
 				.with(request -> {
 					request.setMethod("PUT");
 					return request;
@@ -311,10 +312,10 @@ class UserControllerTest {
 			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
 	}
 
-	private MockMultipartFile signUpRequestPart(String email, String password, String nickname) {
+	private MockMultipartFile signUpRequestPart(String email, String password, String nickname, Integer level) {
 		String json = """
-			{"email":"%s","password":"%s","nickname":"%s"}
-			""".formatted(email, password, nickname);
+			{"email":"%s","password":"%s","nickname":"%s","level":%s}
+			""".formatted(email, password, nickname, level == null ? "null" : level);
 
 		return new MockMultipartFile(
 			"signUpRequest",

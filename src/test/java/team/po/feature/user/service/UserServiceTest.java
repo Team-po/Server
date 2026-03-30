@@ -59,7 +59,7 @@ class UserServiceTest {
 
 	@Test
 	void signUp_savesUserWithNormalizedEmailAndEncodedPassword() {
-		SignUpRequest request = new SignUpRequest(" Test@Email.com ", "password123", "tester");
+		SignUpRequest request = new SignUpRequest(" Test@Email.com ", "password123", "tester", 5);
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
 		when(passwordEncoder.encode("password123")).thenReturn("encoded-password");
 
@@ -74,12 +74,12 @@ class UserServiceTest {
 		assertThat(savedUser.getNickname()).isEqualTo("tester");
 		assertThat(savedUser.getDescription()).isNull();
 		assertThat(savedUser.getTemperature()).isEqualTo(50);
-		assertThat(savedUser.getLevel()).isEqualTo(3);
+		assertThat(savedUser.getLevel()).isEqualTo(5);
 	}
 
 	@Test
 	void signUp_throwsWhenEmailAlreadyExists() {
-		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester");
+		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 3);
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(true);
 
 		assertThatThrownBy(() -> userService.signUp(request, null))
@@ -277,7 +277,7 @@ class UserServiceTest {
 	@Test
 	void editMyProfile_updatesProfileFieldsAndSavesUser() {
 		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
-		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 7);
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
 		Users user = Users.builder()
 			.email("test@email.com")
 			.password("encoded-password")
@@ -293,14 +293,14 @@ class UserServiceTest {
 
 		assertThat(user.getDescription()).isEqualTo("updated-description");
 		assertThat(user.getNickname()).isEqualTo("updated-nickname");
-		assertThat(user.getLevel()).isEqualTo(7);
+		assertThat(user.getLevel()).isEqualTo(4);
 		verify(userRepository).save(user);
 	}
 
 	@Test
 	void editMyProfile_throwsWhenUserDoesNotExist() {
 		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
-		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 7);
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
 		when(userRepository.findById(1L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
@@ -313,7 +313,7 @@ class UserServiceTest {
 	@Test
 	void editMyProfile_throwsWhenUserIsSoftDeleted() {
 		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
-		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 7);
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
 		Users user = Users.builder()
 			.email("test@email.com")
 			.password("encoded-password")

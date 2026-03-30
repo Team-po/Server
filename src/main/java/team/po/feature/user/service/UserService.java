@@ -10,6 +10,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
@@ -46,8 +47,10 @@ public class UserService {
 		this.checkEmailDuplication(normalizedEmail);
 		// TODO : AWS 배포 후 S3 사용시 ProfileImage 저장 로직 개발
 		String password = passwordEncoder.encode(signUpRequest.password());
+
 		Users user = Users.builder().email(normalizedEmail).password(password)
-			.profileImage(null).nickname(signUpRequest.nickname()).description(null).level(3).temperature(50).build(); // level과 temperature은 기본값
+			.profileImage(null).nickname(signUpRequest.nickname()).description(null)
+			.level(signUpRequest.level()).temperature(50).build(); // temperature는 기본값
 
 		try {
 			userRepository.save(user);
@@ -126,6 +129,7 @@ public class UserService {
 			.build();
 	}
 
+	@Transactional
 	public void editMyProfile(LoginUserInfo loginUser, MultipartFile profileImage, EditProfileRequest request) {
 		Users user = this.getActiveUser(loginUser.id(), () ->
 			new UserNotFoundException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않은 유저입니다."));
@@ -134,8 +138,6 @@ public class UserService {
 		user.editLevel(request.level());
 		user.editNickname(request.nickName());
 		// TODO : AWS 배포 후 S3 사용시 ProfileImage 수정하는 부분 추가
-
-		userRepository.save(user);
 	}
 
 	private String normalizeEmail(String email) {
@@ -166,7 +168,4 @@ public class UserService {
 
 		return user;
 	}
-
-
-
 }
