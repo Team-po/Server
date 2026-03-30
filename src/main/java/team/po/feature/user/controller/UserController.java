@@ -69,4 +69,10 @@ public class UserController {
 		RefreshTokenResponse response = userService.refreshToken(request);
 		return ResponseEntity.ok().body(response);
 	}
+
+	@Operation(summary = "유저 프로필 조회 API")
+	@PostMapping(value = "/me")
+	public ResponseEntity<Void> getMyProfile() {
+		return ResponseEntity.ok().build();
+	}
 }
