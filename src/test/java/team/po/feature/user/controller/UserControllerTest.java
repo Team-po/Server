@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -34,7 +35,8 @@ import team.po.common.auth.LoginUserInfo;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.CustomUserExceptionHandler;
 import team.po.exception.ErrorCodeConstants;
-import team.po.feature.user.dto.GetMyProfileResponse;
+import team.po.feature.user.dto.EditProfileRequest;
+import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.exception.DuplicatedEmailException;
@@ -216,7 +218,7 @@ class UserControllerTest {
 	void getMyProfile_returnsOk_whenAuthenticatedUserExists() throws Exception {
 		setAuthenticatedUser(1L, "test@email.com");
 		org.mockito.Mockito.when(userService.getMyProfile(new LoginUserInfo(1L, "test@email.com")))
-			.thenReturn(GetMyProfileResponse.builder()
+			.thenReturn(GetProfileResponse.builder()
 				.email("test@email.com")
 				.profileImage("profile.png")
 				.description("hello")
@@ -250,6 +252,65 @@ class UserControllerTest {
 			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
 	}
 
+	@Test
+	void editMyProfile_returnsOk_whenRequestIsValid() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+
+		mockMvc.perform(multipart("/api/users/me")
+				.file(editProfileRequestPart("updated-description", "updated-nickname", 7))
+				.with(request -> {
+					request.setMethod("PUT");
+					return request;
+				})
+				.with(csrf()))
+			.andExpect(status().isOk());
+
+		verify(userService).editMyProfile(new LoginUserInfo(1L, "test@email.com"), null,
+			new EditProfileRequest("updated-description", "updated-nickname", 7));
+	}
+
+	@Test
+	void editMyProfile_returnsBadRequest_whenRequestIsInvalid() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+
+		mockMvc.perform(multipart("/api/users/me")
+				.file(editProfileRequestPart("updated-description", "", null))
+				.with(request -> {
+					request.setMethod("PUT");
+					return request;
+				})
+				.with(csrf()))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.fieldErrors.nickName").exists())
+			.andExpect(jsonPath("$.fieldErrors.level").exists());
+	}
+
+	@Test
+	void editMyProfile_returnsUnauthorized_whenAuthenticatedUserDoesNotExist() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+		doThrow(new UserNotFoundException(
+			HttpStatus.UNAUTHORIZED,
+			ErrorCodeConstants.UNEXISTED_USER,
+			"존재하지 않은 유저입니다."
+		)).when(userService).editMyProfile(
+			new LoginUserInfo(1L, "test@email.com"),
+			null,
+			new EditProfileRequest("updated-description", "updated-nickname", 7)
+		);
+
+		mockMvc.perform(multipart("/api/users/me")
+				.file(editProfileRequestPart("updated-description", "updated-nickname", 7))
+				.with(request -> {
+					request.setMethod("PUT");
+					return request;
+				})
+				.with(csrf()))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNEXISTED_USER))
+			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
+	}
+
 	private MockMultipartFile signUpRequestPart(String email, String password, String nickname) {
 		String json = """
 			{"email":"%s","password":"%s","nickname":"%s"}
@@ -257,6 +318,23 @@ class UserControllerTest {
 
 		return new MockMultipartFile(
 			"signUpRequest",
+			"",
+			MediaType.APPLICATION_JSON_VALUE,
+			json.getBytes(StandardCharsets.UTF_8)
+		);
+	}
+
+	private MockMultipartFile editProfileRequestPart(String description, String nickName, Integer level) {
+		String json = """
+			{"description":%s,"nickName":%s,"level":%s}
+			""".formatted(
+			description == null ? "null" : "\"%s\"".formatted(description),
+			nickName == null ? "null" : "\"%s\"".formatted(nickName),
+			level == null ? "null" : level
+		);
+
+		return new MockMultipartFile(
+			"EditProfileRequest",
 			"",
 			MediaType.APPLICATION_JSON_VALUE,
 			json.getBytes(StandardCharsets.UTF_8)

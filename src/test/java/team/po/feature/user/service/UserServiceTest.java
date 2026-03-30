@@ -26,7 +26,8 @@ import team.po.common.auth.LoginUserInfo;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
-import team.po.feature.user.dto.GetMyProfileResponse;
+import team.po.feature.user.dto.EditProfileRequest;
+import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.RefreshTokenRequest;
 import team.po.feature.user.dto.RefreshTokenResponse;
@@ -235,7 +236,7 @@ class UserServiceTest {
 			.build();
 		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
 
-		GetMyProfileResponse response = userService.getMyProfile(loginUser);
+		GetProfileResponse response = userService.getMyProfile(loginUser);
 
 		assertThat(response.email()).isEqualTo("test@email.com");
 		assertThat(response.profileImage()).isEqualTo("profile.png");
@@ -271,5 +272,62 @@ class UserServiceTest {
 		assertThatThrownBy(() -> userService.getMyProfile(loginUser))
 			.isInstanceOf(UserNotFoundException.class)
 			.hasMessage("존재하지 않은 유저입니다.");
+	}
+
+	@Test
+	void editMyProfile_updatesProfileFieldsAndSavesUser() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 7);
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.profileImage("profile.png")
+			.description("old-description")
+			.nickname("old-nickname")
+			.temperature(50)
+			.level(3)
+			.build();
+		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+		userService.editMyProfile(loginUser, null, request);
+
+		assertThat(user.getDescription()).isEqualTo("updated-description");
+		assertThat(user.getNickname()).isEqualTo("updated-nickname");
+		assertThat(user.getLevel()).isEqualTo(7);
+		verify(userRepository).save(user);
+	}
+
+	@Test
+	void editMyProfile_throwsWhenUserDoesNotExist() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 7);
+		when(userRepository.findById(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
+			.isInstanceOf(UserNotFoundException.class)
+			.hasMessage("존재하지 않은 유저입니다.");
+
+		verify(userRepository, never()).save(any());
+	}
+
+	@Test
+	void editMyProfile_throwsWhenUserIsSoftDeleted() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 7);
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.nickname("old-nickname")
+			.temperature(50)
+			.level(3)
+			.build();
+		ReflectionTestUtils.setField(user, "deletedAt", Instant.parse("2026-03-30T00:00:00Z"));
+		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
+			.isInstanceOf(UserNotFoundException.class)
+			.hasMessage("존재하지 않은 유저입니다.");
+
+		verify(userRepository, never()).save(any());
 	}
 }

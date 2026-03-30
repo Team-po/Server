@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.Errors;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -21,7 +22,8 @@ import team.po.common.auth.LoginUser;
 import team.po.common.auth.LoginUserInfo;
 import team.po.exception.ErrorCodeConstants;
 import team.po.exception.InvalidFieldException;
-import team.po.feature.user.dto.GetMyProfileResponse;
+import team.po.feature.user.dto.EditProfileRequest;
+import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.dto.SignInResponse;
@@ -76,8 +78,22 @@ public class UserController {
 
 	@Operation(summary = "유저 프로필 조회 API")
 	@GetMapping(value = "/me")
-	public ResponseEntity<GetMyProfileResponse> getMyProfile(@Parameter(hidden = true) @LoginUser LoginUserInfo user) {
-		GetMyProfileResponse response = userService.getMyProfile(user);
+	public ResponseEntity<GetProfileResponse> getMyProfile(@Parameter(hidden = true) @LoginUser LoginUserInfo user) {
+		GetProfileResponse response = userService.getMyProfile(user);
 		return ResponseEntity.ok().body(response);
+	}
+
+	@Operation(summary = "유저 프로필 수정 API")
+	@PutMapping(value = "/me", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Void> edidMyProfile(@Parameter(hidden = true) @LoginUser LoginUserInfo user,
+		@Valid @RequestPart("EditProfileRequest")EditProfileRequest editProfileRequest,
+		Errors errors, @RequestPart(required = false) MultipartFile profileImage) {
+
+		if (errors.hasErrors()) {
+			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
+		}
+
+		userService.editMyProfile(user,profileImage,editProfileRequest);
+		return ResponseEntity.ok().build();
 	}
 }

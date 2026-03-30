@@ -20,7 +20,8 @@ import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.domain.Users;
-import team.po.feature.user.dto.GetMyProfileResponse;
+import team.po.feature.user.dto.EditProfileRequest;
+import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.RefreshTokenRequest;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
@@ -111,11 +112,11 @@ public class UserService {
 		return new RefreshTokenResponse(accessToken, jwtTokenProvider.getExpiration(accessToken));
 	}
 
-	public GetMyProfileResponse getMyProfile(LoginUserInfo loginUser) {
+	public GetProfileResponse getMyProfile(LoginUserInfo loginUser) {
 		Users user = this.getActiveUser(loginUser.id(), () ->
 			new UserNotFoundException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않은 유저입니다."));
 
-		return GetMyProfileResponse.builder()
+		return GetProfileResponse.builder()
 			.email(user.getEmail())
 			.nickname(user.getNickname())
 			.temperature(user.getTemperature())
@@ -123,6 +124,18 @@ public class UserService {
 			.description(user.getDescription())
 			.profileImage(user.getProfileImage())
 			.build();
+	}
+
+	public void editMyProfile(LoginUserInfo loginUser, MultipartFile profileImage, EditProfileRequest request) {
+		Users user = this.getActiveUser(loginUser.id(), () ->
+			new UserNotFoundException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않은 유저입니다."));
+
+		user.editDescription(request.description());
+		user.editLevel(request.level());
+		user.editNickname(request.nickName());
+		// TODO : AWS 배포 후 S3 사용시 ProfileImage 수정하는 부분 추가
+
+		userRepository.save(user);
 	}
 
 	private String normalizeEmail(String email) {
