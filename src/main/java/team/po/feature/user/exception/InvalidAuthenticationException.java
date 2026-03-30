@@ -2,6 +2,9 @@ package team.po.feature.user.exception;
 
 import org.springframework.http.HttpStatus;
 
+import lombok.Getter;
+
+@Getter
 public class InvalidAuthenticationException extends RuntimeException {
 	private final HttpStatus code;
 	private final String error;

@@ -13,6 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.context.request.ServletWebRequest;
 
 import team.po.common.jwt.UserPrincipal;
+import team.po.feature.user.exception.InvalidAuthenticationException;
 
 class LoginUserArgumentResolverTest {
 
@@ -62,11 +63,11 @@ class LoginUserArgumentResolverTest {
 		assertThatThrownBy(() -> resolver.resolveArgument(
 			parameter,
 			null,
-			new ServletWebRequest(new org.springframework.mock.web.MockHttpServletRequest()),
-			null
-		))
-			.isInstanceOf(IllegalStateException.class)
-			.hasMessage("No authenticated user found.");
+				new ServletWebRequest(new org.springframework.mock.web.MockHttpServletRequest()),
+				null
+			))
+				.isInstanceOf(InvalidAuthenticationException.class)
+				.hasMessage("인증된 유저를 찾을 수 없습니다.");
 	}
 
 	private MethodParameter loginUserInfoParameter() throws NoSuchMethodException {
