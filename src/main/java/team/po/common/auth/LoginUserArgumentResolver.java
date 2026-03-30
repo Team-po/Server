@@ -1,6 +1,7 @@
 package team.po.common.auth;
 
 import org.springframework.core.MethodParameter;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -10,6 +11,8 @@ import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 
 import team.po.common.jwt.UserPrincipal;
+import team.po.exception.ErrorCodeConstants;
+import team.po.feature.user.exception.InvalidAuthenticationException;
 
 public class LoginUserArgumentResolver implements HandlerMethodArgumentResolver {
 
@@ -31,13 +34,13 @@ public class LoginUserArgumentResolver implements HandlerMethodArgumentResolver 
 		if (authentication == null
 			|| !authentication.isAuthenticated()
 			|| authentication instanceof AnonymousAuthenticationToken) {
-			throw new IllegalStateException("No authenticated user found.");
+			throw new InvalidAuthenticationException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.NO_AUTHENTICATED_USER,"인증된 유저를 찾을 수 없습니다.");
 		}
 
 		Object principal = authentication.getPrincipal();
 
 		if (!(principal instanceof UserPrincipal userPrincipal)) {
-			throw new IllegalStateException("Cannot resolve authenticated user.");
+			throw new InvalidAuthenticationException(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodeConstants.INVALID_SECURITY_CONTEXT,"인증된 사용자 정보를 해석할 수 없습니다.");
 		}
 
 		return LoginUserInfo.from(userPrincipal);
