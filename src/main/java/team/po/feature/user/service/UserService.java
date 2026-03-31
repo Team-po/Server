@@ -10,15 +10,19 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import team.po.common.auth.LoginUserInfo;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.dto.EditProfileRequest;
+import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.RefreshTokenRequest;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
@@ -26,6 +30,7 @@ import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidTokenException;
+import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
 
 @Slf4j
@@ -42,8 +47,10 @@ public class UserService {
 		this.checkEmailDuplication(normalizedEmail);
 		// TODO : AWS 배포 후 S3 사용시 ProfileImage 저장 로직 개발
 		String password = passwordEncoder.encode(signUpRequest.password());
+
 		Users user = Users.builder().email(normalizedEmail).password(password)
-			.profileImage(null).nickname(signUpRequest.nickname()).description(null).level(3).temperature(50).build(); // level과 temperature은 기본값
+			.profileImage(null).nickname(signUpRequest.nickname()).description(null)
+			.level(signUpRequest.level()).temperature(50).build(); // temperature는 기본값
 
 		try {
 			userRepository.save(user);
@@ -96,8 +103,9 @@ public class UserService {
 		Users user = userRepository.findById(userId)
 			.orElseThrow(() -> new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레시 토큰입니다."));
 
-		if (user.getDeletedAt() != null)
+		if (user.getDeletedAt() != null) {
 			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레시 토큰입니다.");
+		}
 
 		if (!jwtTokenProvider.isRefreshTokenMatched(email, token)) {
 			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
@@ -105,6 +113,29 @@ public class UserService {
 
 		String accessToken = jwtTokenProvider.generateAccessToken(userId, user.getEmail());
 		return new RefreshTokenResponse(accessToken, jwtTokenProvider.getExpiration(accessToken));
+	}
+
+	public GetProfileResponse getMyProfile(LoginUserInfo loginUser) {
+		Users user = this.getActiveUser(loginUser.id());
+
+		return GetProfileResponse.builder()
+			.email(user.getEmail())
+			.nickname(user.getNickname())
+			.temperature(user.getTemperature())
+			.level(user.getLevel())
+			.description(user.getDescription())
+			.profileImage(user.getProfileImage())
+			.build();
+	}
+
+	@Transactional
+	public void editMyProfile(LoginUserInfo loginUser, MultipartFile profileImage, EditProfileRequest request) {
+		Users user = this.getActiveUser(loginUser.id());
+
+		user.editDescription(request.description());
+		user.editLevel(request.level());
+		user.editNickname(request.nickname());
+		// TODO : AWS 배포 후 S3 사용시 ProfileImage 수정하는 부분 추가
 	}
 
 	private String normalizeEmail(String email) {
@@ -125,6 +156,12 @@ public class UserService {
 		return false;
 	}
 
-
-
+	private Users getActiveUser(Long userId) {
+		return userRepository.findByIdAndDeletedAtIsNull(userId)
+			.orElseThrow(() -> new UserNotFoundException(
+				HttpStatus.UNAUTHORIZED,
+				ErrorCodeConstants.UNEXISTED_USER,
+				"존재하지 않은 유저입니다."
+			));
+	}
 }

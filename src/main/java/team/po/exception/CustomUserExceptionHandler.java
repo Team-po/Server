@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.InvalidAuthenticationException;
 import team.po.feature.user.exception.InvalidTokenException;
+import team.po.feature.user.exception.UserNotFoundException;
 
 @RestControllerAdvice
 public class CustomUserExceptionHandler {
@@ -45,6 +47,18 @@ public class CustomUserExceptionHandler {
 
 	@ExceptionHandler(InvalidTokenException.class)
 	protected ResponseEntity<ExceptionResponse> invalidTokenException(InvalidTokenException e) {
+		return ResponseEntity.status(e.getCode())
+			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
+	}
+
+	@ExceptionHandler(InvalidAuthenticationException.class)
+	protected ResponseEntity<ExceptionResponse> invalidAuthenticationException(InvalidAuthenticationException e) {
+		return ResponseEntity.status(e.getCode())
+			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
+	}
+
+	@ExceptionHandler(UserNotFoundException.class)
+	protected ResponseEntity<ExceptionResponse> userNotFoundException(UserNotFoundException e) {
 		return ResponseEntity.status(e.getCode())
 			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
 	}

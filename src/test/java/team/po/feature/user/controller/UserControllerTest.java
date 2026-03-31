@@ -9,12 +9,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -24,15 +26,22 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import team.po.common.auth.LoginUserInfo;
+import team.po.common.jwt.UserPrincipal;
 import team.po.exception.CustomUserExceptionHandler;
 import team.po.exception.ErrorCodeConstants;
+import team.po.feature.user.dto.EditProfileRequest;
+import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidTokenException;
+import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.service.UserService;
 
 @WebMvcTest(UserController.class)
@@ -46,10 +55,15 @@ class UserControllerTest {
 	@MockitoBean
 	private UserService userService;
 
+	@AfterEach
+	void tearDown() {
+		SecurityContextHolder.clearContext();
+	}
+
 	@Test
 	void signUp_returnsOk_whenRequestIsValid() throws Exception {
 		mockMvc.perform(multipart("/api/users/sign-up")
-				.file(signUpRequestPart("test@email.com", "password123", "tester"))
+				.file(signUpRequestPart("test@email.com", "password123", "tester", 3))
 				.with(csrf()))
 			.andExpect(status().isOk());
 
@@ -59,13 +73,14 @@ class UserControllerTest {
 	@Test
 	void signUp_returnsBadRequestWithFieldErrors_whenRequestIsInvalid() throws Exception {
 		mockMvc.perform(multipart("/api/users/sign-up")
-				.file(signUpRequestPart("invalid-email", "123", ""))
+				.file(signUpRequestPart("invalid-email", "123", "", 0))
 				.with(csrf()))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
 			.andExpect(jsonPath("$.fieldErrors.email").value("이메일 형식이 올바르지 않습니다."))
 			.andExpect(jsonPath("$.fieldErrors.password").value("비밀번호는 8글자 이상이어야 합니다."))
-			.andExpect(jsonPath("$.fieldErrors.nickname").value("닉네임 입력은 필수입니다."));
+			.andExpect(jsonPath("$.fieldErrors.nickname").value("닉네임 입력은 필수입니다."))
+			.andExpect(jsonPath("$.fieldErrors.level").value("레벨은 1 이상이어야 합니다."));
 	}
 
 	@Test
@@ -77,7 +92,7 @@ class UserControllerTest {
 		)).when(userService).signUp(any(), isNull());
 
 		mockMvc.perform(multipart("/api/users/sign-up")
-				.file(signUpRequestPart("test@email.com", "password123", "tester"))
+				.file(signUpRequestPart("test@email.com", "password123", "tester", 3))
 				.with(csrf()))
 			.andExpect(status().isConflict())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.EMAIL_ALREADY_EXISTS))
@@ -90,7 +105,7 @@ class UserControllerTest {
 			new MockMultipartFile("profileImage", "profile.png", "image/png", "image".getBytes());
 
 		mockMvc.perform(multipart("/api/users/sign-up")
-				.file(signUpRequestPart("test@email.com", "password123", "tester"))
+				.file(signUpRequestPart("test@email.com", "password123", "tester", 3))
 				.file(profileImage)
 				.with(csrf()))
 			.andExpect(status().isOk());
@@ -200,10 +215,107 @@ class UserControllerTest {
 			.andExpect(jsonPath("$.message").value("유효하지 않은 리프레스 토큰입니다."));
 	}
 
-	private MockMultipartFile signUpRequestPart(String email, String password, String nickname) {
+	@Test
+	void getMyProfile_returnsOk_whenAuthenticatedUserExists() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+		org.mockito.Mockito.when(userService.getMyProfile(new LoginUserInfo(1L, "test@email.com")))
+			.thenReturn(GetProfileResponse.builder()
+				.email("test@email.com")
+				.profileImage("profile.png")
+				.description("hello")
+				.nickname("tester")
+				.temperature(50)
+				.level(3)
+				.build());
+
+		mockMvc.perform(get("/api/users/me"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.email").value("test@email.com"))
+			.andExpect(jsonPath("$.profileImage").value("profile.png"))
+			.andExpect(jsonPath("$.description").value("hello"))
+			.andExpect(jsonPath("$.nickname").value("tester"))
+			.andExpect(jsonPath("$.temperature").value(50))
+			.andExpect(jsonPath("$.level").value(3));
+	}
+
+	@Test
+	void getMyProfile_returnsUnauthorized_whenAuthenticatedUserDoesNotExist() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+		doThrow(new UserNotFoundException(
+			HttpStatus.UNAUTHORIZED,
+			ErrorCodeConstants.UNEXISTED_USER,
+			"존재하지 않은 유저입니다."
+		)).when(userService).getMyProfile(new LoginUserInfo(1L, "test@email.com"));
+
+		mockMvc.perform(get("/api/users/me"))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNEXISTED_USER))
+			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
+	}
+
+	@Test
+	void editMyProfile_returnsOk_whenRequestIsValid() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+
+		mockMvc.perform(multipart("/api/users/me")
+				.file(editProfileRequestPart("updated-description", "updated-nickname", 4))
+				.with(request -> {
+					request.setMethod("PUT");
+					return request;
+				})
+				.with(csrf()))
+			.andExpect(status().isOk());
+
+		verify(userService).editMyProfile(new LoginUserInfo(1L, "test@email.com"), null,
+			new EditProfileRequest("updated-description", "updated-nickname", 4));
+	}
+
+	@Test
+	void editMyProfile_returnsBadRequest_whenRequestIsInvalid() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+
+		mockMvc.perform(multipart("/api/users/me")
+				.file(editProfileRequestPart("updated-description", "", 0))
+				.with(request -> {
+					request.setMethod("PUT");
+					return request;
+				})
+				.with(csrf()))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.fieldErrors.nickname").value("닉네임 입력은 필수입니다."))
+			.andExpect(jsonPath("$.fieldErrors.level").value("레벨은 1 이상이어야 합니다."));
+	}
+
+	@Test
+	void editMyProfile_returnsUnauthorized_whenAuthenticatedUserDoesNotExist() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+		doThrow(new UserNotFoundException(
+			HttpStatus.UNAUTHORIZED,
+			ErrorCodeConstants.UNEXISTED_USER,
+			"존재하지 않은 유저입니다."
+		)).when(userService).editMyProfile(
+			new LoginUserInfo(1L, "test@email.com"),
+			null,
+			new EditProfileRequest("updated-description", "updated-nickname", 4)
+		);
+
+		mockMvc.perform(multipart("/api/users/me")
+				.file(editProfileRequestPart("updated-description", "updated-nickname", 4))
+				.with(request -> {
+					request.setMethod("PUT");
+					return request;
+				})
+				.with(csrf()))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNEXISTED_USER))
+			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
+	}
+
+	private MockMultipartFile signUpRequestPart(String email, String password, String nickname, Integer level) {
 		String json = """
-			{"email":"%s","password":"%s","nickname":"%s"}
-			""".formatted(email, password, nickname);
+			{"email":"%s","password":"%s","nickname":"%s","level":%s}
+			""".formatted(email, password, nickname, level == null ? "null" : level);
 
 		return new MockMultipartFile(
 			"signUpRequest",
@@ -211,5 +323,29 @@ class UserControllerTest {
 			MediaType.APPLICATION_JSON_VALUE,
 			json.getBytes(StandardCharsets.UTF_8)
 		);
+	}
+
+	private MockMultipartFile editProfileRequestPart(String description, String nickname, Integer level) {
+		String json = """
+			{"description":%s,"nickname":%s,"level":%s}
+			""".formatted(
+			description == null ? "null" : "\"%s\"".formatted(description),
+			nickname == null ? "null" : "\"%s\"".formatted(nickname),
+			level == null ? "null" : level
+		);
+
+		return new MockMultipartFile(
+			"EditProfileRequest",
+			"",
+			MediaType.APPLICATION_JSON_VALUE,
+			json.getBytes(StandardCharsets.UTF_8)
+		);
+	}
+
+	private void setAuthenticatedUser(Long id, String email) {
+		UserPrincipal principal = new UserPrincipal(id, email);
+		UsernamePasswordAuthenticationToken authentication =
+			new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+		SecurityContextHolder.getContext().setAuthentication(authentication);
 	}
 }

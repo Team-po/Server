@@ -20,10 +20,14 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import team.po.common.auth.LoginUserInfo;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
+import team.po.feature.user.dto.EditProfileRequest;
+import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.RefreshTokenRequest;
 import team.po.feature.user.dto.RefreshTokenResponse;
@@ -32,6 +36,7 @@ import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidTokenException;
+import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -54,7 +59,7 @@ class UserServiceTest {
 
 	@Test
 	void signUp_savesUserWithNormalizedEmailAndEncodedPassword() {
-		SignUpRequest request = new SignUpRequest(" Test@Email.com ", "password123", "tester");
+		SignUpRequest request = new SignUpRequest(" Test@Email.com ", "password123", "tester", 5);
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
 		when(passwordEncoder.encode("password123")).thenReturn("encoded-password");
 
@@ -69,12 +74,12 @@ class UserServiceTest {
 		assertThat(savedUser.getNickname()).isEqualTo("tester");
 		assertThat(savedUser.getDescription()).isNull();
 		assertThat(savedUser.getTemperature()).isEqualTo(50);
-		assertThat(savedUser.getLevel()).isEqualTo(3);
+		assertThat(savedUser.getLevel()).isEqualTo(5);
 	}
 
 	@Test
 	void signUp_throwsWhenEmailAlreadyExists() {
-		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester");
+		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 3);
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(true);
 
 		assertThatThrownBy(() -> userService.signUp(request, null))
@@ -215,5 +220,111 @@ class UserServiceTest {
 
 		verify(jwtTokenProvider, never()).generateAccessToken(any(), any());
 		verify(jwtTokenProvider, never()).getExpiration(any());
+	}
+
+	@Test
+	void getMyProfile_returnsProfileWhenUserExists() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.profileImage("profile.png")
+			.description("hello")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+
+		GetProfileResponse response = userService.getMyProfile(loginUser);
+
+		assertThat(response.email()).isEqualTo("test@email.com");
+		assertThat(response.profileImage()).isEqualTo("profile.png");
+		assertThat(response.description()).isEqualTo("hello");
+		assertThat(response.nickname()).isEqualTo("tester");
+		assertThat(response.temperature()).isEqualTo(50);
+		assertThat(response.level()).isEqualTo(3);
+	}
+
+	@Test
+	void getMyProfile_throwsWhenUserDoesNotExist() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> userService.getMyProfile(loginUser))
+			.isInstanceOf(UserNotFoundException.class)
+			.hasMessage("존재하지 않은 유저입니다.");
+	}
+
+	@Test
+	void getMyProfile_throwsWhenUserIsSoftDeleted() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		ReflectionTestUtils.setField(user, "deletedAt", Instant.parse("2026-03-30T00:00:00Z"));
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> userService.getMyProfile(loginUser))
+			.isInstanceOf(UserNotFoundException.class)
+			.hasMessage("존재하지 않은 유저입니다.");
+	}
+
+	@Test
+	void editMyProfile_updatesProfileFields() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.profileImage("profile.png")
+			.description("old-description")
+			.nickname("old-nickname")
+			.temperature(50)
+			.level(3)
+			.build();
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+
+		userService.editMyProfile(loginUser, null, request);
+
+		assertThat(user.getDescription()).isEqualTo("updated-description");
+		assertThat(user.getNickname()).isEqualTo("updated-nickname");
+		assertThat(user.getLevel()).isEqualTo(4);
+	}
+
+	@Test
+	void editMyProfile_throwsWhenUserDoesNotExist() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
+			.isInstanceOf(UserNotFoundException.class)
+			.hasMessage("존재하지 않은 유저입니다.");
+
+	}
+
+	@Test
+	void editMyProfile_throwsWhenUserIsSoftDeleted() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.nickname("old-nickname")
+			.temperature(50)
+			.level(3)
+			.build();
+		ReflectionTestUtils.setField(user, "deletedAt", Instant.parse("2026-03-30T00:00:00Z"));
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
+			.isInstanceOf(UserNotFoundException.class)
+			.hasMessage("존재하지 않은 유저입니다.");
+
 	}
 }
