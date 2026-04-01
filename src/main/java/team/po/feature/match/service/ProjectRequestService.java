@@ -5,11 +5,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import team.po.common.auth.LoginUserInfo;
-import team.po.common.util.SecurityUtil;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.ProjectRequestDto;
 import team.po.feature.match.enums.Status;
+import team.po.feature.match.exception.ProjectRequestAlreadyExistsException;
 import team.po.feature.match.exception.ProjectRequestNotFoundException;
 import team.po.feature.match.repository.ProjectRequestRepository;
 import team.po.feature.user.domain.Users;
@@ -26,10 +26,20 @@ public class ProjectRequestService {
     private final UserRepository userRepository;
 
 
-    public void createProjectRequest(ProjectRequestDto dto) {
-        // Controller에서 User 직접 주입
-        // 이메일 전달 X 토큰으로 처리
-        Users user;
+    public void createProjectRequest(LoginUserInfo loginUser, ProjectRequestDto dto) {
+        Users user = this.getActiveUser(loginUser.id());
+
+        boolean matchingExists = projectRequestRepository.existsByUserIdAndStatusIn(
+                loginUser.id(),
+                List.of(Status.MATCHING, Status.WAITING)
+        );
+        if (matchingExists) {
+            throw new ProjectRequestAlreadyExistsException(
+                    HttpStatus.CONFLICT,
+                    ErrorCodeConstants.PROJECT_REQUEST_ALREADY_EXISTS,
+                    "이미 진행 중인 매칭 요청이 있습니다."
+            );
+        }
 
         ProjectRequest request = ProjectRequest.builder()
                 .user(user)
@@ -40,10 +50,6 @@ public class ProjectRequestService {
                 .build();
 
         projectRequestRepository.save(request);
-
-        // 저장하기 전에 따닥 중복 막아야 됨
-        // 중복 검사나 엣지케이스 처리
-        //
     }
 
     public void cancelProjectRequest(LoginUserInfo loginUser){

@@ -8,5 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ProjectRequestRepository extends JpaRepository<ProjectRequest, Long> {
+    public boolean existsByUserIdAndStatusIn(Long userId, List<Status> statuses);
+
     public Optional<ProjectRequest> findByUserIdAndStatusIn(Long userId, List<Status> statuses);
 }
