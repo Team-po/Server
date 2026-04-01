@@ -33,7 +33,7 @@ public class ProjectRequestService {
 
         boolean matchingExists = projectRequestRepository.existsByUserIdAndStatusIn(
                 loginUser.id(),
-                List.of(Status.MATCHING, Status.WAITING)
+                List.of(Status.WAITING, Status.MATCHING)
         );
         if (matchingExists) {
             throw new ProjectRequestAlreadyExistsException(
@@ -70,7 +70,7 @@ public class ProjectRequestService {
     }
 
     public ProjectRequestStatusResponse getProjectRequestStatus(LoginUserInfo loginUser) {
-        getActiveUser(loginUser.id());
+        this.getActiveUser(loginUser.id());
 
         ProjectRequest request = projectRequestRepository.findByUserIdAndStatusIn(
                 loginUser.id(),
