@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import team.po.feature.match.enums.Role;
+import team.po.feature.match.enums.Status;
 import team.po.feature.user.domain.Users;
 
 @Entity
@@ -44,13 +46,5 @@ public class ProjectRequest {
         this.projectDescription = projectDescription;
         this.projectMvp = projectMvp;
         this.status = Status.WAITING; // default
-    }
-
-    public enum Role {
-        DESIGN, BE, FE
-    }
-
-    public enum Status {
-        WAITING, MATCHING, MATCHED
     }
 }
