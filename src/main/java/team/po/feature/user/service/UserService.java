@@ -1,6 +1,10 @@
 package team.po.feature.user.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.Locale;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -150,6 +154,7 @@ public class UserService {
 
 		String newPassword = passwordEncoder.encode(request.afterPassword());
 		user.editPassword(newPassword);
+		jwtTokenProvider.deleteRefreshToken(user.getEmail());
 	}
 
 	@Transactional
@@ -160,7 +165,7 @@ public class UserService {
 
 		Instant deletedAt = Instant.now();
 		String email = user.getEmail();
-		String deletedEmail = "deleted__" + user.getId() + "__" + deletedAt.toEpochMilli() + "__" + email;
+		String deletedEmail = createDeletedEmail(user.getId(), email, deletedAt);
 
 		user.softDelete(deletedAt, deletedEmail);
 		jwtTokenProvider.deleteRefreshToken(email);
@@ -191,5 +196,19 @@ public class UserService {
 				ErrorCodeConstants.UNEXISTED_USER,
 				"존재하지 않은 유저입니다."
 			));
+	}
+
+	private String createDeletedEmail(Long userId, String email, Instant deletedAt) {
+		return "deleted__" + userId + "__" + deletedAt.toEpochMilli() + "__" + hashEmail(email);
+	}
+
+	private String hashEmail(String email) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			byte[] hash = digest.digest(email.getBytes(StandardCharsets.UTF_8));
+			return HexFormat.of().formatHex(hash);
+		} catch (NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("SHA-256 algorithm is unavailable.", exception);
+		}
 	}
 }

@@ -350,6 +350,7 @@ class UserServiceTest {
 
 		assertThat(user.getPassword()).isEqualTo("encoded-new-password");
 		verify(passwordEncoder).encode("new-password123");
+		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
 	}
 
 	@Test
@@ -371,6 +372,7 @@ class UserServiceTest {
 			.hasMessage("현재 비밀번호와 동일하지 않습니다.");
 
 		verify(passwordEncoder, never()).encode(any());
+		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
 	}
 
 	@Test
@@ -392,7 +394,35 @@ class UserServiceTest {
 
 		assertThat(user.getDeletedAt()).isNotNull();
 		assertThat(user.getEmail()).startsWith("deleted__1__");
+		assertThat(user.getEmail()).doesNotContain("test@email.com");
+		assertThat(user.getEmail().length()).isLessThanOrEqualTo(255);
 		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
+	}
+
+	@Test
+	void deleteUser_createsBoundedDeletedEmailForLongOriginalEmail() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "very-long@email.com");
+		String longLocalPart = "a".repeat(120);
+		String longDomainPart = "b".repeat(120);
+		String originalEmail = longLocalPart + "@" + longDomainPart + ".com";
+		DeleteUserRequest request = new DeleteUserRequest("current-password");
+		Users user = Users.builder()
+			.email(originalEmail)
+			.password("encoded-current-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		ReflectionTestUtils.setField(user, "id", 1L);
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
+
+		userService.deleteUser(loginUser, request);
+
+		assertThat(user.getEmail().length()).isLessThanOrEqualTo(255);
+		assertThat(user.getEmail()).startsWith("deleted__1__");
+		assertThat(user.getEmail()).doesNotContain(originalEmail);
+		verify(jwtTokenProvider).deleteRefreshToken(originalEmail);
 	}
 
 	@Test

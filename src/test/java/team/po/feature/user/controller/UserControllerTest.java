@@ -342,11 +342,11 @@ class UserControllerTest {
 				.with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-					{"currentPassword":"","afterPassword":"123"}
+					{"currentPassword":"123","afterPassword":"123"}
 					"""))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
-			.andExpect(jsonPath("$.fieldErrors.currentPassword").value("현재 비밀번호 입력은 필수입니다."))
+			.andExpect(jsonPath("$.fieldErrors.currentPassword").value("비밀번호는 8글자 이상이어야 합니다."))
 			.andExpect(jsonPath("$.fieldErrors.afterPassword").value("비밀번호는 8글자 이상이어야 합니다."));
 	}
 
