@@ -13,6 +13,7 @@ import team.po.feature.match.enums.Status;
 import team.po.feature.match.exception.ProjectRequestNotFoundException;
 import team.po.feature.match.repository.ProjectRequestRepository;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
 
 import java.util.List;
@@ -28,7 +29,6 @@ public class ProjectRequestService {
     public void createProjectRequest(ProjectRequestDto dto) {
         // Controller에서 User 직접 주입
         // 이메일 전달 X 토큰으로 처리
-
         Users user;
 
         ProjectRequest request = ProjectRequest.builder()
@@ -47,16 +47,26 @@ public class ProjectRequestService {
     }
 
     public void cancelProjectRequest(LoginUserInfo loginUser){
-        // UserId + (Status == WAITING || Status == MATCHING)인 요청 찾기
+        // validate active user
+        this.getActiveUser(loginUser.id());
+
         ProjectRequest request = projectRequestRepository.findByUserIdAndStatusIn(
-                loginUser.id(), // login user 정보는 controller에서 주입
+                loginUser.id(), // Controller
                 List.of(Status.WAITING, Status.MATCHING)
         ).orElseThrow(() -> new ProjectRequestNotFoundException(
                 HttpStatus.NOT_FOUND,
                 ErrorCodeConstants.PROJECT_REQUEST_NOT_FOUND,
                 "취소할 수 있는 매칭 요청이 없습니다."
         ));
-        // 그 요청.cancel
         request.cancel();
+    }
+
+    private Users getActiveUser(Long userId) {
+        return userRepository.findByIdAndDeletedAtIsNull(userId)
+                .orElseThrow(() -> new UserNotFoundException(
+                        HttpStatus.UNAUTHORIZED,
+                        ErrorCodeConstants.UNEXISTED_USER,
+                        "존재하지 않은 유저입니다."
+                ));
     }
 }
