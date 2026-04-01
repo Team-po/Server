@@ -6,5 +6,7 @@ CREATE TABLE project_request (
     project_description TEXT,
     project_mvp         TEXT,
     status VARCHAR(255) NOT NULL DEFAULT 'WAITING',
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    canceled_at DATETIME(6) NULL,
     CONSTRAINT fk_project_request_user FOREIGN KEY (user_id) REFERENCES users(id)
 );

@@ -8,6 +8,8 @@ import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
 import team.po.feature.user.domain.Users;
 
+import java.time.Instant;
+
 @Entity
 @Table(name = "project_request")
 @NoArgsConstructor
@@ -37,6 +39,12 @@ public class ProjectRequest {
     @Enumerated(EnumType.STRING)
     private Status status;
 
+    @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+    private Instant createAt;
+
+    @Column(name = "canceled_at")
+    private Instant canceledAt;
+
     @Builder
     public ProjectRequest(Users user, Role role, String projectTitle,
                           String projectDescription, String projectMvp) {
@@ -46,5 +54,10 @@ public class ProjectRequest {
         this.projectDescription = projectDescription;
         this.projectMvp = projectMvp;
         this.status = Status.WAITING; // default
+    }
+
+    public void cancel() {
+        this.status = Status.CANCELED;
+        this.canceledAt = Instant.now();
     }
 }
