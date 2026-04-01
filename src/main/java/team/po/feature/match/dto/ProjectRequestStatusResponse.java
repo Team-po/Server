@@ -1,4 +1,8 @@
 package team.po.feature.match.dto;
 
-public record ProjectRequestStatusResponse() {
+import team.po.feature.match.enums.Status;
+
+public record ProjectRequestStatusResponse(
+        Status status
+) {
 }

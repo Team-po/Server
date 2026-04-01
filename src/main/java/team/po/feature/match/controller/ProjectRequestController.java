@@ -12,6 +12,7 @@ import team.po.common.auth.LoginUserInfo;
 import team.po.exception.ErrorCodeConstants;
 import team.po.exception.InvalidFieldException;
 import team.po.feature.match.dto.ProjectRequestDto;
+import team.po.feature.match.dto.ProjectRequestStatusResponse;
 import team.po.feature.match.service.ProjectRequestService;
 
 @RestController
@@ -40,5 +41,12 @@ public class ProjectRequestController {
     public ResponseEntity<Void> cancelProjectRequest(@LoginUser LoginUserInfo loginUser){
         projectRequestService.cancelProjectRequest(loginUser);
         return ResponseEntity.ok().build();
+    }
+
+    @Operation(summary = "매칭 상태 조회 API")
+    @GetMapping(value = "/status")
+    public ResponseEntity<ProjectRequestStatusResponse> getProjectRequestStatus(@LoginUser LoginUserInfo loginUser) {
+        ProjectRequestStatusResponse response = projectRequestService.getProjectRequestStatus(loginUser);
+        return ResponseEntity.ok().body(response);
     }
 }

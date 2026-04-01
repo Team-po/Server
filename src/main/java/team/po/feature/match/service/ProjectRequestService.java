@@ -4,10 +4,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import team.po.common.auth.LoginUser;
 import team.po.common.auth.LoginUserInfo;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.ProjectRequestDto;
+import team.po.feature.match.dto.ProjectRequestStatusResponse;
 import team.po.feature.match.enums.Status;
 import team.po.feature.match.exception.ProjectRequestAlreadyExistsException;
 import team.po.feature.match.exception.ProjectRequestNotFoundException;
@@ -67,12 +69,27 @@ public class ProjectRequestService {
         request.cancel();
     }
 
+    public ProjectRequestStatusResponse getProjectRequestStatus(LoginUserInfo loginUser) {
+        getActiveUser(loginUser.id());
+
+        ProjectRequest request = projectRequestRepository.findByUserIdAndStatusIn(
+                loginUser.id(),
+                List.of(Status.WAITING, Status.MATCHING)
+        ).orElseThrow(() -> new ProjectRequestNotFoundException(
+                HttpStatus.NOT_FOUND,
+                ErrorCodeConstants.PROJECT_REQUEST_NOT_FOUND,
+                "진행 중인 매칭 요청이 없습니다."
+        ));
+
+        return new ProjectRequestStatusResponse(request.getStatus());
+    }
+
     private Users getActiveUser(Long userId) {
         return userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new UserNotFoundException(
                         HttpStatus.UNAUTHORIZED,
                         ErrorCodeConstants.UNEXISTED_USER,
-                        "존재하지 않은 유저입니다."
+                        "존재하지 않는 유저입니다."
                 ));
     }
 }
