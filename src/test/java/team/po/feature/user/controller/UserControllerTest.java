@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -35,11 +36,14 @@ import team.po.common.auth.LoginUserInfo;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.CustomUserExceptionHandler;
 import team.po.exception.ErrorCodeConstants;
+import team.po.feature.user.dto.DeleteUserRequest;
+import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.InvalidPasswordException;
 import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.service.UserService;
@@ -310,6 +314,119 @@ class UserControllerTest {
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNEXISTED_USER))
 			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
+	}
+
+	@Test
+	void editPassword_returnsOk_whenRequestIsValid() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+
+		mockMvc.perform(put("/api/users/me/edit-password")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"currentPassword":"password123","afterPassword":"newPassword123"}
+					"""))
+			.andExpect(status().isOk());
+
+		verify(userService).editPassword(
+			new LoginUserInfo(1L, "test@email.com"),
+			new EditPasswordRequest("password123", "newPassword123")
+		);
+	}
+
+	@Test
+	void editPassword_returnsBadRequest_whenRequestIsInvalid() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+
+		mockMvc.perform(put("/api/users/me/edit-password")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"currentPassword":"","afterPassword":"123"}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.fieldErrors.currentPassword").value("현재 비밀번호 입력은 필수입니다."))
+			.andExpect(jsonPath("$.fieldErrors.afterPassword").value("비밀번호는 8글자 이상이어야 합니다."));
+	}
+
+	@Test
+	void editPassword_returnsUnauthorized_whenPasswordDoesNotMatch() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+		doThrow(new InvalidPasswordException(
+			HttpStatus.UNAUTHORIZED,
+			ErrorCodeConstants.UNMATCHED_PASSWORD,
+			"현재 비밀번호와 동일하지 않습니다."
+		)).when(userService).editPassword(
+			new LoginUserInfo(1L, "test@email.com"),
+			new EditPasswordRequest("password123", "newPassword123")
+		);
+
+		mockMvc.perform(put("/api/users/me/edit-password")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"currentPassword":"password123","afterPassword":"newPassword123"}
+					"""))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNMATCHED_PASSWORD))
+			.andExpect(jsonPath("$.message").value("현재 비밀번호와 동일하지 않습니다."));
+	}
+
+	@Test
+	void deleteUser_returnsOk_whenRequestIsValid() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+
+		mockMvc.perform(delete("/api/users/me")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"password":"password123"}
+					"""))
+			.andExpect(status().isOk());
+
+		verify(userService).deleteUser(
+			new LoginUserInfo(1L, "test@email.com"),
+			new DeleteUserRequest("password123")
+		);
+	}
+
+	@Test
+	void deleteUser_returnsBadRequest_whenRequestIsInvalid() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+
+		mockMvc.perform(delete("/api/users/me")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"password":"123"}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.fieldErrors.password").value("비밀번호는 8글자 이상이어야 합니다."));
+	}
+
+	@Test
+	void deleteUser_returnsUnauthorized_whenPasswordDoesNotMatch() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+		doThrow(new InvalidPasswordException(
+			HttpStatus.UNAUTHORIZED,
+			ErrorCodeConstants.UNMATCHED_PASSWORD,
+			"현재 비밀번호와 동일하지 않습니다."
+		)).when(userService).deleteUser(
+			new LoginUserInfo(1L, "test@email.com"),
+			new DeleteUserRequest("password123")
+		);
+
+		mockMvc.perform(delete("/api/users/me")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"password":"password123"}
+					"""))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNMATCHED_PASSWORD))
+			.andExpect(jsonPath("$.message").value("현재 비밀번호와 동일하지 않습니다."));
 	}
 
 	private MockMultipartFile signUpRequestPart(String email, String password, String nickname, Integer level) {
