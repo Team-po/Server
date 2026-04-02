@@ -4,8 +4,11 @@ import jakarta.persistence.*;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.http.HttpStatus;
+import team.po.exception.ErrorCodeConstants;
 import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
+import team.po.feature.match.exception.ProjectRequestCancelNotAllowedException;
 import team.po.feature.user.domain.Users;
 
 import java.time.Instant;
@@ -57,6 +60,13 @@ public class ProjectRequest {
     }
 
     public void cancel() {
+        if (this.status != Status.WAITING && this.status != Status.MATCHING) {
+            throw new ProjectRequestCancelNotAllowedException(
+                    HttpStatus.BAD_REQUEST,
+                    ErrorCodeConstants.PROJECT_REQUEST_CANCEL_NOT_ALLOWED,
+                    "취소할 수 없는 상태입니다."
+            );
+        }
         this.status = Status.CANCELED;
         this.canceledAt = Instant.now();
     }

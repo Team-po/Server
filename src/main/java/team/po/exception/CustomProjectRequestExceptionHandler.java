@@ -4,6 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import team.po.feature.match.exception.ProjectRequestAlreadyExistsException;
+import team.po.feature.match.exception.ProjectRequestCancelNotAllowedException;
 import team.po.feature.match.exception.ProjectRequestNotFoundException;
 
 import java.util.Optional;
@@ -18,6 +19,12 @@ public class CustomProjectRequestExceptionHandler {
 
     @ExceptionHandler(ProjectRequestAlreadyExistsException.class)
     protected ResponseEntity<ExceptionResponse> projectRequestAlreadyExistsException(ProjectRequestAlreadyExistsException e) {
+        return ResponseEntity.status(e.getCode())
+                .body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
+    }
+
+    @ExceptionHandler(ProjectRequestCancelNotAllowedException.class)
+    protected ResponseEntity<ExceptionResponse> projectRequestCancelNotAllowedException(ProjectRequestCancelNotAllowedException e) {
         return ResponseEntity.status(e.getCode())
                 .body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
     }

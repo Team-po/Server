@@ -15,4 +15,5 @@ public final class ErrorCodeConstants extends RuntimeException {
 	// ProjectRequest
 	public static final String PROJECT_REQUEST_NOT_FOUND = "PROJECT_REQUEST_NOT_FOUND";
 	public static final String PROJECT_REQUEST_ALREADY_EXISTS = "PROJECT_REQUEST_ALREADY_EXISTS";
+	public static final String PROJECT_REQUEST_CANCEL_NOT_ALLOWED = "PROJECT_REQUEST_CANCEL_NOT_ALLOWED";
 }
