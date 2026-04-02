@@ -15,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 
 import team.po.common.auth.LoginUserInfo;
@@ -42,8 +43,6 @@ class ProjectRequestServiceTest {
     @InjectMocks
     private ProjectRequestService projectRequestService;
 
-    // ===== createProjectRequest =====
-
     @Test
     void createProjectRequest_success() {
         LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
@@ -51,7 +50,7 @@ class ProjectRequestServiceTest {
         Users user = Users.builder().email("test@email.com").password("password").nickname("tester").level(1).temperature(50).build();
 
         when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
-        when(projectRequestRepository.existsByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(false);
+        when(projectRequestRepository.existsByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING, Status.MATCHED))).thenReturn(false);
 
         projectRequestService.createProjectRequest(loginUser, dto);
 
@@ -78,15 +77,13 @@ class ProjectRequestServiceTest {
         Users user = Users.builder().email("test@email.com").password("password").nickname("tester").level(1).temperature(50).build();
 
         when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
-        when(projectRequestRepository.existsByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(true);
+        when(projectRequestRepository.existsByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING, Status.MATCHED))).thenReturn(true);
 
         assertThatThrownBy(() -> projectRequestService.createProjectRequest(loginUser, dto))
                 .isInstanceOf(ProjectRequestAlreadyExistsException.class);
 
         verify(projectRequestRepository, never()).save(any());
     }
-
-    // ===== cancelProjectRequest =====
 
     @Test
     void cancelProjectRequest_success() {
@@ -124,8 +121,6 @@ class ProjectRequestServiceTest {
                 .isInstanceOf(ProjectRequestNotFoundException.class);
     }
 
-    // ===== getProjectRequestStatus =====
-
     @Test
     void getProjectRequestStatus_success() {
         LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
@@ -159,6 +154,33 @@ class ProjectRequestServiceTest {
         when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> projectRequestService.getProjectRequestStatus(loginUser))
+                .isInstanceOf(ProjectRequestNotFoundException.class);
+    }
+
+    @Test
+    void createProjectRequest_throwsWhenRaceCondition() {
+        LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+        ProjectRequestDto dto = new ProjectRequestDto(Role.BE, "title", "desc", "mvp");
+        Users user = Users.builder().email("test@email.com").password("password").nickname("tester").level(1).temperature(50).build();
+
+        when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+        when(projectRequestRepository.existsByUserIdAndStatusIn(any(), any())).thenReturn(false);
+        when(projectRequestRepository.save(any())).thenThrow(DataIntegrityViolationException.class);
+
+        assertThatThrownBy(() -> projectRequestService.createProjectRequest(loginUser, dto))
+                .isInstanceOf(ProjectRequestAlreadyExistsException.class);
+    }
+
+    @Test
+    void cancelProjectRequest_throwsWhenMatched() {
+        LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+        Users user = Users.builder().email("test@email.com").password("password").nickname("tester").level(1).temperature(50).build();
+
+        when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+        // MATCHED는 findBy 대상이 아니니까 empty 반환
+        when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> projectRequestService.cancelProjectRequest(loginUser))
                 .isInstanceOf(ProjectRequestNotFoundException.class);
     }
 }
