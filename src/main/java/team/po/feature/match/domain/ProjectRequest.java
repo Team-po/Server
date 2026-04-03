@@ -43,7 +43,7 @@ public class ProjectRequest {
     private Status status;
 
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
-    private Instant createAt;
+    private Instant createdAt;
 
     @Column(name = "canceled_at")
     private Instant canceledAt;
