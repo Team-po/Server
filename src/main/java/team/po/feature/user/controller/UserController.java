@@ -101,7 +101,7 @@ public class UserController {
 	}
 
 	@Operation(summary = "비밀번호 수정 API")
-	@PutMapping(value = "/me/edit-password")
+	@PutMapping(value = "/me/password")
 	public ResponseEntity<Void> editPassword(@Parameter(hidden = true) @LoginUser LoginUserInfo user,@Valid @RequestBody
 		EditPasswordRequest request,Errors errors) {
 

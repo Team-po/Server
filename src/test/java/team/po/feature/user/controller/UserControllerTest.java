@@ -320,7 +320,7 @@ class UserControllerTest {
 	void editPassword_returnsOk_whenRequestIsValid() throws Exception {
 		setAuthenticatedUser(1L, "test@email.com");
 
-		mockMvc.perform(put("/api/users/me/edit-password")
+		mockMvc.perform(put("/api/users/me/password")
 				.with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -338,7 +338,7 @@ class UserControllerTest {
 	void editPassword_returnsBadRequest_whenRequestIsInvalid() throws Exception {
 		setAuthenticatedUser(1L, "test@email.com");
 
-		mockMvc.perform(put("/api/users/me/edit-password")
+		mockMvc.perform(put("/api/users/me/password")
 				.with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -362,7 +362,7 @@ class UserControllerTest {
 			new EditPasswordRequest("password123", "newPassword123")
 		);
 
-		mockMvc.perform(put("/api/users/me/edit-password")
+		mockMvc.perform(put("/api/users/me/password")
 				.with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
