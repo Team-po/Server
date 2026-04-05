@@ -1,5 +1,10 @@
 package team.po.feature.user.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.util.HexFormat;
 import java.util.Locale;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -21,6 +26,8 @@ import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.dto.DeleteUserRequest;
+import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.RefreshTokenRequest;
@@ -29,6 +36,7 @@ import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.InvalidPasswordException;
 import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
@@ -138,6 +146,31 @@ public class UserService {
 		// TODO : AWS 배포 후 S3 사용시 ProfileImage 수정하는 부분 추가
 	}
 
+	@Transactional
+	public void editPassword(LoginUserInfo loginUser, EditPasswordRequest request) {
+		Users user = this.getActiveUser(loginUser.id());
+		if (!passwordEncoder.matches(request.currentPassword(), user.getPassword()))
+			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD,"현재 비밀번호와 동일하지 않습니다.");
+
+		String newPassword = passwordEncoder.encode(request.afterPassword());
+		user.editPassword(newPassword);
+		jwtTokenProvider.deleteRefreshToken(user.getEmail());
+	}
+
+	@Transactional
+	public void deleteUser(LoginUserInfo loginUser, DeleteUserRequest request) {
+		Users user = this.getActiveUser(loginUser.id());
+		if (!passwordEncoder.matches(request.password(), user.getPassword()))
+			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD,"현재 비밀번호와 동일하지 않습니다.");
+
+		Instant deletedAt = Instant.now();
+		String email = user.getEmail();
+		String deletedEmail = createDeletedEmail(user.getId(), email, deletedAt);
+
+		user.softDelete(deletedAt, deletedEmail);
+		jwtTokenProvider.deleteRefreshToken(email);
+	}
+
 	private String normalizeEmail(String email) {
 		return email.trim().toLowerCase(Locale.ROOT);
 	}
@@ -163,5 +196,19 @@ public class UserService {
 				ErrorCodeConstants.UNEXISTED_USER,
 				"존재하지 않은 유저입니다."
 			));
+	}
+
+	private String createDeletedEmail(Long userId, String email, Instant deletedAt) {
+		return "deleted__" + userId + "__" + deletedAt.toEpochMilli() + "__" + hashEmail(email);
+	}
+
+	private String hashEmail(String email) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			byte[] hash = digest.digest(email.getBytes(StandardCharsets.UTF_8));
+			return HexFormat.of().formatHex(hash);
+		} catch (NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("SHA-256 algorithm is unavailable.", exception);
+		}
 	}
 }

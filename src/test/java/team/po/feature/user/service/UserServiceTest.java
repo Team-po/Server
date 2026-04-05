@@ -26,6 +26,8 @@ import team.po.common.auth.LoginUserInfo;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
+import team.po.feature.user.dto.DeleteUserRequest;
+import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.domain.Users;
@@ -35,6 +37,7 @@ import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.InvalidPasswordException;
 import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
@@ -326,5 +329,120 @@ class UserServiceTest {
 			.isInstanceOf(UserNotFoundException.class)
 			.hasMessage("존재하지 않은 유저입니다.");
 
+	}
+
+	@Test
+	void editPassword_updatesPasswordWhenCurrentPasswordMatches() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		EditPasswordRequest request = new EditPasswordRequest("current-password", "new-password123");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-current-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
+		when(passwordEncoder.encode("new-password123")).thenReturn("encoded-new-password");
+
+		userService.editPassword(loginUser, request);
+
+		assertThat(user.getPassword()).isEqualTo("encoded-new-password");
+		verify(passwordEncoder).encode("new-password123");
+		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
+	}
+
+	@Test
+	void editPassword_throwsWhenCurrentPasswordDoesNotMatch() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		EditPasswordRequest request = new EditPasswordRequest("wrong-password", "new-password123");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-current-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
+
+		assertThatThrownBy(() -> userService.editPassword(loginUser, request))
+			.isInstanceOf(InvalidPasswordException.class)
+			.hasMessage("현재 비밀번호와 동일하지 않습니다.");
+
+		verify(passwordEncoder, never()).encode(any());
+		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
+	}
+
+	@Test
+	void deleteUser_softDeletesUserAndDeletesRefreshToken() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		DeleteUserRequest request = new DeleteUserRequest("current-password");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-current-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		ReflectionTestUtils.setField(user, "id", 1L);
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
+
+		userService.deleteUser(loginUser, request);
+
+		assertThat(user.getDeletedAt()).isNotNull();
+		assertThat(user.getEmail()).startsWith("deleted__1__");
+		assertThat(user.getEmail()).doesNotContain("test@email.com");
+		assertThat(user.getEmail().length()).isLessThanOrEqualTo(255);
+		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
+	}
+
+	@Test
+	void deleteUser_createsBoundedDeletedEmailForLongOriginalEmail() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "very-long@email.com");
+		String longLocalPart = "a".repeat(120);
+		String longDomainPart = "b".repeat(120);
+		String originalEmail = longLocalPart + "@" + longDomainPart + ".com";
+		DeleteUserRequest request = new DeleteUserRequest("current-password");
+		Users user = Users.builder()
+			.email(originalEmail)
+			.password("encoded-current-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		ReflectionTestUtils.setField(user, "id", 1L);
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
+
+		userService.deleteUser(loginUser, request);
+
+		assertThat(user.getEmail().length()).isLessThanOrEqualTo(255);
+		assertThat(user.getEmail()).startsWith("deleted__1__");
+		assertThat(user.getEmail()).doesNotContain(originalEmail);
+		verify(jwtTokenProvider).deleteRefreshToken(originalEmail);
+	}
+
+	@Test
+	void deleteUser_throwsWhenPasswordDoesNotMatch() {
+		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		DeleteUserRequest request = new DeleteUserRequest("wrong-password");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-current-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
+
+		assertThatThrownBy(() -> userService.deleteUser(loginUser, request))
+			.isInstanceOf(InvalidPasswordException.class)
+			.hasMessage("현재 비밀번호와 동일하지 않습니다.");
+
+		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
 	}
 }
