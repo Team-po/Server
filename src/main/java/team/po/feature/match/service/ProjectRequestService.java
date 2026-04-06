@@ -30,11 +30,11 @@ public class ProjectRequestService {
 
 
     @Transactional
-    public void createProjectRequest(LoginUserInfo loginUser, ProjectRequestDto dto) {
+    public void createProjectRequest(LoginUserInfo loginUser, ProjectRequestDto request) {
         Users user = this.getActiveUser(loginUser.id());
 
         boolean matchingExists = projectRequestRepository.existsByUserIdAndStatusIn(
-                loginUser.id(),
+                user.getId(),
                 List.of(Status.WAITING, Status.MATCHING, Status.MATCHED)
                 // TODO: MATCHED인 경우 ProjectGroup.status 확인 필요
                 // 프로젝트가 종료된 경우에만 새 매칭 요청 가능
@@ -48,14 +48,14 @@ public class ProjectRequestService {
         }
 
         try {
-            ProjectRequest request = ProjectRequest.builder()
+            ProjectRequest projectRequest = ProjectRequest.builder()
                     .user(user)
-                    .role(dto.role())
-                    .projectTitle(dto.projectTitle())
-                    .projectDescription(dto.projectDescription())
-                    .projectMvp(dto.projectMvp())
+                    .role(request.role())
+                    .projectTitle(request.projectTitle())
+                    .projectDescription(request.projectDescription())
+                    .projectMvp(request.projectMvp())
                     .build();
-            projectRequestRepository.save(request);
+            projectRequestRepository.save(projectRequest);
         } catch (DataIntegrityViolationException e) { // 동시 요청 Race Condition
             throw new ProjectRequestAlreadyExistsException(
                     HttpStatus.CONFLICT,
@@ -68,25 +68,25 @@ public class ProjectRequestService {
     @Transactional
     public void cancelProjectRequest(LoginUserInfo loginUser){
         // validate active user
-        this.getActiveUser(loginUser.id());
+        Users user = this.getActiveUser(loginUser.id());
 
-        ProjectRequest request = projectRequestRepository.findByUserIdAndStatusIn(
-                loginUser.id(), // Controller
+        ProjectRequest projectRequest = projectRequestRepository.findByUserIdAndStatusIn(
+                user.getId(),
                 List.of(Status.WAITING, Status.MATCHING)
         ).orElseThrow(() -> new ProjectRequestNotFoundException(
                 HttpStatus.NOT_FOUND,
                 ErrorCodeConstants.PROJECT_REQUEST_NOT_FOUND,
                 "취소할 수 있는 매칭 요청이 없습니다."
         ));
-        request.cancel();
+        projectRequest.cancel();
     }
 
     @Transactional(readOnly = true)
     public ProjectRequestStatusResponse getProjectRequestStatus(LoginUserInfo loginUser) {
-        this.getActiveUser(loginUser.id());
+        Users user = this.getActiveUser(loginUser.id());
 
-        ProjectRequest request = projectRequestRepository.findByUserIdAndStatusIn(
-                loginUser.id(),
+        ProjectRequest projectRequest = projectRequestRepository.findByUserIdAndStatusIn(
+                user.getId(),
                 List.of(Status.WAITING, Status.MATCHING)
         ).orElseThrow(() -> new ProjectRequestNotFoundException(
                 HttpStatus.NOT_FOUND,
@@ -94,9 +94,10 @@ public class ProjectRequestService {
                 "진행 중인 매칭 요청이 없습니다."
         ));
 
-        return new ProjectRequestStatusResponse(request.getStatus());
+        return new ProjectRequestStatusResponse(projectRequest.getStatus());
     }
 
+    // @LoginUser 수정하면 삭제 예정
     private Users getActiveUser(Long userId) {
         return userRepository.findByIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new UserNotFoundException(

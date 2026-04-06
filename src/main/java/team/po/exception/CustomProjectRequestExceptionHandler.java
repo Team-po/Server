@@ -1,5 +1,7 @@
 package team.po.exception;
 
+import org.flywaydb.core.api.callback.Error;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -25,7 +27,8 @@ public class CustomProjectRequestExceptionHandler {
 
     @ExceptionHandler(ProjectRequestCancelNotAllowedException.class)
     protected ResponseEntity<ExceptionResponse> projectRequestCancelNotAllowedException(ProjectRequestCancelNotAllowedException e) {
-        return ResponseEntity.status(e.getCode())
-                .body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(new ExceptionResponse(ErrorCodeConstants.PROJECT_REQUEST_CANCEL_NOT_ALLOWED, "취소할 수 없는 상태입니다.", Optional.empty()));
     }
 }

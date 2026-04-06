@@ -23,7 +23,7 @@ public class ProjectRequestController {
 
     @Operation(summary = "매칭 요청 API")
     @PostMapping(value = "/request")
-    public ResponseEntity<Void> createProjectRequest(@LoginUser LoginUserInfo loginUser, @Valid @RequestBody ProjectRequestDto dto, Errors errors){ // @Valid: 두 번째 파라미터 에러 받아서 처리
+    public ResponseEntity<Void> createProjectRequest(@LoginUser LoginUserInfo loginUser, @Valid @RequestBody ProjectRequestDto request, Errors errors){ // @Valid: 두 번째 파라미터 에러 받아서 처리
         if (errors.hasErrors()) {
             throw new InvalidFieldException(
                     HttpStatus.BAD_REQUEST,
@@ -32,7 +32,7 @@ public class ProjectRequestController {
                     errors
             );
         }
-        projectRequestService.createProjectRequest(loginUser, dto);
+        projectRequestService.createProjectRequest(loginUser, request);
         return ResponseEntity.ok().build();
     }
 

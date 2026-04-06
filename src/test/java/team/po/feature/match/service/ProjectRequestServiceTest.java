@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 
+import org.springframework.test.util.ReflectionTestUtils;
 import team.po.common.auth.LoginUserInfo;
 import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.ProjectRequestDto;
@@ -48,6 +49,7 @@ class ProjectRequestServiceTest {
         LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
         ProjectRequestDto dto = new ProjectRequestDto(Role.BE, "title", "desc", "mvp");
         Users user = Users.builder().email("test@email.com").password("password").nickname("tester").level(1).temperature(50).build();
+        ReflectionTestUtils.setField(user, "id", loginUser.id());
 
         when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
         when(projectRequestRepository.existsByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING, Status.MATCHED))).thenReturn(false);
@@ -75,6 +77,7 @@ class ProjectRequestServiceTest {
         LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
         ProjectRequestDto dto = new ProjectRequestDto(Role.BE, "title", "desc", "mvp");
         Users user = Users.builder().email("test@email.com").password("password").nickname("tester").level(1).temperature(50).build();
+        ReflectionTestUtils.setField(user, "id", loginUser.id());
 
         when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
         when(projectRequestRepository.existsByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING, Status.MATCHED))).thenReturn(true);
@@ -90,6 +93,7 @@ class ProjectRequestServiceTest {
         LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
         Users user = Users.builder().email("test@email.com").password("password").nickname("tester").level(1).temperature(50).build();
         ProjectRequest request = ProjectRequest.builder().user(user).role(Role.BE).build();
+        ReflectionTestUtils.setField(user, "id", loginUser.id());
 
         when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
         when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(Optional.of(request));
@@ -113,6 +117,7 @@ class ProjectRequestServiceTest {
     void cancelProjectRequest_throwsWhenNoActiveRequest() {
         LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
         Users user = Users.builder().email("test@email.com").password("password").nickname("tester").level(1).temperature(50).build();
+        ReflectionTestUtils.setField(user, "id", loginUser.id());
 
         when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
         when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(Optional.empty());
@@ -126,6 +131,7 @@ class ProjectRequestServiceTest {
         LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
         Users user = Users.builder().email("test@email.com").password("password").nickname("tester").level(1).temperature(50).build();
         ProjectRequest request = ProjectRequest.builder().user(user).role(Role.BE).build();
+        ReflectionTestUtils.setField(user, "id", loginUser.id());
 
         when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
         when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(Optional.of(request));
@@ -149,6 +155,7 @@ class ProjectRequestServiceTest {
     void getProjectRequestStatus_throwsWhenNoActiveRequest() {
         LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
         Users user = Users.builder().email("test@email.com").password("password").nickname("tester").level(1).temperature(50).build();
+        ReflectionTestUtils.setField(user, "id", loginUser.id());
 
         when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
         when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(Optional.empty());
@@ -162,6 +169,7 @@ class ProjectRequestServiceTest {
         LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
         ProjectRequestDto dto = new ProjectRequestDto(Role.BE, "title", "desc", "mvp");
         Users user = Users.builder().email("test@email.com").password("password").nickname("tester").level(1).temperature(50).build();
+        ReflectionTestUtils.setField(user, "id", loginUser.id());
 
         when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
         when(projectRequestRepository.existsByUserIdAndStatusIn(any(), any())).thenReturn(false);
@@ -175,6 +183,7 @@ class ProjectRequestServiceTest {
     void cancelProjectRequest_throwsWhenMatched() {
         LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
         Users user = Users.builder().email("test@email.com").password("password").nickname("tester").level(1).temperature(50).build();
+        ReflectionTestUtils.setField(user, "id", loginUser.id());
 
         when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
         // MATCHED는 findBy 대상이 아니니까 empty 반환

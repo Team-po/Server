@@ -61,11 +61,7 @@ public class ProjectRequest {
 
     public void cancel() {
         if (this.status != Status.WAITING && this.status != Status.MATCHING) {
-            throw new ProjectRequestCancelNotAllowedException(
-                    HttpStatus.BAD_REQUEST,
-                    ErrorCodeConstants.PROJECT_REQUEST_CANCEL_NOT_ALLOWED,
-                    "취소할 수 없는 상태입니다."
-            );
+            throw new ProjectRequestCancelNotAllowedException();
         }
         this.status = Status.CANCELED;
         this.canceledAt = Instant.now();

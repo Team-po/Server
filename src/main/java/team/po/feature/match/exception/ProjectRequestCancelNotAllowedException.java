@@ -4,14 +4,4 @@ import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
 @Getter
-public class ProjectRequestCancelNotAllowedException extends RuntimeException {
-    private final HttpStatus code;
-    private final String error;
-    private final String message;
-
-    public ProjectRequestCancelNotAllowedException(HttpStatus code, String error, String message) {
-      this.code = code;
-      this.error = error;
-      this.message = message;
-    }
-}
+public class ProjectRequestCancelNotAllowedException extends RuntimeException { }
