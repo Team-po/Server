@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -16,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -31,11 +33,12 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.util.ReflectionTestUtils;
 
-import team.po.common.auth.LoginUserInfo;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.CustomUserExceptionHandler;
 import team.po.exception.ErrorCodeConstants;
+import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
@@ -46,6 +49,7 @@ import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidPasswordException;
 import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.exception.UserNotFoundException;
+import team.po.feature.user.repository.UserRepository;
 import team.po.feature.user.service.UserService;
 
 @WebMvcTest(UserController.class)
@@ -58,6 +62,9 @@ class UserControllerTest {
 
 	@MockitoBean
 	private UserService userService;
+
+	@MockitoBean
+	private UserRepository userRepository;
 
 	@AfterEach
 	void tearDown() {
@@ -221,8 +228,8 @@ class UserControllerTest {
 
 	@Test
 	void getMyProfile_returnsOk_whenAuthenticatedUserExists() throws Exception {
-		setAuthenticatedUser(1L, "test@email.com");
-		org.mockito.Mockito.when(userService.getMyProfile(new LoginUserInfo(1L, "test@email.com")))
+		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
+		org.mockito.Mockito.when(userService.getMyProfile(authenticatedUser))
 			.thenReturn(GetProfileResponse.builder()
 				.email("test@email.com")
 				.profileImage("profile.png")
@@ -244,22 +251,19 @@ class UserControllerTest {
 
 	@Test
 	void getMyProfile_returnsUnauthorized_whenAuthenticatedUserDoesNotExist() throws Exception {
-		setAuthenticatedUser(1L, "test@email.com");
-		doThrow(new UserNotFoundException(
-			HttpStatus.UNAUTHORIZED,
-			ErrorCodeConstants.UNEXISTED_USER,
-			"존재하지 않은 유저입니다."
-		)).when(userService).getMyProfile(new LoginUserInfo(1L, "test@email.com"));
+		setMissingAuthenticatedUser(1L, "test@email.com");
 
 		mockMvc.perform(get("/api/users/me"))
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNEXISTED_USER))
 			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
+
+		verifyNoInteractions(userService);
 	}
 
 	@Test
 	void editMyProfile_returnsOk_whenRequestIsValid() throws Exception {
-		setAuthenticatedUser(1L, "test@email.com");
+		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
 
 		mockMvc.perform(multipart("/api/users/me")
 				.file(editProfileRequestPart("updated-description", "updated-nickname", 4))
@@ -270,7 +274,7 @@ class UserControllerTest {
 				.with(csrf()))
 			.andExpect(status().isOk());
 
-		verify(userService).editMyProfile(new LoginUserInfo(1L, "test@email.com"), null,
+		verify(userService).editMyProfile(authenticatedUser, null,
 			new EditProfileRequest("updated-description", "updated-nickname", 4));
 	}
 
@@ -293,16 +297,7 @@ class UserControllerTest {
 
 	@Test
 	void editMyProfile_returnsUnauthorized_whenAuthenticatedUserDoesNotExist() throws Exception {
-		setAuthenticatedUser(1L, "test@email.com");
-		doThrow(new UserNotFoundException(
-			HttpStatus.UNAUTHORIZED,
-			ErrorCodeConstants.UNEXISTED_USER,
-			"존재하지 않은 유저입니다."
-		)).when(userService).editMyProfile(
-			new LoginUserInfo(1L, "test@email.com"),
-			null,
-			new EditProfileRequest("updated-description", "updated-nickname", 4)
-		);
+		setMissingAuthenticatedUser(1L, "test@email.com");
 
 		mockMvc.perform(multipart("/api/users/me")
 				.file(editProfileRequestPart("updated-description", "updated-nickname", 4))
@@ -314,11 +309,13 @@ class UserControllerTest {
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNEXISTED_USER))
 			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
+
+		verifyNoInteractions(userService);
 	}
 
 	@Test
 	void editPassword_returnsOk_whenRequestIsValid() throws Exception {
-		setAuthenticatedUser(1L, "test@email.com");
+		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
 
 		mockMvc.perform(put("/api/users/me/password")
 				.with(csrf())
@@ -329,7 +326,7 @@ class UserControllerTest {
 			.andExpect(status().isOk());
 
 		verify(userService).editPassword(
-			new LoginUserInfo(1L, "test@email.com"),
+			authenticatedUser,
 			new EditPasswordRequest("password123", "newPassword123")
 		);
 	}
@@ -352,13 +349,13 @@ class UserControllerTest {
 
 	@Test
 	void editPassword_returnsUnauthorized_whenPasswordDoesNotMatch() throws Exception {
-		setAuthenticatedUser(1L, "test@email.com");
+		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
 		doThrow(new InvalidPasswordException(
 			HttpStatus.UNAUTHORIZED,
 			ErrorCodeConstants.UNMATCHED_PASSWORD,
 			"현재 비밀번호와 동일하지 않습니다."
 		)).when(userService).editPassword(
-			new LoginUserInfo(1L, "test@email.com"),
+			authenticatedUser,
 			new EditPasswordRequest("password123", "newPassword123")
 		);
 
@@ -375,7 +372,7 @@ class UserControllerTest {
 
 	@Test
 	void deleteUser_returnsOk_whenRequestIsValid() throws Exception {
-		setAuthenticatedUser(1L, "test@email.com");
+		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
 
 		mockMvc.perform(delete("/api/users/me")
 				.with(csrf())
@@ -386,7 +383,7 @@ class UserControllerTest {
 			.andExpect(status().isOk());
 
 		verify(userService).deleteUser(
-			new LoginUserInfo(1L, "test@email.com"),
+			authenticatedUser,
 			new DeleteUserRequest("password123")
 		);
 	}
@@ -408,13 +405,13 @@ class UserControllerTest {
 
 	@Test
 	void deleteUser_returnsUnauthorized_whenPasswordDoesNotMatch() throws Exception {
-		setAuthenticatedUser(1L, "test@email.com");
+		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
 		doThrow(new InvalidPasswordException(
 			HttpStatus.UNAUTHORIZED,
 			ErrorCodeConstants.UNMATCHED_PASSWORD,
 			"현재 비밀번호와 동일하지 않습니다."
 		)).when(userService).deleteUser(
-			new LoginUserInfo(1L, "test@email.com"),
+			authenticatedUser,
 			new DeleteUserRequest("password123")
 		);
 
@@ -459,10 +456,33 @@ class UserControllerTest {
 		);
 	}
 
-	private void setAuthenticatedUser(Long id, String email) {
+	private Users setAuthenticatedUser(Long id, String email) {
+		Users user = authenticatedUser(id, email);
+		org.mockito.Mockito.when(userRepository.findByIdAndDeletedAtIsNull(id)).thenReturn(Optional.of(user));
 		UserPrincipal principal = new UserPrincipal(id, email);
 		UsernamePasswordAuthenticationToken authentication =
 			new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
 		SecurityContextHolder.getContext().setAuthentication(authentication);
+		return user;
+	}
+
+	private void setMissingAuthenticatedUser(Long id, String email) {
+		org.mockito.Mockito.when(userRepository.findByIdAndDeletedAtIsNull(id)).thenReturn(Optional.empty());
+		UserPrincipal principal = new UserPrincipal(id, email);
+		UsernamePasswordAuthenticationToken authentication =
+			new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+		SecurityContextHolder.getContext().setAuthentication(authentication);
+	}
+
+	private Users authenticatedUser(Long id, String email) {
+		Users user = Users.builder()
+			.email(email)
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		ReflectionTestUtils.setField(user, "id", id);
+		return user;
 	}
 }
