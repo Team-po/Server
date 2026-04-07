@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.time.Instant;
 import java.util.Optional;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -60,13 +61,19 @@ class UserServiceTest {
 	@InjectMocks
 	private UserService userService;
 
+	@BeforeEach
+	void setUp() {
+		ReflectionTestUtils.setField(userService, "s3Endpoint", "https://storage.hwangdo.kr");
+		ReflectionTestUtils.setField(userService, "bucket", "team-po");
+	}
+
 	@Test
 	void signUp_savesUserWithNormalizedEmailAndEncodedPassword() {
-		SignUpRequest request = new SignUpRequest(" Test@Email.com ", "password123", "tester", 5);
+		SignUpRequest request = new SignUpRequest(" Test@Email.com ", "password123", "tester", 5, "images/sign-up/test.png");
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
 		when(passwordEncoder.encode("password123")).thenReturn("encoded-password");
 
-		userService.signUp(request, null);
+		userService.signUp(request);
 
 		ArgumentCaptor<Users> usersCaptor = ArgumentCaptor.forClass(Users.class);
 		verify(userRepository).save(usersCaptor.capture());
@@ -75,6 +82,7 @@ class UserServiceTest {
 		assertThat(savedUser.getEmail()).isEqualTo("test@email.com");
 		assertThat(savedUser.getPassword()).isEqualTo("encoded-password");
 		assertThat(savedUser.getNickname()).isEqualTo("tester");
+		assertThat(savedUser.getProfileImage()).isEqualTo("images/sign-up/test.png");
 		assertThat(savedUser.getDescription()).isNull();
 		assertThat(savedUser.getTemperature()).isEqualTo(50);
 		assertThat(savedUser.getLevel()).isEqualTo(5);
@@ -82,10 +90,10 @@ class UserServiceTest {
 
 	@Test
 	void signUp_throwsWhenEmailAlreadyExists() {
-		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 3);
+		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 3, null);
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(true);
 
-		assertThatThrownBy(() -> userService.signUp(request, null))
+		assertThatThrownBy(() -> userService.signUp(request))
 			.isInstanceOf(DuplicatedEmailException.class);
 
 		verify(passwordEncoder, never()).encode(any());
@@ -242,7 +250,7 @@ class UserServiceTest {
 		GetProfileResponse response = userService.getMyProfile(loginUser);
 
 		assertThat(response.email()).isEqualTo("test@email.com");
-		assertThat(response.profileImage()).isEqualTo("profile.png");
+		assertThat(response.profileImage()).isEqualTo("https://storage.hwangdo.kr/team-po/profile.png");
 		assertThat(response.description()).isEqualTo("hello");
 		assertThat(response.nickname()).isEqualTo("tester");
 		assertThat(response.temperature()).isEqualTo(50);
@@ -280,7 +288,7 @@ class UserServiceTest {
 	@Test
 	void editMyProfile_updatesProfileFields() {
 		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
-		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4, "images/users/1/new.png");
 		Users user = Users.builder()
 			.email("test@email.com")
 			.password("encoded-password")
@@ -292,20 +300,21 @@ class UserServiceTest {
 			.build();
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 
-		userService.editMyProfile(loginUser, null, request);
+		userService.editMyProfile(loginUser, request);
 
 		assertThat(user.getDescription()).isEqualTo("updated-description");
 		assertThat(user.getNickname()).isEqualTo("updated-nickname");
 		assertThat(user.getLevel()).isEqualTo(4);
+		assertThat(user.getProfileImage()).isEqualTo("images/users/1/new.png");
 	}
 
 	@Test
 	void editMyProfile_throwsWhenUserDoesNotExist() {
 		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
-		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4, null);
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
+		assertThatThrownBy(() -> userService.editMyProfile(loginUser, request))
 			.isInstanceOf(UserNotFoundException.class)
 			.hasMessage("존재하지 않은 유저입니다.");
 
@@ -314,7 +323,7 @@ class UserServiceTest {
 	@Test
 	void editMyProfile_throwsWhenUserIsSoftDeleted() {
 		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
-		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4, null);
 		Users user = Users.builder()
 			.email("test@email.com")
 			.password("encoded-password")
@@ -325,7 +334,7 @@ class UserServiceTest {
 		ReflectionTestUtils.setField(user, "deletedAt", Instant.parse("2026-03-30T00:00:00Z"));
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
+		assertThatThrownBy(() -> userService.editMyProfile(loginUser, request))
 			.isInstanceOf(UserNotFoundException.class)
 			.hasMessage("존재하지 않은 유저입니다.");
 

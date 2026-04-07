@@ -1,20 +1,17 @@
 package team.po.feature.user.controller;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
 import org.junit.jupiter.api.AfterEach;
@@ -25,7 +22,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -40,12 +36,15 @@ import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
+import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.InvalidImageContentTypeException;
 import team.po.feature.user.exception.InvalidPasswordException;
 import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.exception.UserNotFoundException;
+import team.po.feature.user.service.ProfileImagePresignService;
 import team.po.feature.user.service.UserService;
 
 @WebMvcTest(UserController.class)
@@ -59,6 +58,9 @@ class UserControllerTest {
 	@MockitoBean
 	private UserService userService;
 
+	@MockitoBean
+	private ProfileImagePresignService profileImagePresignService;
+
 	@AfterEach
 	void tearDown() {
 		SecurityContextHolder.clearContext();
@@ -66,19 +68,21 @@ class UserControllerTest {
 
 	@Test
 	void signUp_returnsOk_whenRequestIsValid() throws Exception {
-		mockMvc.perform(multipart("/api/users/sign-up")
-				.file(signUpRequestPart("test@email.com", "password123", "tester", 3))
-				.with(csrf()))
+		mockMvc.perform(post("/api/users/sign-up")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(signUpRequestJson("test@email.com", "password123", "tester", 3, null)))
 			.andExpect(status().isOk());
 
-		verify(userService).signUp(any(), isNull());
+		verify(userService).signUp(new team.po.feature.user.dto.SignUpRequest("test@email.com", "password123", "tester", 3, null));
 	}
 
 	@Test
 	void signUp_returnsBadRequestWithFieldErrors_whenRequestIsInvalid() throws Exception {
-		mockMvc.perform(multipart("/api/users/sign-up")
-				.file(signUpRequestPart("invalid-email", "123", "", 0))
-				.with(csrf()))
+		mockMvc.perform(post("/api/users/sign-up")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(signUpRequestJson("invalid-email", "123", "", 0, null)))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
 			.andExpect(jsonPath("$.fieldErrors.email").value("이메일 형식이 올바르지 않습니다."))
@@ -93,28 +97,27 @@ class UserControllerTest {
 			HttpStatus.CONFLICT,
 			ErrorCodeConstants.EMAIL_ALREADY_EXISTS,
 			"중복된 이메일이 존재합니다."
-		)).when(userService).signUp(any(), isNull());
+		)).when(userService).signUp(new team.po.feature.user.dto.SignUpRequest("test@email.com", "password123", "tester", 3, null));
 
-		mockMvc.perform(multipart("/api/users/sign-up")
-				.file(signUpRequestPart("test@email.com", "password123", "tester", 3))
-				.with(csrf()))
+		mockMvc.perform(post("/api/users/sign-up")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(signUpRequestJson("test@email.com", "password123", "tester", 3, null)))
 			.andExpect(status().isConflict())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.EMAIL_ALREADY_EXISTS))
 			.andExpect(jsonPath("$.message").value("중복된 이메일이 존재합니다."));
 	}
 
 	@Test
-	void signUp_acceptsMultipartProfileImage() throws Exception {
-		MockMultipartFile profileImage =
-			new MockMultipartFile("profileImage", "profile.png", "image/png", "image".getBytes());
-
-		mockMvc.perform(multipart("/api/users/sign-up")
-				.file(signUpRequestPart("test@email.com", "password123", "tester", 3))
-				.file(profileImage)
-				.with(csrf()))
+	void signUp_acceptsProfileImageKey() throws Exception {
+		mockMvc.perform(post("/api/users/sign-up")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(signUpRequestJson("test@email.com", "password123", "tester", 3, "images/sign-up/test.png")))
 			.andExpect(status().isOk());
 
-		verify(userService).signUp(any(), any());
+		verify(userService).signUp(new team.po.feature.user.dto.SignUpRequest(
+			"test@email.com", "password123", "tester", 3, "images/sign-up/test.png"));
 	}
 
 	@Test
@@ -258,33 +261,128 @@ class UserControllerTest {
 	}
 
 	@Test
+	void createSignUpProfileImageUploadUrl_returnsOk_whenRequestIsValid() throws Exception {
+		org.mockito.Mockito.when(profileImagePresignService.createSignUpUploadUrl(
+			new team.po.feature.user.dto.ProfileImageUploadUrlRequest("image/webp")
+		)).thenReturn(new ProfileImageUploadUrlResponse(
+			"http://localhost:9000/team-po/images/sign-up/test.webp",
+			"images/sign-up/test.webp",
+			"image/webp",
+			Instant.parse("2026-04-07T12:00:00Z")
+		));
+
+		mockMvc.perform(post("/api/users/profile-image/upload-url")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"contentType":"image/webp"}
+					"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.uploadUrl").value("http://localhost:9000/team-po/images/sign-up/test.webp"))
+			.andExpect(jsonPath("$.objectKey").value("images/sign-up/test.webp"))
+			.andExpect(jsonPath("$.contentType").value("image/webp"))
+			.andExpect(jsonPath("$.expiresAt").value("2026-04-07T12:00:00Z"));
+	}
+
+	@Test
+	void createSignUpProfileImageUploadUrl_returnsBadRequest_whenRequestIsInvalid() throws Exception {
+		mockMvc.perform(post("/api/users/profile-image/upload-url")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"contentType":""}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.fieldErrors.contentType").value("이미지 Content-Type은 필수입니다."));
+	}
+
+	@Test
+	void createProfileImageUploadUrl_returnsOk_whenRequestIsValid() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+		org.mockito.Mockito.when(profileImagePresignService.createProfileUploadUrl(
+			new LoginUserInfo(1L, "test@email.com"),
+			new team.po.feature.user.dto.ProfileImageUploadUrlRequest("image/png")
+		)).thenReturn(new ProfileImageUploadUrlResponse(
+			"http://localhost:9000/team-po/images/users/1/test.png",
+			"images/users/1/test.png",
+			"image/png",
+			Instant.parse("2026-04-07T12:00:00Z")
+		));
+
+		mockMvc.perform(post("/api/users/me/profile-image/upload-url")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"contentType":"image/png"}
+					"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.uploadUrl").value("http://localhost:9000/team-po/images/users/1/test.png"))
+			.andExpect(jsonPath("$.objectKey").value("images/users/1/test.png"))
+			.andExpect(jsonPath("$.contentType").value("image/png"))
+			.andExpect(jsonPath("$.expiresAt").value("2026-04-07T12:00:00Z"));
+	}
+
+	@Test
+	void createProfileImageUploadUrl_returnsBadRequest_whenRequestIsInvalid() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+
+		mockMvc.perform(post("/api/users/me/profile-image/upload-url")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"contentType":""}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.fieldErrors.contentType").value("이미지 Content-Type은 필수입니다."));
+	}
+
+	@Test
+	void createProfileImageUploadUrl_returnsBadRequest_whenContentTypeIsUnsupported() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+		doThrow(new InvalidImageContentTypeException(
+			HttpStatus.BAD_REQUEST,
+			ErrorCodeConstants.INVALID_IMAGE_CONTENT_TYPE,
+			"지원하지 않는 이미지 형식입니다."
+		)).when(profileImagePresignService).createProfileUploadUrl(
+			new LoginUserInfo(1L, "test@email.com"),
+			new team.po.feature.user.dto.ProfileImageUploadUrlRequest("application/pdf")
+		);
+
+		mockMvc.perform(post("/api/users/me/profile-image/upload-url")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"contentType":"application/pdf"}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_IMAGE_CONTENT_TYPE))
+			.andExpect(jsonPath("$.message").value("지원하지 않는 이미지 형식입니다."));
+	}
+
+	@Test
 	void editMyProfile_returnsOk_whenRequestIsValid() throws Exception {
 		setAuthenticatedUser(1L, "test@email.com");
 
-		mockMvc.perform(multipart("/api/users/me")
-				.file(editProfileRequestPart("updated-description", "updated-nickname", 4))
-				.with(request -> {
-					request.setMethod("PUT");
-					return request;
-				})
-				.with(csrf()))
+		mockMvc.perform(put("/api/users/me")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(editProfileRequestJson("updated-description", "updated-nickname", 4, "images/users/1/test.png")))
 			.andExpect(status().isOk());
 
-		verify(userService).editMyProfile(new LoginUserInfo(1L, "test@email.com"), null,
-			new EditProfileRequest("updated-description", "updated-nickname", 4));
+		verify(userService).editMyProfile(new LoginUserInfo(1L, "test@email.com"),
+			new EditProfileRequest("updated-description", "updated-nickname", 4, "images/users/1/test.png"));
 	}
 
 	@Test
 	void editMyProfile_returnsBadRequest_whenRequestIsInvalid() throws Exception {
 		setAuthenticatedUser(1L, "test@email.com");
 
-		mockMvc.perform(multipart("/api/users/me")
-				.file(editProfileRequestPart("updated-description", "", 0))
-				.with(request -> {
-					request.setMethod("PUT");
-					return request;
-				})
-				.with(csrf()))
+		mockMvc.perform(put("/api/users/me")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(editProfileRequestJson("updated-description", "", 0, null)))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
 			.andExpect(jsonPath("$.fieldErrors.nickname").value("닉네임 입력은 필수입니다."))
@@ -300,17 +398,13 @@ class UserControllerTest {
 			"존재하지 않은 유저입니다."
 		)).when(userService).editMyProfile(
 			new LoginUserInfo(1L, "test@email.com"),
-			null,
-			new EditProfileRequest("updated-description", "updated-nickname", 4)
+			new EditProfileRequest("updated-description", "updated-nickname", 4, null)
 		);
 
-		mockMvc.perform(multipart("/api/users/me")
-				.file(editProfileRequestPart("updated-description", "updated-nickname", 4))
-				.with(request -> {
-					request.setMethod("PUT");
-					return request;
-				})
-				.with(csrf()))
+		mockMvc.perform(put("/api/users/me")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(editProfileRequestJson("updated-description", "updated-nickname", 4, null)))
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNEXISTED_USER))
 			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
@@ -429,33 +523,26 @@ class UserControllerTest {
 			.andExpect(jsonPath("$.message").value("현재 비밀번호와 동일하지 않습니다."));
 	}
 
-	private MockMultipartFile signUpRequestPart(String email, String password, String nickname, Integer level) {
-		String json = """
-			{"email":"%s","password":"%s","nickname":"%s","level":%s}
-			""".formatted(email, password, nickname, level == null ? "null" : level);
-
-		return new MockMultipartFile(
-			"signUpRequest",
-			"",
-			MediaType.APPLICATION_JSON_VALUE,
-			json.getBytes(StandardCharsets.UTF_8)
+	private String signUpRequestJson(String email, String password, String nickname, Integer level, String profileImageKey) {
+		return """
+			{"email":"%s","password":"%s","nickname":"%s","level":%s,"profileImageKey":%s}
+			""".formatted(
+			email,
+			password,
+			nickname,
+			level == null ? "null" : level,
+			profileImageKey == null ? "null" : "\"%s\"".formatted(profileImageKey)
 		);
 	}
 
-	private MockMultipartFile editProfileRequestPart(String description, String nickname, Integer level) {
-		String json = """
-			{"description":%s,"nickname":%s,"level":%s}
+	private String editProfileRequestJson(String description, String nickname, Integer level, String profileImageKey) {
+		return """
+			{"description":%s,"nickname":%s,"level":%s,"profileImageKey":%s}
 			""".formatted(
 			description == null ? "null" : "\"%s\"".formatted(description),
 			nickname == null ? "null" : "\"%s\"".formatted(nickname),
-			level == null ? "null" : level
-		);
-
-		return new MockMultipartFile(
-			"EditProfileRequest",
-			"",
-			MediaType.APPLICATION_JSON_VALUE,
-			json.getBytes(StandardCharsets.UTF_8)
+			level == null ? "null" : level,
+			profileImageKey == null ? "null" : "\"%s\"".formatted(profileImageKey)
 		);
 	}
 

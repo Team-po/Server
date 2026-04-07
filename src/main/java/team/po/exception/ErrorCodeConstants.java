@@ -11,4 +11,5 @@ public final class ErrorCodeConstants extends RuntimeException {
 	public static final String NO_AUTHENTICATED_USER = "NO_AUTHENTICATED_USER";
 	public static final String INVALID_SECURITY_CONTEXT = "INVALID_SECURITY_CONTEXT";
 	public static final String UNMATCHED_PASSWORD = "UNMATCHED_PASSWORD";
+	public static final String INVALID_IMAGE_CONTENT_TYPE = "INVALID_IMAGE_CONTENT_TYPE";
 }

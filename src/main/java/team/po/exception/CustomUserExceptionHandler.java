@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidAuthenticationException;
+import team.po.feature.user.exception.InvalidImageContentTypeException;
 import team.po.feature.user.exception.InvalidPasswordException;
 import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.exception.UserNotFoundException;
@@ -66,6 +67,12 @@ public class CustomUserExceptionHandler {
 
 	@ExceptionHandler(UserNotFoundException.class)
 	protected ResponseEntity<ExceptionResponse> userNotFoundException(UserNotFoundException e) {
+		return ResponseEntity.status(e.getCode())
+			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
+	}
+
+	@ExceptionHandler(InvalidImageContentTypeException.class)
+	protected ResponseEntity<ExceptionResponse> invalidImageContentTypeException(InvalidImageContentTypeException e) {
 		return ResponseEntity.status(e.getCode())
 			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
 	}
