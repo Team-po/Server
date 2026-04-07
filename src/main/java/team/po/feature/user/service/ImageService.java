@@ -11,8 +11,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
-import team.po.common.auth.LoginUserInfo;
 import team.po.exception.ErrorCodeConstants;
+import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.ProfileImageUploadUrlRequest;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
 import team.po.feature.user.exception.InvalidImageContentTypeException;
@@ -49,9 +49,9 @@ public class ImageService {
 		return createUploadUrl(objectKey, contentType);
 	}
 
-	public ProfileImageUploadUrlResponse createProfileUploadUrl(LoginUserInfo loginUser, ProfileImageUploadUrlRequest request) {
+	public ProfileImageUploadUrlResponse createProfileUploadUrl(Users loginUser, ProfileImageUploadUrlRequest request) {
 		String contentType = normalizeAndValidateContentType(request.contentType());
-		String objectKey = buildProfileObjectKey(loginUser.id(), extensionOf(contentType));
+		String objectKey = buildProfileObjectKey(loginUser.getId(), extensionOf(contentType));
 		return createUploadUrl(objectKey, contentType);
 	}
 

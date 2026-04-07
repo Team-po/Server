@@ -17,9 +17,9 @@ import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import team.po.common.auth.LoginUser;
-import team.po.common.auth.LoginUserInfo;
 import team.po.exception.ErrorCodeConstants;
 import team.po.exception.InvalidFieldException;
+import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
@@ -95,14 +95,14 @@ public class UserController {
 
 	@Operation(summary = "유저 프로필 조회 API")
 	@GetMapping(value = "/me")
-	public ResponseEntity<GetProfileResponse> getMyProfile(@Parameter(hidden = true) @LoginUser LoginUserInfo user) {
+	public ResponseEntity<GetProfileResponse> getMyProfile(@Parameter(hidden = true) @LoginUser Users user) {
 		GetProfileResponse response = userService.getMyProfile(user);
 		return ResponseEntity.ok().body(response);
 	}
 
 	@Operation(summary = "유저 프로필 수정 API")
 	@PutMapping(value = "/me")
-	public ResponseEntity<Void> edidMyProfile(@Parameter(hidden = true) @LoginUser LoginUserInfo user,
+	public ResponseEntity<Void> edidMyProfile(@Parameter(hidden = true) @LoginUser Users user,
 		@Valid @RequestBody EditProfileRequest editProfileRequest,
 		Errors errors) {
 
@@ -117,7 +117,7 @@ public class UserController {
 	@Operation(summary = "프로필 수정용 프로필 이미지 업로드 URL 발급 API")
 	@PostMapping(value = "/me/profile-image/upload-url")
 	public ResponseEntity<ProfileImageUploadUrlResponse> createProfileImageUploadUrl(
-		@Parameter(hidden = true) @LoginUser LoginUserInfo user,
+		@Parameter(hidden = true) @LoginUser Users user,
 		@Valid @RequestBody ProfileImageUploadUrlRequest request,
 		Errors errors
 	) {
@@ -131,7 +131,7 @@ public class UserController {
 
 	@Operation(summary = "비밀번호 수정 API")
 	@PutMapping(value = "/me/password")
-	public ResponseEntity<Void> editPassword(@Parameter(hidden = true) @LoginUser LoginUserInfo user,@Valid @RequestBody
+	public ResponseEntity<Void> editPassword(@Parameter(hidden = true) @LoginUser Users user,@Valid @RequestBody
 		EditPasswordRequest request,Errors errors) {
 
 		if (errors.hasErrors()) {
@@ -145,7 +145,7 @@ public class UserController {
 
 	@Operation(summary = "회원 탈퇴 API")
 	@DeleteMapping(value = "/me")
-	public ResponseEntity<Void> deleteUser(@Parameter(hidden = true) @LoginUser LoginUserInfo user, @Valid @RequestBody
+	public ResponseEntity<Void> deleteUser(@Parameter(hidden = true) @LoginUser Users user, @Valid @RequestBody
 		DeleteUserRequest request,Errors errors) {
 		if (errors.hasErrors()) {
 			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);

@@ -2,22 +2,40 @@ package team.po.common.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
+import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.MethodParameter;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.context.request.ServletWebRequest;
 
 import team.po.common.jwt.UserPrincipal;
 import team.po.feature.user.exception.InvalidAuthenticationException;
+import team.po.feature.user.domain.Users;
+import team.po.feature.user.repository.UserRepository;
 
+@ExtendWith(MockitoExtension.class)
 class LoginUserArgumentResolverTest {
 
-	private final LoginUserArgumentResolver resolver = new LoginUserArgumentResolver();
+	@Mock
+	private UserRepository userRepository;
+
+	private LoginUserArgumentResolver resolver;
+
+	@BeforeEach
+	void setUp() {
+		resolver = new LoginUserArgumentResolver(userRepository);
+	}
 
 	@AfterEach
 	void tearDown() {
@@ -25,8 +43,8 @@ class LoginUserArgumentResolverTest {
 	}
 
 	@Test
-	void supportsParameter_returnsTrueForLoginUserInfoAnnotatedWithLoginUser() throws NoSuchMethodException {
-		MethodParameter parameter = loginUserInfoParameter();
+	void supportsParameter_returnsTrueForUsersAnnotatedWithLoginUser() throws NoSuchMethodException {
+		MethodParameter parameter = loginUserParameter();
 
 		assertThat(resolver.supportsParameter(parameter)).isTrue();
 	}
@@ -39,9 +57,18 @@ class LoginUserArgumentResolverTest {
 	}
 
 	@Test
-	void resolveArgument_returnsLoginUserInfoFromSecurityContext() throws Exception {
-		MethodParameter parameter = loginUserInfoParameter();
+	void resolveArgument_returnsUsersFromSecurityContext() throws Exception {
+		MethodParameter parameter = loginUserParameter();
 		UserPrincipal principal = new UserPrincipal(1L, "test@email.com");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		ReflectionTestUtils.setField(user, "id", 1L);
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 		UsernamePasswordAuthenticationToken authentication =
 			new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
 		SecurityContextHolder.getContext().setAuthentication(authentication);
@@ -53,12 +80,12 @@ class LoginUserArgumentResolverTest {
 			null
 		);
 
-		assertThat(resolved).isEqualTo(new LoginUserInfo(1L, "test@email.com"));
+		assertThat(resolved).isSameAs(user);
 	}
 
 	@Test
 	void resolveArgument_throwsWhenAuthenticationIsMissing() throws Exception {
-		MethodParameter parameter = loginUserInfoParameter();
+		MethodParameter parameter = loginUserParameter();
 
 		assertThatThrownBy(() -> resolver.resolveArgument(
 			parameter,
@@ -70,8 +97,8 @@ class LoginUserArgumentResolverTest {
 				.hasMessage("인증된 유저를 찾을 수 없습니다.");
 	}
 
-	private MethodParameter loginUserInfoParameter() throws NoSuchMethodException {
-		Method method = SampleController.class.getDeclaredMethod("secured", LoginUserInfo.class);
+	private MethodParameter loginUserParameter() throws NoSuchMethodException {
+		Method method = SampleController.class.getDeclaredMethod("secured", Users.class);
 		return new MethodParameter(method, 0);
 	}
 
@@ -82,7 +109,7 @@ class LoginUserArgumentResolverTest {
 
 	@SuppressWarnings("unused")
 	private static class SampleController {
-		void secured(@LoginUser LoginUserInfo loginUserInfo) {
+		void secured(@LoginUser Users user) {
 		}
 
 		void plain(String value) {

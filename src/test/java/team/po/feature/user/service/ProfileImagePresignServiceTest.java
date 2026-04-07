@@ -16,7 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import team.po.common.auth.LoginUserInfo;
+import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.ProfileImageUploadUrlRequest;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
 import team.po.feature.user.exception.InvalidImageContentTypeException;
@@ -51,7 +51,7 @@ class ProfileImagePresignServiceTest {
 		when(presignedPutObjectRequest.url()).thenReturn(new URL("http://localhost:9000/team-po/images/users/1/test.png"));
 
 		ProfileImageUploadUrlResponse response = profileImagePresignService.createProfileUploadUrl(
-			new LoginUserInfo(1L, "test@email.com"),
+			authenticatedUser(1L, "test@email.com"),
 			new ProfileImageUploadUrlRequest("image/png")
 		);
 
@@ -75,7 +75,7 @@ class ProfileImagePresignServiceTest {
 		when(presignedPutObjectRequest.url()).thenReturn(new URL("http://localhost:9000/team-po/images/users/1/test.jpg"));
 
 		ProfileImageUploadUrlResponse response = profileImagePresignService.createProfileUploadUrl(
-			new LoginUserInfo(1L, "test@email.com"),
+			authenticatedUser(1L, "test@email.com"),
 			new ProfileImageUploadUrlRequest("IMAGE/JPEG; charset=UTF-8")
 		);
 
@@ -86,7 +86,7 @@ class ProfileImagePresignServiceTest {
 	@Test
 	void createProfileUploadUrl_throwsWhenContentTypeIsUnsupported() {
 		assertThatThrownBy(() -> profileImagePresignService.createProfileUploadUrl(
-			new LoginUserInfo(1L, "test@email.com"),
+			authenticatedUser(1L, "test@email.com"),
 			new ProfileImageUploadUrlRequest("application/pdf")
 		))
 			.isInstanceOf(InvalidImageContentTypeException.class)
@@ -105,5 +105,17 @@ class ProfileImagePresignServiceTest {
 		assertThat(response.objectKey()).startsWith("images/sign-up/");
 		assertThat(response.objectKey()).endsWith(".webp");
 		assertThat(response.contentType()).isEqualTo("image/webp");
+	}
+
+	private Users authenticatedUser(Long id, String email) {
+		Users user = Users.builder()
+			.email(email)
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		ReflectionTestUtils.setField(user, "id", id);
+		return user;
 	}
 }
