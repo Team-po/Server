@@ -31,13 +31,12 @@ public class ProjectRequestService {
 
     @Transactional
     public void createProjectRequest(LoginUserInfo loginUser, ProjectRequestDto request) {
+        // @LoginUser 수정 후 삭제
         Users user = this.getActiveUser(loginUser.id());
 
         boolean matchingExists = projectRequestRepository.existsByUserIdAndStatusIn(
                 user.getId(),
-                List.of(Status.WAITING, Status.MATCHING, Status.MATCHED)
-                // TODO: MATCHED인 경우 ProjectGroup.status 확인 필요
-                // 프로젝트가 종료된 경우에만 새 매칭 요청 가능
+                List.of(Status.WAITING, Status.MATCHING)
         );
         if (matchingExists) {
             throw new ProjectRequestAlreadyExistsException(
@@ -46,6 +45,19 @@ public class ProjectRequestService {
                     "이미 진행 중인 매칭 요청이 있습니다."
             );
         }
+
+        // TODO: ProjectGroup 구현 후 추가
+        // ProjectGroup.status - 프로젝트 진행 중 -> X
+//        boolean projectInProgress = projectGroupRepository.existsByUserIdAndStatus(
+//                user.getId(),
+//                ProjectGroupStatus.IN_PROGRESS);
+//        if (projectInProgress) {
+//            throw new ProjectAlreadyInProgressException(
+//                    HttpStatus.CONFLICT,
+//                    ErrorCodeConstants.PROJECT_ALREADY_IN_PROGRESS,
+//                    "이미 진행 중인 프로젝트가 있습니다."
+//            )
+//        }
 
         try {
             ProjectRequest projectRequest = ProjectRequest.builder()
@@ -67,7 +79,7 @@ public class ProjectRequestService {
 
     @Transactional
     public void cancelProjectRequest(LoginUserInfo loginUser){
-        // validate active user
+        // @LoginUser 수정 후 삭제
         Users user = this.getActiveUser(loginUser.id());
 
         ProjectRequest projectRequest = projectRequestRepository.findByUserIdAndStatusIn(
@@ -83,6 +95,7 @@ public class ProjectRequestService {
 
     @Transactional(readOnly = true)
     public ProjectRequestStatusResponse getProjectRequestStatus(LoginUserInfo loginUser) {
+        // @LoginUser 수정 후 삭제
         Users user = this.getActiveUser(loginUser.id());
 
         ProjectRequest projectRequest = projectRequestRepository.findByUserIdAndStatusIn(

@@ -52,7 +52,7 @@ class ProjectRequestServiceTest {
         ReflectionTestUtils.setField(user, "id", loginUser.id());
 
         when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
-        when(projectRequestRepository.existsByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING, Status.MATCHED))).thenReturn(false);
+        when(projectRequestRepository.existsByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(false);
 
         projectRequestService.createProjectRequest(loginUser, dto);
 
@@ -80,7 +80,7 @@ class ProjectRequestServiceTest {
         ReflectionTestUtils.setField(user, "id", loginUser.id());
 
         when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
-        when(projectRequestRepository.existsByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING, Status.MATCHED))).thenReturn(true);
+        when(projectRequestRepository.existsByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(true);
 
         assertThatThrownBy(() -> projectRequestService.createProjectRequest(loginUser, dto))
                 .isInstanceOf(ProjectRequestAlreadyExistsException.class);
