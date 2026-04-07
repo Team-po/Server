@@ -21,17 +21,19 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
+import team.po.common.auth.LoginUserArgumentResolver;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.CustomProjectRequestExceptionHandler;
 import team.po.exception.ErrorCodeConstants;
-import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.ProjectRequestStatusResponse;
 import team.po.feature.match.enums.Status;
 import team.po.feature.match.exception.ProjectRequestAlreadyExistsException;
 import team.po.feature.match.exception.ProjectRequestNotFoundException;
 import team.po.feature.match.service.ProjectRequestService;
+import team.po.feature.user.domain.Users;
 
 import java.util.List;
 
@@ -46,8 +48,26 @@ class ProjectRequestControllerTest {
     @MockitoBean
     private ProjectRequestService projectRequestService;
 
+    @MockitoBean
+    private LoginUserArgumentResolver loginUserArgumentResolver;
+
+    private Users mockUser;
+
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
+        mockUser = Users.builder()
+                .email("test@email.com")
+                .password("password")
+                .nickname("tester")
+                .level(1)
+                .temperature(50)
+                .build();
+        ReflectionTestUtils.setField(mockUser, "id", 1L);
+
+        // Resolver가 Users 객체를 반환하도록 설정
+        when(loginUserArgumentResolver.supportsParameter(any())).thenReturn(true);
+        when(loginUserArgumentResolver.resolveArgument(any(), any(), any(), any())).thenReturn(mockUser);
+
         UserPrincipal principal = new UserPrincipal(1L, "test@email.com");
         Authentication authentication = new UsernamePasswordAuthenticationToken(
                 principal, null, List.of()
@@ -71,7 +91,7 @@ class ProjectRequestControllerTest {
                     """))
                 .andExpect(status().isOk());
 
-        verify(projectRequestService).createProjectRequest(any(), any());
+        verify(projectRequestService).createProjectRequest(any(Users.class), any());
     }
 
     @Test
@@ -91,7 +111,7 @@ class ProjectRequestControllerTest {
                 HttpStatus.CONFLICT,
                 ErrorCodeConstants.PROJECT_REQUEST_ALREADY_EXISTS,
                 "이미 진행 중인 매칭 요청이 있습니다."
-        )).when(projectRequestService).createProjectRequest(any(), any());
+        )).when(projectRequestService).createProjectRequest(any(Users.class), any());
 
         mockMvc.perform(post("/api/match/request")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -110,7 +130,7 @@ class ProjectRequestControllerTest {
         mockMvc.perform(patch("/api/match/cancel"))
                 .andExpect(status().isOk());
 
-        verify(projectRequestService).cancelProjectRequest(any());
+        verify(projectRequestService).cancelProjectRequest(any(Users.class));
     }
 
     @Test
@@ -119,7 +139,7 @@ class ProjectRequestControllerTest {
                 HttpStatus.NOT_FOUND,
                 ErrorCodeConstants.PROJECT_REQUEST_NOT_FOUND,
                 "취소할 수 있는 매칭 요청이 없습니다."
-        )).when(projectRequestService).cancelProjectRequest(any());
+        )).when(projectRequestService).cancelProjectRequest(any(Users.class));
 
         mockMvc.perform(patch("/api/match/cancel"))
                 .andExpect(status().isNotFound())
@@ -131,7 +151,7 @@ class ProjectRequestControllerTest {
 
     @Test
     void getProjectRequestStatus_returnsOk() throws Exception {
-        when(projectRequestService.getProjectRequestStatus(any()))
+        when(projectRequestService.getProjectRequestStatus(any(Users.class)))
                 .thenReturn(new ProjectRequestStatusResponse(Status.WAITING));
 
         mockMvc.perform(get("/api/match/status"))
@@ -145,7 +165,7 @@ class ProjectRequestControllerTest {
                 HttpStatus.NOT_FOUND,
                 ErrorCodeConstants.PROJECT_REQUEST_NOT_FOUND,
                 "진행 중인 매칭 요청이 없습니다."
-        )).when(projectRequestService).getProjectRequestStatus(any());
+        )).when(projectRequestService).getProjectRequestStatus(any(Users.class));
 
         mockMvc.perform(get("/api/match/status"))
                 .andExpect(status().isNotFound())

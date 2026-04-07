@@ -6,7 +6,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import team.po.common.auth.LoginUserInfo;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.ProjectRequestDto;
@@ -30,10 +29,13 @@ public class ProjectRequestService {
 
 
     @Transactional
-    public void createProjectRequest(LoginUserInfo loginUser, ProjectRequestDto request) {
-        // @LoginUser 수정 후 삭제
-        Users user = this.getActiveUser(loginUser.id());
-
+    public void createProjectRequest(Users loginUser, ProjectRequestDto request) {
+        Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId())
+                .orElseThrow(() -> new UserNotFoundException(
+                        HttpStatus.UNAUTHORIZED,
+                        ErrorCodeConstants.UNEXISTED_USER,
+                        "존재하지 않는 유저입니다."
+                ));
         boolean matchingExists = projectRequestRepository.existsByUserIdAndStatusIn(
                 user.getId(),
                 List.of(Status.WAITING, Status.MATCHING)
@@ -78,10 +80,7 @@ public class ProjectRequestService {
     }
 
     @Transactional
-    public void cancelProjectRequest(LoginUserInfo loginUser){
-        // @LoginUser 수정 후 삭제
-        Users user = this.getActiveUser(loginUser.id());
-
+    public void cancelProjectRequest(Users user){
         ProjectRequest projectRequest = projectRequestRepository.findByUserIdAndStatusIn(
                 user.getId(),
                 List.of(Status.WAITING, Status.MATCHING)
@@ -94,10 +93,7 @@ public class ProjectRequestService {
     }
 
     @Transactional(readOnly = true)
-    public ProjectRequestStatusResponse getProjectRequestStatus(LoginUserInfo loginUser) {
-        // @LoginUser 수정 후 삭제
-        Users user = this.getActiveUser(loginUser.id());
-
+    public ProjectRequestStatusResponse getProjectRequestStatus(Users user) {
         ProjectRequest projectRequest = projectRequestRepository.findByUserIdAndStatusIn(
                 user.getId(),
                 List.of(Status.WAITING, Status.MATCHING)
@@ -108,15 +104,5 @@ public class ProjectRequestService {
         ));
 
         return new ProjectRequestStatusResponse(projectRequest.getStatus());
-    }
-
-    // @LoginUser 수정하면 삭제 예정
-    private Users getActiveUser(Long userId) {
-        return userRepository.findByIdAndDeletedAtIsNull(userId)
-                .orElseThrow(() -> new UserNotFoundException(
-                        HttpStatus.UNAUTHORIZED,
-                        ErrorCodeConstants.UNEXISTED_USER,
-                        "존재하지 않는 유저입니다."
-                ));
     }
 }
