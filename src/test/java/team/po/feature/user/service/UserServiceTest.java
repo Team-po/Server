@@ -22,7 +22,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import team.po.common.auth.LoginUserInfo;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
@@ -226,18 +225,10 @@ class UserServiceTest {
 	}
 
 	@Test
-	void getMyProfile_returnsProfileWhenUserExists() {
-		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
-		Users user = Users.builder()
-			.email("test@email.com")
-			.password("encoded-password")
-			.profileImage("profile.png")
-			.description("hello")
-			.nickname("tester")
-			.temperature(50)
-			.level(3)
-			.build();
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+	void getMyProfile_returnsProfileFromLoginUser() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		loginUser.editProfileImage("profile.png");
+		loginUser.editDescription("hello");
 
 		GetProfileResponse response = userService.getMyProfile(loginUser);
 
@@ -250,121 +241,59 @@ class UserServiceTest {
 	}
 
 	@Test
-	void getMyProfile_throwsWhenUserDoesNotExist() {
-		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
-
-		assertThatThrownBy(() -> userService.getMyProfile(loginUser))
-			.isInstanceOf(UserNotFoundException.class)
-			.hasMessage("존재하지 않은 유저입니다.");
-	}
-
-	@Test
-	void getMyProfile_throwsWhenUserIsSoftDeleted() {
-		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
-		Users user = Users.builder()
-			.email("test@email.com")
-			.password("encoded-password")
-			.nickname("tester")
-			.temperature(50)
-			.level(3)
-			.build();
-		ReflectionTestUtils.setField(user, "deletedAt", Instant.parse("2026-03-30T00:00:00Z"));
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
-
-		assertThatThrownBy(() -> userService.getMyProfile(loginUser))
-			.isInstanceOf(UserNotFoundException.class)
-			.hasMessage("존재하지 않은 유저입니다.");
-	}
-
-	@Test
-	void editMyProfile_updatesProfileFields() {
-		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+	void editMyProfile_updatesProfileFieldsOnManagedUser() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
 		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
-		Users user = Users.builder()
-			.email("test@email.com")
-			.password("encoded-password")
-			.profileImage("profile.png")
-			.description("old-description")
-			.nickname("old-nickname")
-			.temperature(50)
-			.level(3)
-			.build();
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		managedUser.editProfileImage("profile.png");
+		managedUser.editDescription("old-description");
+		managedUser.editNickname("old-nickname");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 
 		userService.editMyProfile(loginUser, null, request);
 
-		assertThat(user.getDescription()).isEqualTo("updated-description");
-		assertThat(user.getNickname()).isEqualTo("updated-nickname");
-		assertThat(user.getLevel()).isEqualTo(4);
+		assertThat(managedUser.getDescription()).isEqualTo("updated-description");
+		assertThat(managedUser.getNickname()).isEqualTo("updated-nickname");
+		assertThat(managedUser.getLevel()).isEqualTo(4);
+		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 	}
 
 	@Test
-	void editMyProfile_throwsWhenUserDoesNotExist() {
-		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+	void editMyProfile_throwsWhenAuthenticatedUserDoesNotExist() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
 		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
 			.isInstanceOf(UserNotFoundException.class)
 			.hasMessage("존재하지 않은 유저입니다.");
-
 	}
 
 	@Test
-	void editMyProfile_throwsWhenUserIsSoftDeleted() {
-		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
-		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
-		Users user = Users.builder()
-			.email("test@email.com")
-			.password("encoded-password")
-			.nickname("old-nickname")
-			.temperature(50)
-			.level(3)
-			.build();
-		ReflectionTestUtils.setField(user, "deletedAt", Instant.parse("2026-03-30T00:00:00Z"));
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
-
-		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
-			.isInstanceOf(UserNotFoundException.class)
-			.hasMessage("존재하지 않은 유저입니다.");
-
-	}
-
-	@Test
-	void editPassword_updatesPasswordWhenCurrentPasswordMatches() {
-		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+	void editPassword_updatesPasswordOnManagedUserWhenCurrentPasswordMatches() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
 		EditPasswordRequest request = new EditPasswordRequest("current-password", "new-password123");
-		Users user = Users.builder()
-			.email("test@email.com")
-			.password("encoded-current-password")
-			.nickname("tester")
-			.temperature(50)
-			.level(3)
-			.build();
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
 		when(passwordEncoder.encode("new-password123")).thenReturn("encoded-new-password");
 
 		userService.editPassword(loginUser, request);
 
-		assertThat(user.getPassword()).isEqualTo("encoded-new-password");
+		assertThat(managedUser.getPassword()).isEqualTo("encoded-new-password");
 		verify(passwordEncoder).encode("new-password123");
+		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
 	}
 
 	@Test
 	void editPassword_throwsWhenCurrentPasswordDoesNotMatch() {
-		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
 		EditPasswordRequest request = new EditPasswordRequest("wrong-password", "new-password123");
-		Users user = Users.builder()
-			.email("test@email.com")
-			.password("encoded-current-password")
-			.nickname("tester")
-			.temperature(50)
-			.level(3)
-			.build();
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.editPassword(loginUser, request))
@@ -376,67 +305,52 @@ class UserServiceTest {
 	}
 
 	@Test
-	void deleteUser_softDeletesUserAndDeletesRefreshToken() {
-		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+	void deleteUser_softDeletesManagedUserAndDeletesRefreshToken() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
 		DeleteUserRequest request = new DeleteUserRequest("current-password");
-		Users user = Users.builder()
-			.email("test@email.com")
-			.password("encoded-current-password")
-			.nickname("tester")
-			.temperature(50)
-			.level(3)
-			.build();
-		ReflectionTestUtils.setField(user, "id", 1L);
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
 
 		userService.deleteUser(loginUser, request);
 
-		assertThat(user.getDeletedAt()).isNotNull();
-		assertThat(user.getEmail()).startsWith("deleted__1__");
-		assertThat(user.getEmail()).doesNotContain("test@email.com");
-		assertThat(user.getEmail().length()).isLessThanOrEqualTo(255);
+		assertThat(managedUser.getDeletedAt()).isNotNull();
+		assertThat(managedUser.getEmail()).startsWith("deleted__1__");
+		assertThat(managedUser.getEmail()).doesNotContain("test@email.com");
+		assertThat(managedUser.getEmail().length()).isLessThanOrEqualTo(255);
+		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
 	}
 
 	@Test
 	void deleteUser_createsBoundedDeletedEmailForLongOriginalEmail() {
-		LoginUserInfo loginUser = new LoginUserInfo(1L, "very-long@email.com");
+		Users loginUser = authenticatedUser(1L, "very-long@email.com");
+		Users managedUser = authenticatedUser(1L, "very-long@email.com");
 		String longLocalPart = "a".repeat(120);
 		String longDomainPart = "b".repeat(120);
 		String originalEmail = longLocalPart + "@" + longDomainPart + ".com";
 		DeleteUserRequest request = new DeleteUserRequest("current-password");
-		Users user = Users.builder()
-			.email(originalEmail)
-			.password("encoded-current-password")
-			.nickname("tester")
-			.temperature(50)
-			.level(3)
-			.build();
-		ReflectionTestUtils.setField(user, "id", 1L);
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		ReflectionTestUtils.setField(managedUser, "email", originalEmail);
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
 
 		userService.deleteUser(loginUser, request);
 
-		assertThat(user.getEmail().length()).isLessThanOrEqualTo(255);
-		assertThat(user.getEmail()).startsWith("deleted__1__");
-		assertThat(user.getEmail()).doesNotContain(originalEmail);
+		assertThat(managedUser.getEmail().length()).isLessThanOrEqualTo(255);
+		assertThat(managedUser.getEmail()).startsWith("deleted__1__");
+		assertThat(managedUser.getEmail()).doesNotContain(originalEmail);
 		verify(jwtTokenProvider).deleteRefreshToken(originalEmail);
 	}
 
 	@Test
 	void deleteUser_throwsWhenPasswordDoesNotMatch() {
-		LoginUserInfo loginUser = new LoginUserInfo(1L, "test@email.com");
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
 		DeleteUserRequest request = new DeleteUserRequest("wrong-password");
-		Users user = Users.builder()
-			.email("test@email.com")
-			.password("encoded-current-password")
-			.nickname("tester")
-			.temperature(50)
-			.level(3)
-			.build();
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.deleteUser(loginUser, request))
@@ -444,5 +358,17 @@ class UserServiceTest {
 			.hasMessage("현재 비밀번호와 동일하지 않습니다.");
 
 		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
+	}
+
+	private Users authenticatedUser(Long id, String email) {
+		Users user = Users.builder()
+			.email(email)
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		ReflectionTestUtils.setField(user, "id", id);
+		return user;
 	}
 }

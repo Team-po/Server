@@ -20,7 +20,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import team.po.common.auth.LoginUserInfo;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
@@ -123,9 +122,7 @@ public class UserService {
 		return new RefreshTokenResponse(accessToken, jwtTokenProvider.getExpiration(accessToken));
 	}
 
-	public GetProfileResponse getMyProfile(LoginUserInfo loginUser) {
-		Users user = this.getActiveUser(loginUser.id());
-
+	public GetProfileResponse getMyProfile(Users user) {
 		return GetProfileResponse.builder()
 			.email(user.getEmail())
 			.nickname(user.getNickname())
@@ -137,9 +134,13 @@ public class UserService {
 	}
 
 	@Transactional
-	public void editMyProfile(LoginUserInfo loginUser, MultipartFile profileImage, EditProfileRequest request) {
-		Users user = this.getActiveUser(loginUser.id());
-
+	public void editMyProfile(Users loginUser, MultipartFile profileImage, EditProfileRequest request) {
+		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
+			() -> new UserNotFoundException(
+				HttpStatus.UNAUTHORIZED,
+				ErrorCodeConstants.UNEXISTED_USER,
+				"존재하지 않은 유저입니다."
+			));
 		user.editDescription(request.description());
 		user.editLevel(request.level());
 		user.editNickname(request.nickname());
@@ -147,10 +148,15 @@ public class UserService {
 	}
 
 	@Transactional
-	public void editPassword(LoginUserInfo loginUser, EditPasswordRequest request) {
-		Users user = this.getActiveUser(loginUser.id());
+	public void editPassword(Users loginUser, EditPasswordRequest request) {
+		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
+			() -> new UserNotFoundException(
+				HttpStatus.UNAUTHORIZED,
+				ErrorCodeConstants.UNEXISTED_USER,
+				"존재하지 않은 유저입니다."
+			));
 		if (!passwordEncoder.matches(request.currentPassword(), user.getPassword()))
-			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD,"현재 비밀번호와 동일하지 않습니다.");
+			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD, "현재 비밀번호와 동일하지 않습니다.");
 
 		String newPassword = passwordEncoder.encode(request.afterPassword());
 		user.editPassword(newPassword);
@@ -158,10 +164,15 @@ public class UserService {
 	}
 
 	@Transactional
-	public void deleteUser(LoginUserInfo loginUser, DeleteUserRequest request) {
-		Users user = this.getActiveUser(loginUser.id());
+	public void deleteUser(Users loginUser, DeleteUserRequest request) {
+		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
+			() -> new UserNotFoundException(
+				HttpStatus.UNAUTHORIZED,
+				ErrorCodeConstants.UNEXISTED_USER,
+				"존재하지 않은 유저입니다."
+			));
 		if (!passwordEncoder.matches(request.password(), user.getPassword()))
-			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD,"현재 비밀번호와 동일하지 않습니다.");
+			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD, "현재 비밀번호와 동일하지 않습니다.");
 
 		Instant deletedAt = Instant.now();
 		String email = user.getEmail();
@@ -187,15 +198,6 @@ public class UserService {
 		}
 
 		return false;
-	}
-
-	private Users getActiveUser(Long userId) {
-		return userRepository.findByIdAndDeletedAtIsNull(userId)
-			.orElseThrow(() -> new UserNotFoundException(
-				HttpStatus.UNAUTHORIZED,
-				ErrorCodeConstants.UNEXISTED_USER,
-				"존재하지 않은 유저입니다."
-			));
 	}
 
 	private String createDeletedEmail(Long userId, String email, Instant deletedAt) {
