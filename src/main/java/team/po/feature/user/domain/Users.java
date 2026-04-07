@@ -78,4 +78,9 @@ public class Users {
 	public void editPassword(String password) {
 		this.password = password;
 	}
+
+	public void softDelete(Instant deletedAt, String deletedEmail) {
+		this.deletedAt = deletedAt;
+		this.email = deletedEmail;
+	}
 }

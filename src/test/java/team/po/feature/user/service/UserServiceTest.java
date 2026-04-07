@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,15 +20,25 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
+import team.po.feature.user.dto.DeleteUserRequest;
+import team.po.feature.user.dto.EditPasswordRequest;
+import team.po.feature.user.dto.EditProfileRequest;
+import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.dto.RefreshTokenRequest;
+import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.InvalidPasswordException;
+import team.po.feature.user.exception.InvalidTokenException;
+import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -50,7 +61,7 @@ class UserServiceTest {
 
 	@Test
 	void signUp_savesUserWithNormalizedEmailAndEncodedPassword() {
-		SignUpRequest request = new SignUpRequest(" Test@Email.com ", "password123", "tester");
+		SignUpRequest request = new SignUpRequest(" Test@Email.com ", "password123", "tester", 5);
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
 		when(passwordEncoder.encode("password123")).thenReturn("encoded-password");
 
@@ -65,12 +76,12 @@ class UserServiceTest {
 		assertThat(savedUser.getNickname()).isEqualTo("tester");
 		assertThat(savedUser.getDescription()).isNull();
 		assertThat(savedUser.getTemperature()).isEqualTo(50);
-		assertThat(savedUser.getLevel()).isEqualTo(3);
+		assertThat(savedUser.getLevel()).isEqualTo(5);
 	}
 
 	@Test
 	void signUp_throwsWhenEmailAlreadyExists() {
-		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester");
+		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 3);
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(true);
 
 		assertThatThrownBy(() -> userService.signUp(request, null))
@@ -134,5 +145,230 @@ class UserServiceTest {
 		assertThatThrownBy(() -> userService.signIn(request))
 			.isInstanceOf(BadCredentialsException.class)
 			.hasMessage("이메일 또는 비밀번호가 올바르지 않습니다.");
+	}
+
+	@Test
+	void refreshToken_returnsNewAccessTokenWhenRefreshTokenIsValid() {
+		RefreshTokenRequest request = new RefreshTokenRequest("refresh-token");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		Instant accessTokenExpiresAt = Instant.parse("2026-03-16T12:00:00Z");
+
+		when(jwtTokenProvider.validateRefreshToken("refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.getUserId("refresh-token")).thenReturn(1L);
+		when(jwtTokenProvider.getEmail("refresh-token")).thenReturn("test@email.com");
+		when(userRepository.findById(1L)).thenReturn(java.util.Optional.of(user));
+		when(jwtTokenProvider.isRefreshTokenMatched("test@email.com", "refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.generateAccessToken(1L, "test@email.com")).thenReturn("new-access-token");
+		when(jwtTokenProvider.getExpiration("new-access-token")).thenReturn(accessTokenExpiresAt);
+
+		RefreshTokenResponse response = userService.refreshToken(request);
+
+		assertThat(response.accessToken()).isEqualTo("new-access-token");
+		assertThat(response.expiresAt()).isEqualTo(accessTokenExpiresAt);
+	}
+
+	@Test
+	void refreshToken_throwsWhenRefreshTokenIsInvalid() {
+		RefreshTokenRequest request = new RefreshTokenRequest("invalid-refresh-token");
+		when(jwtTokenProvider.validateRefreshToken("invalid-refresh-token")).thenReturn(false);
+
+		assertThatThrownBy(() -> userService.refreshToken(request))
+			.isInstanceOf(InvalidTokenException.class)
+			.hasMessage("유효하지 않은 리프레시 토큰입니다.");
+	}
+
+	@Test
+	void refreshToken_throwsWhenUserDoesNotExist() {
+		RefreshTokenRequest request = new RefreshTokenRequest("refresh-token");
+		when(jwtTokenProvider.validateRefreshToken("refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.getUserId("refresh-token")).thenReturn(1L);
+		when(jwtTokenProvider.getEmail("refresh-token")).thenReturn("test@email.com");
+		when(userRepository.findById(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> userService.refreshToken(request))
+			.isInstanceOf(InvalidTokenException.class)
+			.hasMessage("존재하지 않는 유저의 리프레시 토큰입니다.");
+
+		verify(jwtTokenProvider, never()).isRefreshTokenMatched(any(), any());
+		verify(jwtTokenProvider, never()).generateAccessToken(any(), any());
+	}
+
+	@Test
+	void refreshToken_throwsWhenRefreshTokenDoesNotMatchStoredToken() {
+		RefreshTokenRequest request = new RefreshTokenRequest("refresh-token");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+
+		when(jwtTokenProvider.validateRefreshToken("refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.getUserId("refresh-token")).thenReturn(1L);
+		when(jwtTokenProvider.getEmail("refresh-token")).thenReturn("test@email.com");
+		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+		when(jwtTokenProvider.isRefreshTokenMatched("test@email.com", "refresh-token")).thenReturn(false);
+
+		assertThatThrownBy(() -> userService.refreshToken(request))
+			.isInstanceOf(InvalidTokenException.class)
+			.hasMessage("유효하지 않은 리프레시 토큰입니다.");
+
+		verify(jwtTokenProvider, never()).generateAccessToken(any(), any());
+		verify(jwtTokenProvider, never()).getExpiration(any());
+	}
+
+	@Test
+	void getMyProfile_returnsProfileFromLoginUser() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		loginUser.editProfileImage("profile.png");
+		loginUser.editDescription("hello");
+
+		GetProfileResponse response = userService.getMyProfile(loginUser);
+
+		assertThat(response.email()).isEqualTo("test@email.com");
+		assertThat(response.profileImage()).isEqualTo("profile.png");
+		assertThat(response.description()).isEqualTo("hello");
+		assertThat(response.nickname()).isEqualTo("tester");
+		assertThat(response.temperature()).isEqualTo(50);
+		assertThat(response.level()).isEqualTo(3);
+	}
+
+	@Test
+	void editMyProfile_updatesProfileFieldsOnManagedUser() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
+		managedUser.editProfileImage("profile.png");
+		managedUser.editDescription("old-description");
+		managedUser.editNickname("old-nickname");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+
+		userService.editMyProfile(loginUser, null, request);
+
+		assertThat(managedUser.getDescription()).isEqualTo("updated-description");
+		assertThat(managedUser.getNickname()).isEqualTo("updated-nickname");
+		assertThat(managedUser.getLevel()).isEqualTo(4);
+		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
+	}
+
+	@Test
+	void editMyProfile_throwsWhenAuthenticatedUserDoesNotExist() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
+			.isInstanceOf(UserNotFoundException.class)
+			.hasMessage("존재하지 않은 유저입니다.");
+	}
+
+	@Test
+	void editPassword_updatesPasswordOnManagedUserWhenCurrentPasswordMatches() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		EditPasswordRequest request = new EditPasswordRequest("current-password", "new-password123");
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
+		when(passwordEncoder.encode("new-password123")).thenReturn("encoded-new-password");
+
+		userService.editPassword(loginUser, request);
+
+		assertThat(managedUser.getPassword()).isEqualTo("encoded-new-password");
+		verify(passwordEncoder).encode("new-password123");
+		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
+		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
+	}
+
+	@Test
+	void editPassword_throwsWhenCurrentPasswordDoesNotMatch() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		EditPasswordRequest request = new EditPasswordRequest("wrong-password", "new-password123");
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
+
+		assertThatThrownBy(() -> userService.editPassword(loginUser, request))
+			.isInstanceOf(InvalidPasswordException.class)
+			.hasMessage("현재 비밀번호와 동일하지 않습니다.");
+
+		verify(passwordEncoder, never()).encode(any());
+		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
+	}
+
+	@Test
+	void deleteUser_softDeletesManagedUserAndDeletesRefreshToken() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		DeleteUserRequest request = new DeleteUserRequest("current-password");
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
+
+		userService.deleteUser(loginUser, request);
+
+		assertThat(managedUser.getDeletedAt()).isNotNull();
+		assertThat(managedUser.getEmail()).startsWith("deleted__1__");
+		assertThat(managedUser.getEmail()).doesNotContain("test@email.com");
+		assertThat(managedUser.getEmail().length()).isLessThanOrEqualTo(255);
+		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
+		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
+	}
+
+	@Test
+	void deleteUser_createsBoundedDeletedEmailForLongOriginalEmail() {
+		Users loginUser = authenticatedUser(1L, "very-long@email.com");
+		Users managedUser = authenticatedUser(1L, "very-long@email.com");
+		String longLocalPart = "a".repeat(120);
+		String longDomainPart = "b".repeat(120);
+		String originalEmail = longLocalPart + "@" + longDomainPart + ".com";
+		DeleteUserRequest request = new DeleteUserRequest("current-password");
+		ReflectionTestUtils.setField(managedUser, "email", originalEmail);
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
+
+		userService.deleteUser(loginUser, request);
+
+		assertThat(managedUser.getEmail().length()).isLessThanOrEqualTo(255);
+		assertThat(managedUser.getEmail()).startsWith("deleted__1__");
+		assertThat(managedUser.getEmail()).doesNotContain(originalEmail);
+		verify(jwtTokenProvider).deleteRefreshToken(originalEmail);
+	}
+
+	@Test
+	void deleteUser_throwsWhenPasswordDoesNotMatch() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		DeleteUserRequest request = new DeleteUserRequest("wrong-password");
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
+
+		assertThatThrownBy(() -> userService.deleteUser(loginUser, request))
+			.isInstanceOf(InvalidPasswordException.class)
+			.hasMessage("현재 비밀번호와 동일하지 않습니다.");
+
+		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
+	}
+
+	private Users authenticatedUser(Long id, String email) {
+		Users user = Users.builder()
+			.email(email)
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		ReflectionTestUtils.setField(user, "id", id);
+		return user;
 	}
 }

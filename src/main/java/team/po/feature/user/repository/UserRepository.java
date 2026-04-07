@@ -12,9 +12,11 @@ public interface UserRepository extends JpaRepository<Users, Long> {
 
 	public Optional<Users> findByEmail(String email);
 
-	public Optional<Users> findByEmailAndDeletedAtIsNull(String email);
+	public Optional<Users> findById(Long id);
 
 	public Optional<Users> findByIdAndDeletedAtIsNull(Long id);
+
+	public Optional<Users> findByEmailAndDeletedAtIsNull(String email);
 
 	public List<Users> findAllByIdInAndDeletedAtIsNull(List<Long> ids);
 }

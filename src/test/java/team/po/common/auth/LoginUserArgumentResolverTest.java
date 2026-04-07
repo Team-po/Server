@@ -69,7 +69,6 @@ class LoginUserArgumentResolverTest {
 			.build();
 		ReflectionTestUtils.setField(user, "id", 1L);
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
-
 		UsernamePasswordAuthenticationToken authentication =
 			new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
 		SecurityContextHolder.getContext().setAuthentication(authentication);
