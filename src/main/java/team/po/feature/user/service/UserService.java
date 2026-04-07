@@ -37,6 +37,7 @@ import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidPasswordException;
 import team.po.feature.user.exception.InvalidTokenException;
+import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
 
 @Slf4j
@@ -133,7 +134,13 @@ public class UserService {
 	}
 
 	@Transactional
-	public void editMyProfile(Users user, MultipartFile profileImage, EditProfileRequest request) {
+	public void editMyProfile(Users loginUser, MultipartFile profileImage, EditProfileRequest request) {
+		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
+			() -> new UserNotFoundException(
+				HttpStatus.UNAUTHORIZED,
+				ErrorCodeConstants.UNEXISTED_USER,
+				"존재하지 않은 유저입니다."
+			));
 		user.editDescription(request.description());
 		user.editLevel(request.level());
 		user.editNickname(request.nickname());
@@ -141,9 +148,15 @@ public class UserService {
 	}
 
 	@Transactional
-	public void editPassword(Users user, EditPasswordRequest request) {
+	public void editPassword(Users loginUser, EditPasswordRequest request) {
+		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
+			() -> new UserNotFoundException(
+				HttpStatus.UNAUTHORIZED,
+				ErrorCodeConstants.UNEXISTED_USER,
+				"존재하지 않은 유저입니다."
+			));
 		if (!passwordEncoder.matches(request.currentPassword(), user.getPassword()))
-			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD,"현재 비밀번호와 동일하지 않습니다.");
+			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD, "현재 비밀번호와 동일하지 않습니다.");
 
 		String newPassword = passwordEncoder.encode(request.afterPassword());
 		user.editPassword(newPassword);
@@ -151,9 +164,15 @@ public class UserService {
 	}
 
 	@Transactional
-	public void deleteUser(Users user, DeleteUserRequest request) {
+	public void deleteUser(Users loginUser, DeleteUserRequest request) {
+		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
+			() -> new UserNotFoundException(
+				HttpStatus.UNAUTHORIZED,
+				ErrorCodeConstants.UNEXISTED_USER,
+				"존재하지 않은 유저입니다."
+			));
 		if (!passwordEncoder.matches(request.password(), user.getPassword()))
-			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD,"현재 비밀번호와 동일하지 않습니다.");
+			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD, "현재 비밀번호와 동일하지 않습니다.");
 
 		Instant deletedAt = Instant.now();
 		String email = user.getEmail();

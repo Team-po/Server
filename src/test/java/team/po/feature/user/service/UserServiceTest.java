@@ -38,6 +38,7 @@ import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidPasswordException;
 import team.po.feature.user.exception.InvalidTokenException;
+import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -240,40 +241,59 @@ class UserServiceTest {
 	}
 
 	@Test
-	void editMyProfile_updatesProfileFieldsOnLoginUser() {
+	void editMyProfile_updatesProfileFieldsOnManagedUser() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
 		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
-		loginUser.editProfileImage("profile.png");
-		loginUser.editDescription("old-description");
-		loginUser.editNickname("old-nickname");
+		managedUser.editProfileImage("profile.png");
+		managedUser.editDescription("old-description");
+		managedUser.editNickname("old-nickname");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 
 		userService.editMyProfile(loginUser, null, request);
 
-		assertThat(loginUser.getDescription()).isEqualTo("updated-description");
-		assertThat(loginUser.getNickname()).isEqualTo("updated-nickname");
-		assertThat(loginUser.getLevel()).isEqualTo(4);
+		assertThat(managedUser.getDescription()).isEqualTo("updated-description");
+		assertThat(managedUser.getNickname()).isEqualTo("updated-nickname");
+		assertThat(managedUser.getLevel()).isEqualTo(4);
+		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 	}
 
 	@Test
-	void editPassword_updatesPasswordWhenCurrentPasswordMatches() {
+	void editMyProfile_throwsWhenAuthenticatedUserDoesNotExist() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
+			.isInstanceOf(UserNotFoundException.class)
+			.hasMessage("존재하지 않은 유저입니다.");
+	}
+
+	@Test
+	void editPassword_updatesPasswordOnManagedUserWhenCurrentPasswordMatches() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
 		EditPasswordRequest request = new EditPasswordRequest("current-password", "new-password123");
-		loginUser.editPassword("encoded-current-password");
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
 		when(passwordEncoder.encode("new-password123")).thenReturn("encoded-new-password");
 
 		userService.editPassword(loginUser, request);
 
-		assertThat(loginUser.getPassword()).isEqualTo("encoded-new-password");
+		assertThat(managedUser.getPassword()).isEqualTo("encoded-new-password");
 		verify(passwordEncoder).encode("new-password123");
+		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
 	}
 
 	@Test
 	void editPassword_throwsWhenCurrentPasswordDoesNotMatch() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
 		EditPasswordRequest request = new EditPasswordRequest("wrong-password", "new-password123");
-		loginUser.editPassword("encoded-current-password");
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.editPassword(loginUser, request))
@@ -285,45 +305,52 @@ class UserServiceTest {
 	}
 
 	@Test
-	void deleteUser_softDeletesUserAndDeletesRefreshToken() {
+	void deleteUser_softDeletesManagedUserAndDeletesRefreshToken() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
 		DeleteUserRequest request = new DeleteUserRequest("current-password");
-		loginUser.editPassword("encoded-current-password");
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
 
 		userService.deleteUser(loginUser, request);
 
-		assertThat(loginUser.getDeletedAt()).isNotNull();
-		assertThat(loginUser.getEmail()).startsWith("deleted__1__");
-		assertThat(loginUser.getEmail()).doesNotContain("test@email.com");
-		assertThat(loginUser.getEmail().length()).isLessThanOrEqualTo(255);
+		assertThat(managedUser.getDeletedAt()).isNotNull();
+		assertThat(managedUser.getEmail()).startsWith("deleted__1__");
+		assertThat(managedUser.getEmail()).doesNotContain("test@email.com");
+		assertThat(managedUser.getEmail().length()).isLessThanOrEqualTo(255);
+		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
 	}
 
 	@Test
 	void deleteUser_createsBoundedDeletedEmailForLongOriginalEmail() {
 		Users loginUser = authenticatedUser(1L, "very-long@email.com");
+		Users managedUser = authenticatedUser(1L, "very-long@email.com");
 		String longLocalPart = "a".repeat(120);
 		String longDomainPart = "b".repeat(120);
 		String originalEmail = longLocalPart + "@" + longDomainPart + ".com";
 		DeleteUserRequest request = new DeleteUserRequest("current-password");
-		ReflectionTestUtils.setField(loginUser, "email", originalEmail);
-		loginUser.editPassword("encoded-current-password");
+		ReflectionTestUtils.setField(managedUser, "email", originalEmail);
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
 
 		userService.deleteUser(loginUser, request);
 
-		assertThat(loginUser.getEmail().length()).isLessThanOrEqualTo(255);
-		assertThat(loginUser.getEmail()).startsWith("deleted__1__");
-		assertThat(loginUser.getEmail()).doesNotContain(originalEmail);
+		assertThat(managedUser.getEmail().length()).isLessThanOrEqualTo(255);
+		assertThat(managedUser.getEmail()).startsWith("deleted__1__");
+		assertThat(managedUser.getEmail()).doesNotContain(originalEmail);
 		verify(jwtTokenProvider).deleteRefreshToken(originalEmail);
 	}
 
 	@Test
 	void deleteUser_throwsWhenPasswordDoesNotMatch() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
 		DeleteUserRequest request = new DeleteUserRequest("wrong-password");
-		loginUser.editPassword("encoded-current-password");
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.deleteUser(loginUser, request))
