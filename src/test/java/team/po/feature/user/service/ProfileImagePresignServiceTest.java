@@ -35,11 +35,11 @@ class ProfileImagePresignServiceTest {
 	@Mock
 	private PresignedPutObjectRequest presignedPutObjectRequest;
 
-	private ProfileImagePresignService profileImagePresignService;
+	private ImageService profileImagePresignService;
 
 	@BeforeEach
 	void setUp() {
-		profileImagePresignService = new ProfileImagePresignService(s3Presigner);
+		profileImagePresignService = new ImageService(s3Presigner);
 		ReflectionTestUtils.setField(profileImagePresignService, "bucket", "team-po");
 		ReflectionTestUtils.setField(profileImagePresignService, "dir", "images");
 		ReflectionTestUtils.setField(profileImagePresignService, "presignedExpiration", java.time.Duration.ofMinutes(5));

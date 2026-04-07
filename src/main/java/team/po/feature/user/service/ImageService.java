@@ -24,7 +24,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
 
 @Service
 @RequiredArgsConstructor
-public class ProfileImagePresignService {
+public class ImageService {
 	private static final Map<String, String> CONTENT_TYPE_TO_EXTENSION = Map.of(
 		"image/jpeg", "jpg",
 		"image/png", "png",

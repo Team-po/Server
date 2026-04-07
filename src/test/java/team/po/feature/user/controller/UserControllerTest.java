@@ -44,7 +44,7 @@ import team.po.feature.user.exception.InvalidImageContentTypeException;
 import team.po.feature.user.exception.InvalidPasswordException;
 import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.exception.UserNotFoundException;
-import team.po.feature.user.service.ProfileImagePresignService;
+import team.po.feature.user.service.ImageService;
 import team.po.feature.user.service.UserService;
 
 @WebMvcTest(UserController.class)
@@ -59,7 +59,7 @@ class UserControllerTest {
 	private UserService userService;
 
 	@MockitoBean
-	private ProfileImagePresignService profileImagePresignService;
+	private ImageService profileImagePresignService;
 
 	@AfterEach
 	void tearDown() {

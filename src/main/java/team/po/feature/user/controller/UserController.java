@@ -1,7 +1,6 @@
 package team.po.feature.user.controller;
 
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.Errors;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,7 +31,7 @@ import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.RefreshTokenRequest;
-import team.po.feature.user.service.ProfileImagePresignService;
+import team.po.feature.user.service.ImageService;
 import team.po.feature.user.service.UserService;
 
 @RestController
@@ -40,7 +39,7 @@ import team.po.feature.user.service.UserService;
 @RequestMapping("/api/users")
 public class UserController {
 	private final UserService userService;
-	private final ProfileImagePresignService profileImagePresignService;
+	private final ImageService imageService;
 
 	@Operation(summary = "회원 가입 API")
 	@PostMapping(value = "/sign-up")
@@ -63,7 +62,7 @@ public class UserController {
 			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
 		}
 
-		ProfileImageUploadUrlResponse response = profileImagePresignService.createSignUpUploadUrl(request);
+		ProfileImageUploadUrlResponse response = imageService.createSignUpUploadUrl(request);
 		return ResponseEntity.ok(response);
 	}
 
@@ -126,7 +125,7 @@ public class UserController {
 			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
 		}
 
-		ProfileImageUploadUrlResponse response = profileImagePresignService.createProfileUploadUrl(user, request);
+		ProfileImageUploadUrlResponse response = imageService.createProfileUploadUrl(user, request);
 		return ResponseEntity.ok(response);
 	}
 
