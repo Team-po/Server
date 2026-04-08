@@ -11,4 +11,9 @@ public final class ErrorCodeConstants extends RuntimeException {
 	public static final String NO_AUTHENTICATED_USER = "NO_AUTHENTICATED_USER";
 	public static final String INVALID_SECURITY_CONTEXT = "INVALID_SECURITY_CONTEXT";
 	public static final String UNMATCHED_PASSWORD = "UNMATCHED_PASSWORD";
+
+	// ProjectRequest
+	public static final String PROJECT_REQUEST_NOT_FOUND = "PROJECT_REQUEST_NOT_FOUND";
+	public static final String PROJECT_REQUEST_ALREADY_EXISTS = "PROJECT_REQUEST_ALREADY_EXISTS";
+	public static final String PROJECT_REQUEST_CANCEL_NOT_ALLOWED = "PROJECT_REQUEST_CANCEL_NOT_ALLOWED";
 }
