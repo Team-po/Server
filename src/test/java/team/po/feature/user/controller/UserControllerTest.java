@@ -128,6 +128,31 @@ class UserControllerTest {
 	}
 
 	@Test
+	void signUp_returnsBadRequest_whenProfileImageKeyIsTooLong() throws Exception {
+		String longFileName = "a".repeat(250) + ".png";
+		String profileImageKey = "images/sign-up/" + longFileName;
+
+		mockMvc.perform(post("/api/users/sign-up")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(signUpRequestJson("test@email.com", "password123", "tester", 3, profileImageKey)))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.fieldErrors.profileImageKey").value("프로필 이미지 키는 255자 이하여야 합니다."));
+	}
+
+	@Test
+	void signUp_returnsBadRequest_whenProfileImageKeyHasInvalidPattern() throws Exception {
+		mockMvc.perform(post("/api/users/sign-up")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(signUpRequestJson("test@email.com", "password123", "tester", 3, "https://evil.com/image.png")))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.fieldErrors.profileImageKey").value("프로필 이미지 키 형식이 올바르지 않습니다."));
+	}
+
+	@Test
 	void checkEmailDuplicate_returnsOk_whenEmailIsAvailable() throws Exception {
 		doNothing().when(userService).checkEmailDuplication("test@email.com");
 
@@ -391,6 +416,34 @@ class UserControllerTest {
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
 			.andExpect(jsonPath("$.fieldErrors.nickname").value("닉네임 입력은 필수입니다."))
 			.andExpect(jsonPath("$.fieldErrors.level").value("레벨은 1 이상이어야 합니다."));
+	}
+
+	@Test
+	void editMyProfile_returnsBadRequest_whenProfileImageKeyIsTooLong() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+		String longFileName = "a".repeat(250) + ".png";
+		String profileImageKey = "images/users/1/" + longFileName;
+
+		mockMvc.perform(put("/api/users/me")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(editProfileRequestJson("updated-description", "updated-nickname", 4, profileImageKey)))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.fieldErrors.profileImageKey").value("프로필 이미지 키는 255자 이하여야 합니다."));
+	}
+
+	@Test
+	void editMyProfile_returnsBadRequest_whenProfileImageKeyHasInvalidPattern() throws Exception {
+		setAuthenticatedUser(1L, "test@email.com");
+
+		mockMvc.perform(put("/api/users/me")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(editProfileRequestJson("updated-description", "updated-nickname", 4, "../evil.png")))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.fieldErrors.profileImageKey").value("프로필 이미지 키 형식이 올바르지 않습니다."));
 	}
 
 	@Test
