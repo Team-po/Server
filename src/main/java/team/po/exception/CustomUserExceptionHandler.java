@@ -14,6 +14,7 @@ import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidAuthenticationException;
 import team.po.feature.user.exception.InvalidImageContentTypeException;
 import team.po.feature.user.exception.InvalidPasswordException;
+import team.po.feature.user.exception.InvalidProfileImageKeyException;
 import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.exception.UserNotFoundException;
 
@@ -73,6 +74,12 @@ public class CustomUserExceptionHandler {
 
 	@ExceptionHandler(InvalidImageContentTypeException.class)
 	protected ResponseEntity<ExceptionResponse> invalidImageContentTypeException(InvalidImageContentTypeException e) {
+		return ResponseEntity.status(e.getCode())
+			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
+	}
+
+	@ExceptionHandler(InvalidProfileImageKeyException.class)
+	protected ResponseEntity<ExceptionResponse> invalidProfileImageKeyException(InvalidProfileImageKeyException e) {
 		return ResponseEntity.status(e.getCode())
 			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
 	}

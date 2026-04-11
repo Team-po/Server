@@ -33,6 +33,7 @@ public class ImageService {
 	);
 
 	private final S3Presigner s3Presigner;
+	private final ProfileImageRedisService profileImageRedisService;
 
 	@Value("${cloud.aws.s3.bucket}")
 	private String bucket;
@@ -46,13 +47,17 @@ public class ImageService {
 	public ProfileImageUploadUrlResponse createSignUpUploadUrl(ProfileImageUploadUrlRequest request) {
 		String contentType = normalizeAndValidateContentType(request.contentType());
 		String objectKey = buildSignUpObjectKey(extensionOf(contentType));
-		return createUploadUrl(objectKey, contentType);
+		ProfileImageUploadUrlResponse response = createUploadUrl(objectKey, contentType);
+		profileImageRedisService.createSignUpTicket(objectKey, contentType);
+		return response;
 	}
 
 	public ProfileImageUploadUrlResponse createProfileUploadUrl(Users loginUser, ProfileImageUploadUrlRequest request) {
 		String contentType = normalizeAndValidateContentType(request.contentType());
 		String objectKey = buildProfileObjectKey(loginUser.getId(), extensionOf(contentType));
-		return createUploadUrl(objectKey, contentType);
+		ProfileImageUploadUrlResponse response = createUploadUrl(objectKey, contentType);
+		profileImageRedisService.createProfileUpdateTicket(loginUser.getId(), objectKey, contentType);
+		return response;
 	}
 
 	private ProfileImageUploadUrlResponse createUploadUrl(String objectKey, String contentType) {

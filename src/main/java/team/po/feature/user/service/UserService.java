@@ -47,6 +47,7 @@ public class UserService {
 	private final PasswordEncoder passwordEncoder;
 	private final AuthenticationManager authenticationManager;
 	private final JwtTokenProvider jwtTokenProvider;
+	private final ProfileImageRedisService profileImageRedisService;
 	@Value("${cloud.aws.s3.endpoint:}")
 	private String s3Endpoint;
 	@Value("${cloud.aws.s3.bucket}")
@@ -55,6 +56,9 @@ public class UserService {
 	public void signUp(SignUpRequest signUpRequest) {
 		String normalizedEmail = this.normalizeEmail(signUpRequest.email());
 		this.checkEmailDuplication(normalizedEmail);
+		if (signUpRequest.profileImageKey() != null) {
+			profileImageRedisService.consumeSignUpTicket(signUpRequest.profileImageKey());
+		}
 		String password = passwordEncoder.encode(signUpRequest.password());
 
 		Users user = Users.builder().email(normalizedEmail).password(password)
@@ -137,6 +141,9 @@ public class UserService {
 
 	@Transactional
 	public void editMyProfile(Users loginUser, EditProfileRequest request) {
+		if (request.profileImageKey() != null) {
+			profileImageRedisService.consumeProfileUpdateTicket(loginUser.getId(), request.profileImageKey());
+		}
 		loginUser.editDescription(request.description());
 		loginUser.editLevel(request.level());
 		loginUser.editNickname(request.nickname());

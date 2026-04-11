@@ -38,6 +38,7 @@ import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidPasswordException;
+import team.po.feature.user.exception.InvalidProfileImageKeyException;
 import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
@@ -56,6 +57,9 @@ class UserServiceTest {
 
 	@Mock
 	private JwtTokenProvider jwtTokenProvider;
+
+	@Mock
+	private ProfileImageRedisService profileImageRedisService;
 
 	@InjectMocks
 	private UserService userService;
@@ -85,6 +89,25 @@ class UserServiceTest {
 		assertThat(savedUser.getDescription()).isNull();
 		assertThat(savedUser.getTemperature()).isEqualTo(50);
 		assertThat(savedUser.getLevel()).isEqualTo(5);
+		verify(profileImageRedisService).consumeSignUpTicket("images/sign-up/test.png");
+	}
+
+	@Test
+	void signUp_throwsWhenProfileImageKeyWasNotIssued() {
+		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 5, "images/sign-up/test.png");
+		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
+		org.mockito.Mockito.doThrow(new InvalidProfileImageKeyException(
+			org.springframework.http.HttpStatus.BAD_REQUEST,
+			team.po.exception.ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY,
+			"발급되지 않았거나 만료된 프로필 이미지 키입니다."
+		)).when(profileImageRedisService).consumeSignUpTicket("images/sign-up/test.png");
+
+		assertThatThrownBy(() -> userService.signUp(request))
+			.isInstanceOf(InvalidProfileImageKeyException.class)
+			.hasMessage("발급되지 않았거나 만료된 프로필 이미지 키입니다.");
+
+		verify(passwordEncoder, never()).encode(any());
+		verify(userRepository, never()).save(any());
 	}
 
 	@Test
@@ -262,6 +285,25 @@ class UserServiceTest {
 		assertThat(loginUser.getNickname()).isEqualTo("updated-nickname");
 		assertThat(loginUser.getLevel()).isEqualTo(4);
 		assertThat(loginUser.getProfileImage()).isEqualTo("images/users/1/new.png");
+		verify(profileImageRedisService).consumeProfileUpdateTicket(1L, "images/users/1/new.png");
+	}
+
+	@Test
+	void editMyProfile_throwsWhenProfileImageKeyWasNotIssuedForLoginUser() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4, "images/users/1/new.png");
+		loginUser.editProfileImage("profile.png");
+		org.mockito.Mockito.doThrow(new InvalidProfileImageKeyException(
+			org.springframework.http.HttpStatus.BAD_REQUEST,
+			team.po.exception.ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY,
+			"발급되지 않았거나 만료된 프로필 이미지 키입니다."
+		)).when(profileImageRedisService).consumeProfileUpdateTicket(1L, "images/users/1/new.png");
+
+		assertThatThrownBy(() -> userService.editMyProfile(loginUser, request))
+			.isInstanceOf(InvalidProfileImageKeyException.class)
+			.hasMessage("발급되지 않았거나 만료된 프로필 이미지 키입니다.");
+
+		assertThat(loginUser.getProfileImage()).isEqualTo("profile.png");
 	}
 
 	@Test

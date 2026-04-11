@@ -35,11 +35,14 @@ class ProfileImagePresignServiceTest {
 	@Mock
 	private PresignedPutObjectRequest presignedPutObjectRequest;
 
+	@Mock
+	private ProfileImageRedisService profileImageRedisService;
+
 	private ImageService profileImagePresignService;
 
 	@BeforeEach
 	void setUp() {
-		profileImagePresignService = new ImageService(s3Presigner);
+		profileImagePresignService = new ImageService(s3Presigner, profileImageRedisService);
 		ReflectionTestUtils.setField(profileImagePresignService, "bucket", "team-po");
 		ReflectionTestUtils.setField(profileImagePresignService, "dir", "images");
 		ReflectionTestUtils.setField(profileImagePresignService, "presignedExpiration", java.time.Duration.ofMinutes(5));
@@ -67,6 +70,7 @@ class ProfileImagePresignServiceTest {
 		assertThat(putObjectRequest.bucket()).isEqualTo("team-po");
 		assertThat(putObjectRequest.key()).isEqualTo(response.objectKey());
 		assertThat(putObjectRequest.contentType()).isEqualTo("image/png");
+		verify(profileImageRedisService).createProfileUpdateTicket(1L, response.objectKey(), "image/png");
 	}
 
 	@Test
@@ -105,6 +109,7 @@ class ProfileImagePresignServiceTest {
 		assertThat(response.objectKey()).startsWith("images/sign-up/");
 		assertThat(response.objectKey()).endsWith(".webp");
 		assertThat(response.contentType()).isEqualTo("image/webp");
+		verify(profileImageRedisService).createSignUpTicket(response.objectKey(), "image/webp");
 	}
 
 	private Users authenticatedUser(Long id, String email) {

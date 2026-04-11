@@ -45,6 +45,7 @@ import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidImageContentTypeException;
 import team.po.feature.user.exception.InvalidPasswordException;
+import team.po.feature.user.exception.InvalidProfileImageKeyException;
 import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.service.ImageService;
@@ -388,6 +389,27 @@ class UserControllerTest {
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_IMAGE_CONTENT_TYPE))
 			.andExpect(jsonPath("$.message").value("지원하지 않는 이미지 형식입니다."));
+	}
+
+	@Test
+	void editMyProfile_returnsBadRequest_whenProfileImageKeyWasNotIssued() throws Exception {
+		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
+		doThrow(new InvalidProfileImageKeyException(
+			HttpStatus.BAD_REQUEST,
+			ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY,
+			"발급되지 않았거나 만료된 프로필 이미지 키입니다."
+		)).when(userService).editMyProfile(
+			authenticatedUser,
+			new EditProfileRequest("updated-description", "updated-nickname", 4, "images/users/1/test.png")
+		);
+
+		mockMvc.perform(put("/api/users/me")
+				.with(csrf())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(editProfileRequestJson("updated-description", "updated-nickname", 4, "images/users/1/test.png")))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY))
+			.andExpect(jsonPath("$.message").value("발급되지 않았거나 만료된 프로필 이미지 키입니다."));
 	}
 
 	@Test
