@@ -35,8 +35,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import team.po.exception.CustomExceptionHandler;
 import team.po.common.jwt.UserPrincipal;
-import team.po.exception.CustomUserExceptionHandler;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.DeleteUserRequest;
@@ -54,7 +54,7 @@ import team.po.feature.user.service.UserService;
 
 @WebMvcTest(UserController.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(CustomUserExceptionHandler.class)
+@Import(CustomExceptionHandler.class)
 class UserControllerTest {
 
 	@Autowired

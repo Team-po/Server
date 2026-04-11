@@ -1,5 +1,6 @@
 package team.po.feature.user.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,4 +17,6 @@ public interface UserRepository extends JpaRepository<Users, Long> {
 	public Optional<Users> findByIdAndDeletedAtIsNull(Long id);
 
 	public Optional<Users> findByEmailAndDeletedAtIsNull(String email);
+
+	public List<Users> findAllByIdInAndDeletedAtIsNull(List<Long> ids);
 }
