@@ -42,6 +42,7 @@ public class SecurityConfig {
 				.requestMatchers(HttpMethod.POST, "/api/users/sign-in").permitAll()
 				.requestMatchers(HttpMethod.POST, "/api/users/refresh-token").permitAll()
 				.requestMatchers(HttpMethod.GET, "/api/users/check-email").permitAll()
+				.requestMatchers(HttpMethod.POST, "/api/users/profile-image/upload-url").permitAll()
 				.requestMatchers("/error").permitAll()
 				.anyRequest().authenticated()
 			)

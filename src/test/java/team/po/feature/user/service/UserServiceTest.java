@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.time.Instant;
 import java.util.Optional;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -37,6 +38,7 @@ import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
 import team.po.feature.user.exception.InvalidPasswordException;
+import team.po.feature.user.exception.InvalidProfileImageKeyException;
 import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
@@ -56,16 +58,25 @@ class UserServiceTest {
 	@Mock
 	private JwtTokenProvider jwtTokenProvider;
 
+	@Mock
+	private ProfileImageRedisService profileImageRedisService;
+
 	@InjectMocks
 	private UserService userService;
 
+	@BeforeEach
+	void setUp() {
+		ReflectionTestUtils.setField(userService, "s3Endpoint", "https://storage.hwangdo.kr");
+		ReflectionTestUtils.setField(userService, "bucket", "team-po");
+	}
+
 	@Test
 	void signUp_savesUserWithNormalizedEmailAndEncodedPassword() {
-		SignUpRequest request = new SignUpRequest(" Test@Email.com ", "password123", "tester", 5);
+		SignUpRequest request = new SignUpRequest(" Test@Email.com ", "password123", "tester", 5, "images/sign-up/test.png");
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
 		when(passwordEncoder.encode("password123")).thenReturn("encoded-password");
 
-		userService.signUp(request, null);
+		userService.signUp(request);
 
 		ArgumentCaptor<Users> usersCaptor = ArgumentCaptor.forClass(Users.class);
 		verify(userRepository).save(usersCaptor.capture());
@@ -74,17 +85,37 @@ class UserServiceTest {
 		assertThat(savedUser.getEmail()).isEqualTo("test@email.com");
 		assertThat(savedUser.getPassword()).isEqualTo("encoded-password");
 		assertThat(savedUser.getNickname()).isEqualTo("tester");
+		assertThat(savedUser.getProfileImage()).isEqualTo("images/sign-up/test.png");
 		assertThat(savedUser.getDescription()).isNull();
 		assertThat(savedUser.getTemperature()).isEqualTo(50);
 		assertThat(savedUser.getLevel()).isEqualTo(5);
+		verify(profileImageRedisService).consumeSignUpTicket("images/sign-up/test.png");
+	}
+
+	@Test
+	void signUp_throwsWhenProfileImageKeyWasNotIssued() {
+		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 5, "images/sign-up/test.png");
+		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
+		org.mockito.Mockito.doThrow(new InvalidProfileImageKeyException(
+			org.springframework.http.HttpStatus.BAD_REQUEST,
+			team.po.exception.ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY,
+			"발급되지 않았거나 만료된 프로필 이미지 키입니다."
+		)).when(profileImageRedisService).consumeSignUpTicket("images/sign-up/test.png");
+
+		assertThatThrownBy(() -> userService.signUp(request))
+			.isInstanceOf(InvalidProfileImageKeyException.class)
+			.hasMessage("발급되지 않았거나 만료된 프로필 이미지 키입니다.");
+
+		verify(passwordEncoder, never()).encode(any());
+		verify(userRepository, never()).save(any());
 	}
 
 	@Test
 	void signUp_throwsWhenEmailAlreadyExists() {
-		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 3);
+		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 3, null);
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(true);
 
-		assertThatThrownBy(() -> userService.signUp(request, null))
+		assertThatThrownBy(() -> userService.signUp(request))
 			.isInstanceOf(DuplicatedEmailException.class);
 
 		verify(passwordEncoder, never()).encode(any());
@@ -233,7 +264,7 @@ class UserServiceTest {
 		GetProfileResponse response = userService.getMyProfile(loginUser);
 
 		assertThat(response.email()).isEqualTo("test@email.com");
-		assertThat(response.profileImage()).isEqualTo("profile.png");
+		assertThat(response.profileImage()).isEqualTo("https://storage.hwangdo.kr/team-po/profile.png");
 		assertThat(response.description()).isEqualTo("hello");
 		assertThat(response.nickname()).isEqualTo("tester");
 		assertThat(response.temperature()).isEqualTo(50);
@@ -243,30 +274,36 @@ class UserServiceTest {
 	@Test
 	void editMyProfile_updatesProfileFieldsOnManagedUser() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
-		Users managedUser = authenticatedUser(1L, "test@email.com");
-		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
-		managedUser.editProfileImage("profile.png");
-		managedUser.editDescription("old-description");
-		managedUser.editNickname("old-nickname");
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4, "images/users/1/new.png");
+		loginUser.editProfileImage("profile.png");
+		loginUser.editDescription("old-description");
+		loginUser.editNickname("old-nickname");
 
-		userService.editMyProfile(loginUser, null, request);
+		userService.editMyProfile(loginUser, request);
 
-		assertThat(managedUser.getDescription()).isEqualTo("updated-description");
-		assertThat(managedUser.getNickname()).isEqualTo("updated-nickname");
-		assertThat(managedUser.getLevel()).isEqualTo(4);
-		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
+		assertThat(loginUser.getDescription()).isEqualTo("updated-description");
+		assertThat(loginUser.getNickname()).isEqualTo("updated-nickname");
+		assertThat(loginUser.getLevel()).isEqualTo(4);
+		assertThat(loginUser.getProfileImage()).isEqualTo("images/users/1/new.png");
+		verify(profileImageRedisService).consumeProfileUpdateTicket(1L, "images/users/1/new.png");
 	}
 
 	@Test
-	void editMyProfile_throwsWhenAuthenticatedUserDoesNotExist() {
+	void editMyProfile_throwsWhenProfileImageKeyWasNotIssuedForLoginUser() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
-		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4);
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4, "images/users/1/new.png");
+		loginUser.editProfileImage("profile.png");
+		org.mockito.Mockito.doThrow(new InvalidProfileImageKeyException(
+			org.springframework.http.HttpStatus.BAD_REQUEST,
+			team.po.exception.ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY,
+			"발급되지 않았거나 만료된 프로필 이미지 키입니다."
+		)).when(profileImageRedisService).consumeProfileUpdateTicket(1L, "images/users/1/new.png");
 
-		assertThatThrownBy(() -> userService.editMyProfile(loginUser, null, request))
-			.isInstanceOf(UserNotFoundException.class)
-			.hasMessage("존재하지 않은 유저입니다.");
+		assertThatThrownBy(() -> userService.editMyProfile(loginUser, request))
+			.isInstanceOf(InvalidProfileImageKeyException.class)
+			.hasMessage("발급되지 않았거나 만료된 프로필 이미지 키입니다.");
+
+		assertThat(loginUser.getProfileImage()).isEqualTo("profile.png");
 	}
 
 	@Test
