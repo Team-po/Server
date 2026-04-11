@@ -11,7 +11,9 @@ import team.po.feature.projectgroup.domain.ProjectGroupMember;
 public interface ProjectGroupMemberRepository extends JpaRepository<ProjectGroupMember, Long> {
 	boolean existsByUser_IdIn(List<Long> userIds);
 
-	Optional<ProjectGroupMember> findByProjectGroup_IdAndGroupRole(Long projectGroupId, GroupRole groupRole);	//역할조회용
+	Optional<ProjectGroupMember> findByProjectGroup_IdAndGroupRole(Long projectGroupId, GroupRole groupRole);
 
-	List<ProjectGroupMember> findAllByProjectGroup_Id(Long projectGroupId);	//멤버 전체조회
+	Optional<ProjectGroupMember> findByProjectGroup_IdAndUser_Id(Long projectGroupId, Long userId);
+
+	List<ProjectGroupMember> findAllByProjectGroup_Id(Long projectGroupId);
 }

@@ -30,8 +30,8 @@ public class ProjectGroup {
 	@Column(name = "project_title", nullable = false)
 	private String projectTitle;
 
-	@Column(name = "match_id", nullable = false, unique = true)
-	private Long matchId;
+	@Column(name = "group_id", nullable = false, unique = true)
+	private Long groupId;
 
 	@Column(name = "project_description")
 	private String projectDescription;
@@ -50,14 +50,14 @@ public class ProjectGroup {
 	public ProjectGroup(
 		String projectName,
 		String projectTitle,
-		Long matchId,
+		Long groupId,
 		String projectDescription,
 		String projectMvp,
 		ProjectGroupStatus status
 	) {
 		this.projectName = projectName;
 		this.projectTitle = projectTitle;
-		this.matchId = matchId;
+		this.groupId = groupId;
 		this.projectDescription = projectDescription;
 		this.projectMvp = projectMvp;
 		this.status = status;

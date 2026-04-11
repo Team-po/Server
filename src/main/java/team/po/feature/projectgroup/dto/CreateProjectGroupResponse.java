@@ -5,7 +5,6 @@ public record CreateProjectGroupResponse(
 	String projectName,
 	String projectTitle,
 	String status,
-	Long hostUserId,
 	Integer memberCount
 ) {
 }

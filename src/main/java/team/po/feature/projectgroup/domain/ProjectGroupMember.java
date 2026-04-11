@@ -43,6 +43,9 @@ public class ProjectGroupMember {
 	@Column(name = "group_role", nullable = false)
 	private GroupRole groupRole;
 
+	@Column(name = "is_admin", nullable = false)
+	private boolean admin;
+
 	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
 	private Instant createdAt;
 
@@ -56,5 +59,14 @@ public class ProjectGroupMember {
 		this.user = user;
 		this.memberRole = memberRole;
 		this.groupRole = groupRole;
+		this.admin = groupRole == GroupRole.HOST;
+	}
+
+	public void grantAdmin() {
+		this.admin = true;
+	}
+
+	public void revokeAdmin() {
+		this.admin = false;
 	}
 }

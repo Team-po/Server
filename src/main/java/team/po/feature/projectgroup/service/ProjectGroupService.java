@@ -1,6 +1,8 @@
 package team.po.feature.projectgroup.service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -14,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import team.po.feature.projectgroup.domain.GroupRole;
-import team.po.feature.projectgroup.domain.MemberRole;
 import team.po.feature.projectgroup.domain.ProjectGroup;
 import team.po.feature.projectgroup.domain.ProjectGroupMember;
 import team.po.feature.projectgroup.domain.ProjectGroupStatus;
@@ -38,28 +39,25 @@ public class ProjectGroupService {
 	private final UserRepository userRepository;
 
 	@Transactional
-	public CreateProjectGroupResponse createProjectGroup(Long requesterUserId, CreateProjectGroupRequest request) {
-		log.info("팀 스페이스 생성 요청: requesterUserId={}, hostUserId={}, matchId={}",
-			requesterUserId, request.hostUserId(), request.matchId());
-		this.validateRequesterPermission(requesterUserId, request.hostUserId());
+	public CreateProjectGroupResponse createProjectGroup(CreateProjectGroupRequest request) {
+		this.validateCreateRequest(request);
 
-		ProjectGroup existing = projectGroupRepository.findByMatchId(request.matchId()).orElse(null);
-		if (existing != null) {
-			return this.handleDuplicateMatchRequest(existing, request);
-		}
+		Long groupId = request.groupId();
+		List<CreateProjectGroupMemberRequest> requestMembers = request.members();
 
-		List<Long> userIds = request.members().stream()
+		log.info("팀 스페이스 생성 요청: groupId={}, memberCount={}", groupId, requestMembers.size());
+
+		List<Long> userIds = requestMembers.stream()
 			.map(CreateProjectGroupMemberRequest::userId)
 			.toList();
-		List<Long> uniqueUserIds = userIds.stream().distinct().toList();
-		this.validateMembers(request.hostUserId(), userIds, uniqueUserIds);
+		this.validateMembers(requestMembers, userIds);
 
-		List<Users> users = userRepository.findAllByIdInAndDeletedAtIsNull(uniqueUserIds);
-		if (users.size() != uniqueUserIds.size()) {
-			log.warn("팀 스페이스 생성 실패: 존재하지 않는 사용자 포함, hostUserId={}, userIds={}", request.hostUserId(), uniqueUserIds);
+		List<Users> users = userRepository.findAllByIdInAndDeletedAtIsNull(userIds);
+		if (users.size() != userIds.size()) {
+			log.warn("팀 스페이스 생성 실패: 존재하지 않는 사용자 포함, groupId={}, userIds={}", groupId, userIds);
 			throw new ProjectGroupException(ProjectGroupErrorType.PROJECT_GROUP_MEMBER_NOT_FOUND);
 		}
-		if (projectGroupMemberRepository.existsByUser_IdIn(uniqueUserIds)) {
+		if (projectGroupMemberRepository.existsByUser_IdIn(userIds)) {
 			throw new ProjectGroupException(
 				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
 				"이미 팀에 속한 사용자가 포함되어 있습니다."
@@ -71,48 +69,65 @@ public class ProjectGroupService {
 			ProjectGroup projectGroup = projectGroupRepository.save(ProjectGroup.builder()
 				.projectName(request.projectName().trim())
 				.projectTitle(request.projectTitle().trim())
-				.matchId(request.matchId())
+				.groupId(groupId)
 				.projectDescription(request.projectDescription())
 				.projectMvp(request.projectMvp())
 				.status(request.status() == null ? ProjectGroupStatus.ACTIVE : request.status())
 				.build());
 
 			List<ProjectGroupMember> members = new ArrayList<>();
-			for (CreateProjectGroupMemberRequest memberRequest : request.members()) {
+			for (CreateProjectGroupMemberRequest memberRequest : requestMembers) {
 				Users user = usersById.get(memberRequest.userId());
-				boolean isHost = memberRequest.userId().equals(request.hostUserId());
-				GroupRole groupRole = isHost ? GroupRole.HOST : GroupRole.MEMBER;
-				MemberRole role = memberRequest.role();
-				members.add(new ProjectGroupMember(projectGroup, user, role, groupRole));
+				ProjectGroupMember member = new ProjectGroupMember(
+					projectGroup,
+					user,
+					memberRequest.role(),
+					memberRequest.groupRole()
+				);
+
+				if (memberRequest.groupRole() == GroupRole.MEMBER && Boolean.TRUE.equals(memberRequest.admin())) {
+					member.grantAdmin();
+				}
+
+				members.add(member);
 			}
 			projectGroupMemberRepository.saveAllAndFlush(members);
 
-			log.info("팀 스페이스 생성 완료: groupId={}, hostUserId={}, memberCount={}",
-				projectGroup.getId(), request.hostUserId(), members.size());
+			log.info("팀 스페이스 생성 완료: projectGroupId={}, groupId={}, memberCount={}",
+				projectGroup.getId(), groupId, members.size());
 
 			return new CreateProjectGroupResponse(
 				projectGroup.getId(),
 				projectGroup.getProjectName(),
 				projectGroup.getProjectTitle(),
 				projectGroup.getStatus().name(),
-				request.hostUserId(),
 				members.size()
 			);
 		} catch (DataIntegrityViolationException exception) {
-			ProjectGroup duplicated = projectGroupRepository.findByMatchId(request.matchId()).orElse(null);
+			ProjectGroup duplicated = projectGroupRepository.findByGroupId(groupId).orElse(null);
 			if (duplicated != null) {
-				log.info("동시 요청으로 이미 생성된 팀 스페이스 반환: matchId={}, groupId={}",
-					request.matchId(), duplicated.getId());
-				return this.handleDuplicateMatchRequest(duplicated, request);
+				List<ProjectGroupMember> duplicatedMembers = projectGroupMemberRepository.findAllByProjectGroup_Id(
+					duplicated.getId()
+				);
+				this.validateIdempotentPayload(duplicated, duplicatedMembers, request);
+				log.info("동시 요청으로 이미 생성된 팀 스페이스 반환: groupId={}, projectGroupId={}",
+					groupId, duplicated.getId());
+				return new CreateProjectGroupResponse(
+					duplicated.getId(),
+					duplicated.getProjectName(),
+					duplicated.getProjectTitle(),
+					duplicated.getStatus().name(),
+					duplicatedMembers.size()
+				);
 			}
-			if (projectGroupMemberRepository.existsByUser_IdIn(uniqueUserIds)) {
+			if (projectGroupMemberRepository.existsByUser_IdIn(userIds)) {
 				throw new ProjectGroupException(
 					ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
 					"이미 팀에 속한 사용자가 포함되어 있습니다."
 				);
 			}
-			log.warn("팀 스페이스 생성 중 데이터 무결성 오류 발생: hostUserId={}, matchId={}, userIds={}",
-				request.hostUserId(), request.matchId(), uniqueUserIds, exception);
+			log.warn("팀 스페이스 생성 중 데이터 무결성 오류 발생: groupId={}, userIds={}",
+				groupId, userIds, exception);
 			throw new ProjectGroupException(
 				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
 				"팀 스페이스 저장 중 데이터 충돌이 발생했습니다."
@@ -120,38 +135,85 @@ public class ProjectGroupService {
 		}
 	}
 
-	private CreateProjectGroupResponse handleDuplicateMatchRequest(ProjectGroup existing, CreateProjectGroupRequest request) {
-		List<ProjectGroupMember> existingMembers = projectGroupMemberRepository.findAllByProjectGroup_Id(existing.getId());
-		Long existingHostUserId = existingMembers.stream()
-			.filter(member -> member.getGroupRole() == GroupRole.HOST)
-			.map(member -> member.getUser().getId())
-			.findFirst()
-			.orElseThrow(() -> new ProjectGroupException(
-				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
-				"이미 생성된 팀 스페이스의 방장 정보를 찾을 수 없습니다."
-			));
+	@Transactional
+	public void grantAdminPermission(Long projectGroupId, Long requesterUserId, Long targetUserId) {
+		this.changeAdminPermission(projectGroupId, requesterUserId, targetUserId, true);
+	}
 
-		if (!existingHostUserId.equals(request.hostUserId())) {
-			throw new ProjectGroupException(ProjectGroupErrorType.PROJECT_GROUP_PERMISSION_DENIED);
+	@Transactional
+	public void revokeAdminPermission(Long projectGroupId, Long requesterUserId, Long targetUserId) {
+		this.changeAdminPermission(projectGroupId, requesterUserId, targetUserId, false);
+	}
+
+	private void validateCreateRequest(CreateProjectGroupRequest request) {
+		if (request == null
+			|| request.groupId() == null
+			|| request.members() == null) {
+			throw new ProjectGroupException(
+				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
+				"팀 스페이스 생성 요청이 올바르지 않습니다."
+			);
 		}
 
-		this.validateIdempotentPayload(existing, request, existingMembers);
+		if (request.projectName() == null || request.projectName().isBlank()) {
+			throw new ProjectGroupException(
+				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
+				"프로젝트 그룹 이름은 비어 있을 수 없습니다."
+			);
+		}
+		if (request.projectTitle() == null || request.projectTitle().isBlank()) {
+			throw new ProjectGroupException(
+				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
+				"프로젝트 제목은 비어 있을 수 없습니다."
+			);
+		}
+	}
 
-		log.info("중복 요청 감지: 기존 팀 스페이스 반환 groupId={}, matchId={}", existing.getId(), existing.getMatchId());
-		return new CreateProjectGroupResponse(
-			existing.getId(),
-			existing.getProjectName(),
-			existing.getProjectTitle(),
-			existing.getStatus().name(),
-			existingHostUserId,
-			existingMembers.size()
-		);
+	private void validateMembers(
+		List<CreateProjectGroupMemberRequest> members,
+		List<Long> userIds
+	) {
+		for (CreateProjectGroupMemberRequest member : members) {
+			if (member == null
+				|| member.userId() == null
+				|| member.role() == null
+				|| member.groupRole() == null) {
+				throw new ProjectGroupException(
+					ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
+					"팀 구성원 정보가 올바르지 않습니다."
+				);
+			}
+		}
+
+		if (userIds.size() != 4) {
+			throw new ProjectGroupException(
+				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
+				"팀 인원은 정확히 4명이어야 합니다."
+			);
+		}
+
+		if (new HashSet<>(userIds).size() != userIds.size()) {
+			throw new ProjectGroupException(
+				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
+				"팀 구성원 목록에 중복된 사용자 식별자가 포함되어 있습니다."
+			);
+		}
+
+		long hostCount = members.stream()
+			.filter(member -> member.groupRole() == GroupRole.HOST)
+			.count();
+		if (hostCount != 1) {
+			throw new ProjectGroupException(
+				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
+				"HOST는 정확히 1명이어야 합니다."
+			);
+		}
 	}
 
 	private void validateIdempotentPayload(
 		ProjectGroup existing,
-		CreateProjectGroupRequest request,
-		List<ProjectGroupMember> existingMembers
+		List<ProjectGroupMember> existingMembers,
+		CreateProjectGroupRequest request
 	) {
 		boolean sameProjectInfo = Objects.equals(existing.getProjectName(), request.projectName().trim())
 			&& Objects.equals(existing.getProjectTitle(), request.projectTitle().trim())
@@ -162,44 +224,88 @@ public class ProjectGroupService {
 		if (!sameProjectInfo) {
 			throw new ProjectGroupException(
 				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
-				"동일한 매칭 식별자로 서로 다른 프로젝트 정보를 생성할 수 없습니다."
+				"동일한 그룹 식별자로 서로 다른 프로젝트 정보를 생성할 수 없습니다."
 			);
 		}
 
-		List<Long> requestMemberIds = request.members().stream()
-			.map(CreateProjectGroupMemberRequest::userId)
-			.sorted()
+		List<MemberSnapshot> requestMemberSnapshots = request.members().stream()
+			.map(this::toMemberSnapshot)
+			.sorted(Comparator.comparing(MemberSnapshot::userId))
 			.toList();
-		List<Long> existingMemberIds = existingMembers.stream()
-			.map(member -> member.getUser().getId())
-			.sorted()
+		List<MemberSnapshot> existingMemberSnapshots = existingMembers.stream()
+			.map(this::toMemberSnapshot)
+			.sorted(Comparator.comparing(MemberSnapshot::userId))
 			.toList();
 
-		if (!requestMemberIds.equals(existingMemberIds)) {
+		if (!requestMemberSnapshots.equals(existingMemberSnapshots)) {
 			throw new ProjectGroupException(
 				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
-				"동일한 매칭 식별자로 서로 다른 구성원 목록을 생성할 수 없습니다."
+				"동일한 그룹 식별자로 서로 다른 구성원 정보를 생성할 수 없습니다."
 			);
 		}
 	}
 
-	private void validateRequesterPermission(Long requesterUserId, Long hostUserId) {
-		if (!requesterUserId.equals(hostUserId)) {	//host가 팀스페이스 생성
-			throw new ProjectGroupException(ProjectGroupErrorType.PROJECT_GROUP_PERMISSION_DENIED);
+	private void changeAdminPermission(
+		Long projectGroupId,
+		Long requesterUserId,
+		Long targetUserId,
+		boolean grant
+	) {
+		ProjectGroupMember hostMember = projectGroupMemberRepository
+			.findByProjectGroup_IdAndGroupRole(projectGroupId, GroupRole.HOST)
+			.orElseThrow(() -> new ProjectGroupException(
+				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
+				"팀 스페이스의 방장 정보를 찾을 수 없습니다."
+			));
+
+		if (!hostMember.getUser().getId().equals(requesterUserId)) {
+			throw new ProjectGroupException(
+				ProjectGroupErrorType.PROJECT_GROUP_PERMISSION_DENIED,
+				"방장만 관리자 권한을 변경할 수 있습니다."
+			);
 		}
+
+		ProjectGroupMember targetMember = projectGroupMemberRepository
+			.findByProjectGroup_IdAndUser_Id(projectGroupId, targetUserId)
+			.orElseThrow(() -> new ProjectGroupException(
+				ProjectGroupErrorType.PROJECT_GROUP_MEMBER_NOT_FOUND,
+				"권한을 변경할 팀 멤버를 찾을 수 없습니다."
+			));
+
+		if (!grant && targetMember.getGroupRole() == GroupRole.HOST) {
+			throw new ProjectGroupException(
+				ProjectGroupErrorType.PROJECT_GROUP_PERMISSION_DENIED,
+				"방장의 관리자 권한은 회수할 수 없습니다."
+			);
+		}
+
+		if (grant) {
+			targetMember.grantAdmin();
+			return;
+		}
+		targetMember.revokeAdmin();
 	}
 
-	private void validateMembers(Long hostUserId, List<Long> userIds, List<Long> uniqueUserIds) {
-		if (userIds.size() != 4) {
-			throw new ProjectGroupException(ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST, "팀 인원은 정확히 4명이어야 합니다.");
-		}
-
-		if (userIds.size() != uniqueUserIds.size()) {
-			throw new ProjectGroupException(ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST, "팀 구성원 목록에 중복된 사용자 식별자가 포함되어 있습니다.");
-		}
-
-		if (!uniqueUserIds.contains(hostUserId)) {
-			throw new ProjectGroupException(ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST, "방장 식별자는 팀 구성원 목록에 포함되어야 합니다.");
-		}
+	private MemberSnapshot toMemberSnapshot(CreateProjectGroupMemberRequest member) {
+		boolean admin = member.groupRole() == GroupRole.HOST || Boolean.TRUE.equals(member.admin());
+		return new MemberSnapshot(member.userId(), member.role(), member.groupRole(), admin);
 	}
+
+	private MemberSnapshot toMemberSnapshot(ProjectGroupMember member) {
+		return new MemberSnapshot(
+			member.getUser().getId(),
+			member.getMemberRole(),
+			member.getGroupRole(),
+			member.isAdmin()
+		);
+	}
+
+	private record MemberSnapshot(
+		Long userId,
+		team.po.feature.projectgroup.domain.MemberRole role,
+		GroupRole groupRole,
+		boolean admin
+	) {
+	}
+
 }
