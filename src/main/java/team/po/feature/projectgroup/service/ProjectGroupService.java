@@ -1,11 +1,9 @@
 package team.po.feature.projectgroup.service;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -109,7 +107,6 @@ public class ProjectGroupService {
 				List<ProjectGroupMember> duplicatedMembers = projectGroupMemberRepository.findAllByProjectGroup_Id(
 					duplicated.getId()
 				);
-				this.validateIdempotentPayload(duplicated, duplicatedMembers, request);
 				log.info("동시 요청으로 이미 생성된 팀 스페이스 반환: groupId={}, projectGroupId={}",
 					groupId, duplicated.getId());
 				return new CreateProjectGroupResponse(
@@ -210,41 +207,6 @@ public class ProjectGroupService {
 		}
 	}
 
-	private void validateIdempotentPayload(
-		ProjectGroup existing,
-		List<ProjectGroupMember> existingMembers,
-		CreateProjectGroupRequest request
-	) {
-		boolean sameProjectInfo = Objects.equals(existing.getProjectName(), request.projectName().trim())
-			&& Objects.equals(existing.getProjectTitle(), request.projectTitle().trim())
-			&& Objects.equals(existing.getProjectDescription(), request.projectDescription())
-			&& Objects.equals(existing.getProjectMvp(), request.projectMvp())
-			&& existing.getStatus() == ProjectGroupStatus.ACTIVE;
-
-		if (!sameProjectInfo) {
-			throw new ProjectGroupException(
-				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
-				"동일한 그룹 식별자로 서로 다른 프로젝트 정보를 생성할 수 없습니다."
-			);
-		}
-
-		List<MemberSnapshot> requestMemberSnapshots = request.members().stream()
-			.map(this::toMemberSnapshot)
-			.sorted(Comparator.comparing(MemberSnapshot::userId))
-			.toList();
-		List<MemberSnapshot> existingMemberSnapshots = existingMembers.stream()
-			.map(this::toMemberSnapshot)
-			.sorted(Comparator.comparing(MemberSnapshot::userId))
-			.toList();
-
-		if (!requestMemberSnapshots.equals(existingMemberSnapshots)) {
-			throw new ProjectGroupException(
-				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
-				"동일한 그룹 식별자로 서로 다른 구성원 정보를 생성할 수 없습니다."
-			);
-		}
-	}
-
 	private void changeAdminPermission(
 		Long projectGroupId,
 		Long requesterUserId,
@@ -284,28 +246,6 @@ public class ProjectGroupService {
 			return;
 		}
 		targetMember.revokeAdmin();
-	}
-
-	private MemberSnapshot toMemberSnapshot(CreateProjectGroupMemberRequest member) {
-		boolean admin = member.groupRole() == GroupRole.HOST || Boolean.TRUE.equals(member.admin());
-		return new MemberSnapshot(member.userId(), member.role(), member.groupRole(), admin);
-	}
-
-	private MemberSnapshot toMemberSnapshot(ProjectGroupMember member) {
-		return new MemberSnapshot(
-			member.getUser().getId(),
-			member.getMemberRole(),
-			member.getGroupRole(),
-			member.isAdmin()
-		);
-	}
-
-	private record MemberSnapshot(
-		Long userId,
-		team.po.feature.projectgroup.domain.MemberRole role,
-		GroupRole groupRole,
-		boolean admin
-	) {
 	}
 
 }
