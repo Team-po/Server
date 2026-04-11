@@ -72,7 +72,7 @@ public class ProjectGroupService {
 				.groupId(groupId)
 				.projectDescription(request.projectDescription())
 				.projectMvp(request.projectMvp())
-				.status(request.status() == null ? ProjectGroupStatus.ACTIVE : request.status())
+				.status(ProjectGroupStatus.ACTIVE)
 				.build());
 
 			List<ProjectGroupMember> members = new ArrayList<>();
@@ -219,7 +219,7 @@ public class ProjectGroupService {
 			&& Objects.equals(existing.getProjectTitle(), request.projectTitle().trim())
 			&& Objects.equals(existing.getProjectDescription(), request.projectDescription())
 			&& Objects.equals(existing.getProjectMvp(), request.projectMvp())
-			&& existing.getStatus() == (request.status() == null ? ProjectGroupStatus.ACTIVE : request.status());
+			&& existing.getStatus() == ProjectGroupStatus.ACTIVE;
 
 		if (!sameProjectInfo) {
 			throw new ProjectGroupException(

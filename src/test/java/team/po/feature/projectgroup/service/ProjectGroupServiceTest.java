@@ -98,8 +98,7 @@ class ProjectGroupServiceTest {
 			"Teampo Alpha",
 			"주제 A",
 			"설명",
-			"MVP",
-			ProjectGroupStatus.ACTIVE
+			"MVP"
 		);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
@@ -120,8 +119,7 @@ class ProjectGroupServiceTest {
 			"Teampo Alpha",
 			"주제 A",
 			"설명",
-			"MVP",
-			ProjectGroupStatus.ACTIVE
+			"MVP"
 		);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
@@ -143,8 +141,7 @@ class ProjectGroupServiceTest {
 			"Teampo Alpha",
 			"주제 A",
 			"설명",
-			"MVP",
-			ProjectGroupStatus.ACTIVE
+			"MVP"
 		);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
@@ -174,8 +171,7 @@ class ProjectGroupServiceTest {
 			"Teampo Alpha",
 			"주제 A",
 			"설명",
-			"MVP",
-			ProjectGroupStatus.ACTIVE
+			"MVP"
 		);
 
 		CreateProjectGroupResponse response = projectGroupService.createProjectGroup(request);
@@ -257,8 +253,7 @@ class ProjectGroupServiceTest {
 			"Teampo Alpha",
 			"다른 제목",
 			"설명",
-			"MVP",
-			ProjectGroupStatus.ACTIVE
+			"MVP"
 		);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
@@ -303,8 +298,7 @@ class ProjectGroupServiceTest {
 			"Teampo Alpha",
 			"주제 A",
 			"설명",
-			"MVP",
-			ProjectGroupStatus.ACTIVE
+			"MVP"
 		);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
@@ -433,8 +427,7 @@ class ProjectGroupServiceTest {
 			"Teampo Alpha",
 			"주제 A",
 			"설명",
-			"MVP",
-			ProjectGroupStatus.ACTIVE
+			"MVP"
 		);
 	}
 

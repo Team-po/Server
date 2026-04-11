@@ -5,7 +5,6 @@ import java.util.List;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 
 public record CreateProjectGroupRequest(
 	@NotNull(message = "매칭 식별자는 필수입니다.")
@@ -18,7 +17,6 @@ public record CreateProjectGroupRequest(
 	@NotBlank(message = "프로젝트 제목은 필수입니다.")
 	String projectTitle,
 	String projectDescription,
-	String projectMvp,
-	ProjectGroupStatus status
+	String projectMvp
 ) {
 }
