@@ -223,7 +223,7 @@ class ProjectGroupServiceTest {
 	}
 
 	@Test
-	void createProjectGroup_throwsBadRequest_whenSameGroupIdHasDifferentProjectInfo() {
+	void createProjectGroup_returnsExistingGroup_whenSameGroupIdHasDifferentProjectInfo() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
 		when(userRepository.findAllByIdInAndDeletedAtIsNull(anyList())).thenReturn(matchedUsers);
 
@@ -256,14 +256,13 @@ class ProjectGroupServiceTest {
 			"MVP"
 		);
 
-		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.INVALID_PROJECT_GROUP_REQUEST);
+		CreateProjectGroupResponse response = projectGroupService.createProjectGroup(request);
+		assertThat(response.groupId()).isEqualTo(97L);
+		assertThat(response.memberCount()).isEqualTo(4);
 	}
 
 	@Test
-	void createProjectGroup_throwsBadRequest_whenSameGroupIdHasDifferentMemberDefinition() {
+	void createProjectGroup_returnsExistingGroup_whenSameGroupIdHasDifferentMemberDefinition() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
 		when(userRepository.findAllByIdInAndDeletedAtIsNull(anyList())).thenReturn(matchedUsers);
 
@@ -301,10 +300,9 @@ class ProjectGroupServiceTest {
 			"MVP"
 		);
 
-		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.INVALID_PROJECT_GROUP_REQUEST);
+		CreateProjectGroupResponse response = projectGroupService.createProjectGroup(request);
+		assertThat(response.groupId()).isEqualTo(96L);
+		assertThat(response.memberCount()).isEqualTo(4);
 	}
 
 	@Test
