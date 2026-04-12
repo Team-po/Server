@@ -2,17 +2,18 @@ package team.po.common.jwt;
 
 import java.io.IOException;
 
+import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.util.StringUtils;
+import org.springframework.web.filter.GenericFilterBean;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.http.MediaType;
-import org.springframework.util.StringUtils;
-import org.springframework.web.filter.GenericFilterBean;
 
 public class JwtAuthenticationFilter extends GenericFilterBean {
 
@@ -29,8 +30,8 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 	@Override
 	public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
 		throws IOException, ServletException {
-		HttpServletRequest httpServletRequest = (HttpServletRequest) request;
-		
+		HttpServletRequest httpServletRequest = (HttpServletRequest)request;
+
 		if (isRefreshTokenRequest(httpServletRequest)) {
 			chain.doFilter(request, response);
 			return;
@@ -40,7 +41,7 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 
 		if (StringUtils.hasText(token)) {
 			if (!jwtTokenProvider.validateAccessToken(token)) {
-				writeUnauthorizedResponse((HttpServletResponse) response);
+				writeUnauthorizedResponse((HttpServletResponse)response);
 				return;
 			}
 
@@ -48,7 +49,7 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 				Authentication authentication = jwtTokenProvider.getAuthentication(token);
 				SecurityContextHolder.getContext().setAuthentication(authentication);
 			} catch (RuntimeException exception) {
-				this.writeUnauthorizedResponse((HttpServletResponse) response);
+				this.writeUnauthorizedResponse((HttpServletResponse)response);
 				return;
 			}
 		}

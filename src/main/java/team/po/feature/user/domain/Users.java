@@ -45,7 +45,8 @@ public class Users {
 	private Instant deletedAt;
 
 	@Builder
-	public Users(String password, String profileImage, String description, String email, String nickname, Integer temperature, Integer level) {
+	public Users(String password, String profileImage, String description, String email, String nickname,
+		Integer temperature, Integer level) {
 		this.password = password;
 		this.profileImage = profileImage;
 		this.description = description;

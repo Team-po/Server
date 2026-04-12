@@ -37,7 +37,8 @@ public class CustomUserExceptionHandler {
 
 	@ExceptionHandler(DuplicatedEmailException.class)
 	protected ResponseEntity<ExceptionResponse> DuplicatedEmailException(DuplicatedEmailException e) {
-		return ResponseEntity.status(e.getCode()).body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
+		return ResponseEntity.status(e.getCode())
+			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
 	}
 
 	@ExceptionHandler(BadCredentialsException.class)

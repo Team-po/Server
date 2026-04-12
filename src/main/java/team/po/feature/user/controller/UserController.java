@@ -27,11 +27,11 @@ import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
-import team.po.feature.user.dto.RefreshTokenResponse;
-import team.po.feature.user.dto.SignUpRequest;
-import team.po.feature.user.dto.SignInResponse;
-import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.RefreshTokenRequest;
+import team.po.feature.user.dto.RefreshTokenResponse;
+import team.po.feature.user.dto.SignInRequest;
+import team.po.feature.user.dto.SignInResponse;
+import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.service.UserService;
 
 @RestController
@@ -45,7 +45,8 @@ public class UserController {
 	public ResponseEntity<Void> signUp(@Valid @RequestPart("signUpRequest") SignUpRequest signUpRequest,
 		Errors errors, @RequestPart(required = false) MultipartFile profileImage) {
 		if (errors.hasErrors()) {
-			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
+			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD,
+				"입력값이 올바르지 않습니다.", errors);
 		}
 
 		userService.signUp(signUpRequest, profileImage);
@@ -63,7 +64,8 @@ public class UserController {
 	@PostMapping(value = "/sign-in")
 	public ResponseEntity<SignInResponse> signIn(@Valid @RequestBody SignInRequest request, Errors errors) {
 		if (errors.hasErrors()) {
-			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
+			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD,
+				"입력값이 올바르지 않습니다.", errors);
 		}
 		SignInResponse response = userService.signIn(request);
 		return ResponseEntity.ok().body(response);
@@ -71,9 +73,11 @@ public class UserController {
 
 	@Operation(summary = "토큰 재발급 API")
 	@PostMapping(value = "/refresh-token")
-	public ResponseEntity<RefreshTokenResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request, Errors errors) {
+	public ResponseEntity<RefreshTokenResponse> refreshToken(@Valid @RequestBody RefreshTokenRequest request,
+		Errors errors) {
 		if (errors.hasErrors()) {
-			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
+			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD,
+				"입력값이 올바르지 않습니다.", errors);
 		}
 		RefreshTokenResponse response = userService.refreshToken(request);
 		return ResponseEntity.ok().body(response);
@@ -89,24 +93,26 @@ public class UserController {
 	@Operation(summary = "유저 프로필 수정 API")
 	@PutMapping(value = "/me", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<Void> edidMyProfile(@Parameter(hidden = true) @LoginUser Users user,
-		@Valid @RequestPart("EditProfileRequest")EditProfileRequest editProfileRequest,
+		@Valid @RequestPart("EditProfileRequest") EditProfileRequest editProfileRequest,
 		Errors errors, @RequestPart(required = false) MultipartFile profileImage) {
 
 		if (errors.hasErrors()) {
-			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
+			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD,
+				"입력값이 올바르지 않습니다.", errors);
 		}
 
-		userService.editMyProfile(user,profileImage,editProfileRequest);
+		userService.editMyProfile(user, profileImage, editProfileRequest);
 		return ResponseEntity.ok().build();
 	}
 
 	@Operation(summary = "비밀번호 수정 API")
 	@PutMapping(value = "/me/password")
-	public ResponseEntity<Void> editPassword(@Parameter(hidden = true) @LoginUser Users user,@Valid @RequestBody
-		EditPasswordRequest request,Errors errors) {
+	public ResponseEntity<Void> editPassword(@Parameter(hidden = true) @LoginUser Users user, @Valid @RequestBody
+	EditPasswordRequest request, Errors errors) {
 
 		if (errors.hasErrors()) {
-			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
+			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD,
+				"입력값이 올바르지 않습니다.", errors);
 		}
 
 		userService.editPassword(user, request);
@@ -117,12 +123,13 @@ public class UserController {
 	@Operation(summary = "회원 탈퇴 API")
 	@DeleteMapping(value = "/me")
 	public ResponseEntity<Void> deleteUser(@Parameter(hidden = true) @LoginUser Users user, @Valid @RequestBody
-		DeleteUserRequest request,Errors errors) {
+	DeleteUserRequest request, Errors errors) {
 		if (errors.hasErrors()) {
-			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD, "입력값이 올바르지 않습니다.", errors);
+			throw new InvalidFieldException(HttpStatus.BAD_REQUEST, ErrorCodeConstants.INVALID_INPUT_FIELD,
+				"입력값이 올바르지 않습니다.", errors);
 		}
 
-		userService.deleteUser(user,request);
+		userService.deleteUser(user, request);
 
 		return ResponseEntity.ok().build();
 	}
