@@ -1,10 +1,22 @@
 package team.po.feature.user.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.Base64;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -17,14 +29,19 @@ import team.po.feature.user.dto.ProfileImageUploadUrlRequest;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
 import team.po.feature.user.exception.InvalidImageContentTypeException;
 
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
-
 @Service
 @RequiredArgsConstructor
 public class ImageService {
+	private static final String S3_SERVICE = "s3";
+	private static final String AWS4_REQUEST = "aws4_request";
+	private static final String SIGNATURE_ALGORITHM = "AWS4-HMAC-SHA256";
+	private static final String HMAC_SHA256 = "HmacSHA256";
+	private static final DateTimeFormatter DATE_STAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd")
+		.withZone(ZoneOffset.UTC);
+	private static final DateTimeFormatter AMZ_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+		.withZone(ZoneOffset.UTC);
+	private static final DateTimeFormatter POLICY_EXPIRATION_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
+		.withZone(ZoneOffset.UTC);
 	private static final Map<String, String> CONTENT_TYPE_TO_EXTENSION = Map.of(
 		"image/jpeg", "jpg",
 		"image/png", "png",
@@ -32,8 +49,19 @@ public class ImageService {
 		"image/webp", "webp"
 	);
 
-	private final S3Presigner s3Presigner;
 	private final ProfileImageRedisService profileImageRedisService;
+
+	@Value("${cloud.aws.credentials.access-key}")
+	private String accessKey;
+
+	@Value("${cloud.aws.credentials.secret-key}")
+	private String secretKey;
+
+	@Value("${cloud.aws.region.static}")
+	private String region;
+
+	@Value("${cloud.aws.s3.endpoint:}")
+	private String endpoint;
 
 	@Value("${cloud.aws.s3.bucket}")
 	private String bucket;
@@ -43,6 +71,9 @@ public class ImageService {
 
 	@Value("${cloud.aws.s3.presigned-expiration:PT5M}")
 	private Duration presignedExpiration;
+
+	@Value("${cloud.aws.s3.max-upload-size-bytes:5242880}")
+	private long maxUploadSizeBytes;
 
 	public ProfileImageUploadUrlResponse createSignUpUploadUrl(ProfileImageUploadUrlRequest request) {
 		String contentType = normalizeAndValidateContentType(request.contentType());
@@ -61,24 +92,31 @@ public class ImageService {
 	}
 
 	private ProfileImageUploadUrlResponse createUploadUrl(String objectKey, String contentType) {
-		PutObjectRequest putObjectRequest = PutObjectRequest.builder()
-			.bucket(bucket)
-			.key(objectKey)
-			.contentType(contentType)
-			.build();
+		Instant now = Instant.now();
+		Instant expiresAt = now.plus(presignedExpiration);
+		String dateStamp = DATE_STAMP_FORMATTER.format(now);
+		String amzDate = AMZ_DATE_FORMATTER.format(now);
+		String credential = accessKey + "/" + credentialScope(dateStamp);
+		String policy = createPostPolicy(expiresAt, objectKey, contentType, amzDate, credential);
+		String encodedPolicy = Base64.getEncoder().encodeToString(policy.getBytes(StandardCharsets.UTF_8));
+		String signature = signature(encodedPolicy, dateStamp);
 
-		PutObjectPresignRequest putObjectPresignRequest = PutObjectPresignRequest.builder()
-			.signatureDuration(presignedExpiration)
-			.putObjectRequest(putObjectRequest)
-			.build();
-
-		PresignedPutObjectRequest presignedRequest = s3Presigner.presignPutObject(putObjectPresignRequest);
+		Map<String, String> formFields = new LinkedHashMap<>();
+		formFields.put("key", objectKey);
+		formFields.put("Content-Type", contentType);
+		formFields.put("X-Amz-Algorithm", SIGNATURE_ALGORITHM);
+		formFields.put("X-Amz-Credential", credential);
+		formFields.put("X-Amz-Date", amzDate);
+		formFields.put("Policy", encodedPolicy);
+		formFields.put("X-Amz-Signature", signature);
 
 		return new ProfileImageUploadUrlResponse(
-			presignedRequest.url().toString(),
+			uploadActionUrl(),
+			formFields,
 			objectKey,
 			contentType,
-			Instant.now().plus(presignedExpiration)
+			maxUploadSizeBytes,
+			expiresAt
 		);
 	}
 
@@ -114,5 +152,61 @@ public class ImageService {
 
 	private String normalizedDir() {
 		return dir.replaceAll("^/+", "").replaceAll("/+$", "");
+	}
+
+	private String uploadActionUrl() {
+		if (endpoint == null || endpoint.isBlank()) {
+			return "https://s3." + region + ".amazonaws.com/" + bucket;
+		}
+
+		String normalizedEndpoint = endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1) : endpoint;
+		return normalizedEndpoint + "/" + bucket;
+	}
+
+	private String credentialScope(String dateStamp) {
+		return dateStamp + "/" + region + "/" + S3_SERVICE + "/" + AWS4_REQUEST;
+	}
+
+	private String createPostPolicy(
+		Instant expiresAt,
+		String objectKey,
+		String contentType,
+		String amzDate,
+		String credential
+	) {
+		return """
+			{"expiration":"%s","conditions":[{"bucket":"%s"},{"key":"%s"},{"Content-Type":"%s"},["content-length-range",1,%d],{"x-amz-algorithm":"%s"},{"x-amz-credential":"%s"},{"x-amz-date":"%s"}]}
+			""".formatted(
+			POLICY_EXPIRATION_FORMATTER.format(expiresAt.truncatedTo(ChronoUnit.MILLIS)),
+			bucket,
+			objectKey,
+			contentType,
+			maxUploadSizeBytes,
+			SIGNATURE_ALGORITHM,
+			credential,
+			amzDate
+		).strip();
+	}
+
+	private String signature(String encodedPolicy, String dateStamp) {
+		byte[] signingKey = signingKey(dateStamp);
+		return HexFormat.of().formatHex(hmac(signingKey, encodedPolicy));
+	}
+
+	private byte[] signingKey(String dateStamp) {
+		byte[] dateKey = hmac(("AWS4" + secretKey).getBytes(StandardCharsets.UTF_8), dateStamp);
+		byte[] regionKey = hmac(dateKey, region);
+		byte[] serviceKey = hmac(regionKey, S3_SERVICE);
+		return hmac(serviceKey, AWS4_REQUEST);
+	}
+
+	private byte[] hmac(byte[] key, String data) {
+		try {
+			Mac mac = Mac.getInstance(HMAC_SHA256);
+			mac.init(new SecretKeySpec(key, HMAC_SHA256));
+			return mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
+		} catch (NoSuchAlgorithmException | InvalidKeyException exception) {
+			throw new IllegalStateException("S3 POST policy signing failed.", exception);
+		}
 	}
 }

@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
@@ -295,9 +296,15 @@ class UserControllerTest {
 		org.mockito.Mockito.when(profileImagePresignService.createSignUpUploadUrl(
 			new team.po.feature.user.dto.ProfileImageUploadUrlRequest("image/webp")
 		)).thenReturn(new ProfileImageUploadUrlResponse(
-			"http://localhost:9000/team-po/images/sign-up/test.webp",
+			"http://localhost:9000/team-po",
+			Map.of(
+				"key", "images/sign-up/test.webp",
+				"Content-Type", "image/webp",
+				"Policy", "encoded-policy"
+			),
 			"images/sign-up/test.webp",
 			"image/webp",
+			5_242_880L,
 			Instant.parse("2026-04-07T12:00:00Z")
 		));
 
@@ -308,9 +315,13 @@ class UserControllerTest {
 					{"contentType":"image/webp"}
 					"""))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.uploadUrl").value("http://localhost:9000/team-po/images/sign-up/test.webp"))
+			.andExpect(jsonPath("$.uploadUrl").value("http://localhost:9000/team-po"))
+			.andExpect(jsonPath("$.formFields.key").value("images/sign-up/test.webp"))
+			.andExpect(jsonPath("$.formFields['Content-Type']").value("image/webp"))
+			.andExpect(jsonPath("$.formFields.Policy").value("encoded-policy"))
 			.andExpect(jsonPath("$.objectKey").value("images/sign-up/test.webp"))
 			.andExpect(jsonPath("$.contentType").value("image/webp"))
+			.andExpect(jsonPath("$.maxFileSizeBytes").value(5_242_880))
 			.andExpect(jsonPath("$.expiresAt").value("2026-04-07T12:00:00Z"));
 	}
 
@@ -334,9 +345,15 @@ class UserControllerTest {
 			authenticatedUser,
 			new team.po.feature.user.dto.ProfileImageUploadUrlRequest("image/png")
 		)).thenReturn(new ProfileImageUploadUrlResponse(
-			"http://localhost:9000/team-po/images/users/1/test.png",
+			"http://localhost:9000/team-po",
+			Map.of(
+				"key", "images/users/1/test.png",
+				"Content-Type", "image/png",
+				"Policy", "encoded-policy"
+			),
 			"images/users/1/test.png",
 			"image/png",
+			5_242_880L,
 			Instant.parse("2026-04-07T12:00:00Z")
 		));
 
@@ -347,9 +364,13 @@ class UserControllerTest {
 					{"contentType":"image/png"}
 					"""))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.uploadUrl").value("http://localhost:9000/team-po/images/users/1/test.png"))
+			.andExpect(jsonPath("$.uploadUrl").value("http://localhost:9000/team-po"))
+			.andExpect(jsonPath("$.formFields.key").value("images/users/1/test.png"))
+			.andExpect(jsonPath("$.formFields['Content-Type']").value("image/png"))
+			.andExpect(jsonPath("$.formFields.Policy").value("encoded-policy"))
 			.andExpect(jsonPath("$.objectKey").value("images/users/1/test.png"))
 			.andExpect(jsonPath("$.contentType").value("image/png"))
+			.andExpect(jsonPath("$.maxFileSizeBytes").value(5_242_880))
 			.andExpect(jsonPath("$.expiresAt").value("2026-04-07T12:00:00Z"));
 	}
 

@@ -36,6 +36,7 @@ cloud:
       dir: images
       endpoint: ${s3.endpoint:}
       presigned-expiration: 5m
+      max-upload-size-bytes: 5242880
       path-style-access-enabled: true
     region:
       static: ap-northeast-2

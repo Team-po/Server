@@ -2,16 +2,14 @@ package team.po.feature.user.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -21,19 +19,8 @@ import team.po.feature.user.dto.ProfileImageUploadUrlRequest;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
 import team.po.feature.user.exception.InvalidImageContentTypeException;
 
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
-
 @ExtendWith(MockitoExtension.class)
 class ProfileImagePresignServiceTest {
-
-	@Mock
-	private S3Presigner s3Presigner;
-
-	@Mock
-	private PresignedPutObjectRequest presignedPutObjectRequest;
 
 	@Mock
 	private ProfileImageRedisService profileImageRedisService;
@@ -42,42 +29,44 @@ class ProfileImagePresignServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		profileImagePresignService = new ImageService(s3Presigner, profileImageRedisService);
+		profileImagePresignService = new ImageService(profileImageRedisService);
+		ReflectionTestUtils.setField(profileImagePresignService, "accessKey", "test-access-key");
+		ReflectionTestUtils.setField(profileImagePresignService, "secretKey", "test-secret-key");
+		ReflectionTestUtils.setField(profileImagePresignService, "region", "ap-northeast-2");
+		ReflectionTestUtils.setField(profileImagePresignService, "endpoint", "http://localhost:9000");
 		ReflectionTestUtils.setField(profileImagePresignService, "bucket", "team-po");
 		ReflectionTestUtils.setField(profileImagePresignService, "dir", "images");
 		ReflectionTestUtils.setField(profileImagePresignService, "presignedExpiration", java.time.Duration.ofMinutes(5));
+		ReflectionTestUtils.setField(profileImagePresignService, "maxUploadSizeBytes", 5_242_880L);
 	}
 
 	@Test
-	void createProfileUploadUrl_returnsPresignedUrlForSupportedImageType() throws Exception {
-		when(s3Presigner.presignPutObject(any(PutObjectPresignRequest.class))).thenReturn(presignedPutObjectRequest);
-		when(presignedPutObjectRequest.url()).thenReturn(new URL("http://localhost:9000/team-po/images/users/1/test.png"));
-
+	void createProfileUploadUrl_returnsPresignedPostForSupportedImageType() {
 		ProfileImageUploadUrlResponse response = profileImagePresignService.createProfileUploadUrl(
 			authenticatedUser(1L, "test@email.com"),
 			new ProfileImageUploadUrlRequest("image/png")
 		);
 
-		assertThat(response.uploadUrl()).isEqualTo("http://localhost:9000/team-po/images/users/1/test.png");
+		assertThat(response.uploadUrl()).isEqualTo("http://localhost:9000/team-po");
 		assertThat(response.contentType()).isEqualTo("image/png");
 		assertThat(response.objectKey()).startsWith("images/users/1/");
 		assertThat(response.objectKey()).endsWith(".png");
+		assertThat(response.maxFileSizeBytes()).isEqualTo(5_242_880L);
 		assertThat(response.expiresAt()).isAfter(java.time.Instant.now().plusSeconds(60));
-
-		ArgumentCaptor<PutObjectPresignRequest> captor = ArgumentCaptor.forClass(PutObjectPresignRequest.class);
-		verify(s3Presigner).presignPutObject(captor.capture());
-		PutObjectRequest putObjectRequest = captor.getValue().putObjectRequest();
-		assertThat(putObjectRequest.bucket()).isEqualTo("team-po");
-		assertThat(putObjectRequest.key()).isEqualTo(response.objectKey());
-		assertThat(putObjectRequest.contentType()).isEqualTo("image/png");
+		assertThat(response.formFields())
+			.containsEntry("key", response.objectKey())
+			.containsEntry("Content-Type", "image/png")
+			.containsEntry("X-Amz-Algorithm", "AWS4-HMAC-SHA256")
+			.containsKey("X-Amz-Signature");
+		assertThat(decodedPolicy(response))
+			.contains("\"bucket\":\"team-po\"")
+			.contains("\"key\":\"" + response.objectKey() + "\"")
+			.contains("[\"content-length-range\",1,5242880]");
 		verify(profileImageRedisService).createProfileUpdateTicket(1L, response.objectKey(), "image/png");
 	}
 
 	@Test
-	void createProfileUploadUrl_normalizesContentTypeBeforeSigning() throws Exception {
-		when(s3Presigner.presignPutObject(any(PutObjectPresignRequest.class))).thenReturn(presignedPutObjectRequest);
-		when(presignedPutObjectRequest.url()).thenReturn(new URL("http://localhost:9000/team-po/images/users/1/test.jpg"));
-
+	void createProfileUploadUrl_normalizesContentTypeBeforeSigning() {
 		ProfileImageUploadUrlResponse response = profileImagePresignService.createProfileUploadUrl(
 			authenticatedUser(1L, "test@email.com"),
 			new ProfileImageUploadUrlRequest("IMAGE/JPEG; charset=UTF-8")
@@ -98,10 +87,7 @@ class ProfileImagePresignServiceTest {
 	}
 
 	@Test
-	void createSignUpUploadUrl_createsSignUpScopedObjectKey() throws Exception {
-		when(s3Presigner.presignPutObject(any(PutObjectPresignRequest.class))).thenReturn(presignedPutObjectRequest);
-		when(presignedPutObjectRequest.url()).thenReturn(new URL("http://localhost:9000/team-po/images/sign-up/test.webp"));
-
+	void createSignUpUploadUrl_createsSignUpScopedObjectKey() {
 		ProfileImageUploadUrlResponse response = profileImagePresignService.createSignUpUploadUrl(
 			new ProfileImageUploadUrlRequest("image/webp")
 		);
@@ -110,6 +96,11 @@ class ProfileImagePresignServiceTest {
 		assertThat(response.objectKey()).endsWith(".webp");
 		assertThat(response.contentType()).isEqualTo("image/webp");
 		verify(profileImageRedisService).createSignUpTicket(response.objectKey(), "image/webp");
+	}
+
+	private String decodedPolicy(ProfileImageUploadUrlResponse response) {
+		byte[] decodedPolicy = Base64.getDecoder().decode(response.formFields().get("Policy"));
+		return new String(decodedPolicy, StandardCharsets.UTF_8);
 	}
 
 	private Users authenticatedUser(Long id, String email) {
