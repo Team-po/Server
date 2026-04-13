@@ -1,13 +1,14 @@
 package team.po.feature.match.exception;
 
+import org.springframework.http.HttpStatus;
+
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 
 @Getter
 @RequiredArgsConstructor
 public class ProjectRequestAlreadyExistsException extends RuntimeException {
-    private final HttpStatus code;
-    private final String error;
-    private final String message;
+	private final HttpStatus code;
+	private final String error;
+	private final String message;
 }

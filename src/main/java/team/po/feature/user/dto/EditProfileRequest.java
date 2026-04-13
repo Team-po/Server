@@ -13,5 +13,5 @@ public record EditProfileRequest(
 	@Min(value = 1, message = "레벨은 1 이상이어야 합니다.")
 	@Max(value = 5, message = "레벨은 5 이하여야 합니다.")
 	Integer level
-	) {
+) {
 }

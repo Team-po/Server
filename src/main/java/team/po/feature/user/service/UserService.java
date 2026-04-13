@@ -63,7 +63,8 @@ public class UserService {
 			userRepository.save(user);
 		} catch (DataIntegrityViolationException e) {
 			if (isEmailUniqueConstraintViolation(e)) {
-				throw new DuplicatedEmailException(HttpStatus.CONFLICT, ErrorCodeConstants.EMAIL_ALREADY_EXISTS, "중복된 이메일이 존재합니다.");
+				throw new DuplicatedEmailException(HttpStatus.CONFLICT, ErrorCodeConstants.EMAIL_ALREADY_EXISTS,
+					"중복된 이메일이 존재합니다.");
 			}
 			throw e;
 		}
@@ -76,7 +77,7 @@ public class UserService {
 			Authentication authentication = authenticationManager.authenticate(
 				new UsernamePasswordAuthenticationToken(normalizedEmail, request.password())
 			);
-			UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+			UserPrincipal principal = (UserPrincipal)authentication.getPrincipal();
 
 			JwtToken jwtToken = jwtTokenProvider.generateToken(principal.id(), principal.email());
 
@@ -94,28 +95,33 @@ public class UserService {
 		String normalizedEmail = this.normalizeEmail(email);
 
 		if (userRepository.existsByEmail(normalizedEmail))
-			throw new DuplicatedEmailException(HttpStatus.CONFLICT, ErrorCodeConstants.EMAIL_ALREADY_EXISTS, "중복된 이메일이 존재합니다.");
+			throw new DuplicatedEmailException(HttpStatus.CONFLICT, ErrorCodeConstants.EMAIL_ALREADY_EXISTS,
+				"중복된 이메일이 존재합니다.");
 
 	}
 
 	public RefreshTokenResponse refreshToken(RefreshTokenRequest request) {
 		String token = request.refreshToken();
 		if (!jwtTokenProvider.validateRefreshToken(token)) {
-			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
+			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN,
+				"유효하지 않은 리프레시 토큰입니다.");
 		}
 
 		Long userId = jwtTokenProvider.getUserId(token);
 		String email = jwtTokenProvider.getEmail(token);
 
 		Users user = userRepository.findById(userId)
-			.orElseThrow(() -> new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레시 토큰입니다."));
+			.orElseThrow(() -> new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER,
+				"존재하지 않는 유저의 리프레시 토큰입니다."));
 
 		if (user.getDeletedAt() != null) {
-			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER, "존재하지 않는 유저의 리프레시 토큰입니다.");
+			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER,
+				"존재하지 않는 유저의 리프레시 토큰입니다.");
 		}
 
 		if (!jwtTokenProvider.isRefreshTokenMatched(email, token)) {
-			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
+			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN,
+				"유효하지 않은 리프레시 토큰입니다.");
 		}
 
 		String accessToken = jwtTokenProvider.generateAccessToken(userId, user.getEmail());
@@ -156,7 +162,8 @@ public class UserService {
 				"존재하지 않은 유저입니다."
 			));
 		if (!passwordEncoder.matches(request.currentPassword(), user.getPassword()))
-			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD, "현재 비밀번호와 동일하지 않습니다.");
+			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD,
+				"현재 비밀번호와 동일하지 않습니다.");
 
 		String newPassword = passwordEncoder.encode(request.afterPassword());
 		user.editPassword(newPassword);
@@ -172,7 +179,8 @@ public class UserService {
 				"존재하지 않은 유저입니다."
 			));
 		if (!passwordEncoder.matches(request.password(), user.getPassword()))
-			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD, "현재 비밀번호와 동일하지 않습니다.");
+			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD,
+				"현재 비밀번호와 동일하지 않습니다.");
 
 		Instant deletedAt = Instant.now();
 		String email = user.getEmail();
