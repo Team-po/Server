@@ -16,13 +16,13 @@ public record EditProfileRequest(
 	@Max(value = 5, message = "레벨은 5 이하여야 합니다.")
 	Integer level,
 	@Size(max = 255, message = "프로필 이미지 키는 255자 이하여야 합니다.")
-	//  1. images/sign-up/{파일명}.{확장자}
-	//  2. images/users/{숫자}/{파일명}.{확장자}
-	//만 허용
+	// 1. images/sign-up/{파일명}.{확장자}
+	// 2. images/users/{숫자}/{파일명}.{확장자}
+	// 만 허용
 	@Pattern(
 		regexp = "^images/(sign-up|users/\\d+)/[A-Za-z0-9-]+\\.(jpg|png|gif|webp)$",
 		message = "프로필 이미지 키 형식이 올바르지 않습니다."
 	)
 	String profileImageKey
-	) {
+) {
 }

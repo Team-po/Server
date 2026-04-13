@@ -1,11 +1,8 @@
 package team.po.feature.user.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -26,11 +23,11 @@ import org.springframework.test.util.ReflectionTestUtils;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
+import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
-import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.RefreshTokenRequest;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
@@ -150,7 +147,8 @@ class UserServiceTest {
 			new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
 		Instant expiresAt = Instant.parse("2026-03-16T11:30:00Z");
 
-		when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(authentication);
+		when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(
+			authentication);
 		when(jwtTokenProvider.generateToken(1L, "test@email.com"))
 			.thenReturn(new JwtToken("Bearer", "access-token", "refresh-token", expiresAt));
 
