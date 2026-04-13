@@ -16,7 +16,7 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
-import team.po.common.redis.RedisDao;
+import team.po.common.redis.RedisService;
 
 @Slf4j
 @Component
@@ -30,19 +30,19 @@ public class JwtTokenProvider {
 	private static final String REFRESH_TOKEN_PREFIX = "RT:";
 
 	private final JwtProperties jwtProperties;
-	private final RedisDao redisDao;
+	private final RedisService redisService;
 	private final SecretKey key;
 
-	public JwtTokenProvider(JwtProperties jwtProperties, RedisDao redisDao) {
+	public JwtTokenProvider(JwtProperties jwtProperties, RedisService redisService) {
 		this.jwtProperties = jwtProperties;
-		this.redisDao = redisDao;
+		this.redisService = redisService;
 		this.key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtProperties.getSecret()));
 	}
 
 	public JwtToken generateToken(Long userId, String email) {
 		String accessToken = generateAccessToken(userId, email);
 		String refreshToken = generateRefreshToken(userId, email);
-		redisDao.setValue(createRefreshTokenKey(email), refreshToken, jwtProperties.getRefreshTokenExpiration());
+		redisService.setValue(createRefreshTokenKey(email), refreshToken, jwtProperties.getRefreshTokenExpiration());
 
 		return new JwtToken(BEARER_TYPE, accessToken, refreshToken, getExpiration(accessToken));
 	}
@@ -68,7 +68,7 @@ public class JwtTokenProvider {
 	}
 
 	public boolean isRefreshTokenMatched(String email, String refreshToken) {
-		Object savedToken = redisDao.getValue(createRefreshTokenKey(email));
+		Object savedToken = redisService.getValue(createRefreshTokenKey(email));
 		return savedToken != null && refreshToken.equals(savedToken.toString());
 	}
 
@@ -118,7 +118,7 @@ public class JwtTokenProvider {
 	}
 
 	public void deleteRefreshToken(String email) {
-		redisDao.deleteValue(createRefreshTokenKey(email));
+		redisService.deleteValue(createRefreshTokenKey(email));
 	}
 
 	private String generateJwt(Long userId, String email, String tokenType, Instant expiresAt) {

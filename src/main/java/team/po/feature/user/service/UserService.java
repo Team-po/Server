@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Locale;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -16,8 +17,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import team.po.common.jwt.JwtToken;
@@ -48,15 +47,22 @@ public class UserService {
 	private final PasswordEncoder passwordEncoder;
 	private final AuthenticationManager authenticationManager;
 	private final JwtTokenProvider jwtTokenProvider;
+	private final ProfileImageRedisService profileImageRedisService;
+	@Value("${cloud.aws.s3.endpoint:}")
+	private String s3Endpoint;
+	@Value("${cloud.aws.s3.bucket}")
+	private String bucket;
 
-	public void signUp(SignUpRequest signUpRequest, MultipartFile profileImage) {
+	public void signUp(SignUpRequest signUpRequest) {
 		String normalizedEmail = this.normalizeEmail(signUpRequest.email());
 		this.checkEmailDuplication(normalizedEmail);
-		// TODO : AWS 배포 후 S3 사용시 ProfileImage 저장 로직 개발
+		if (signUpRequest.profileImageKey() != null) {
+			profileImageRedisService.consumeSignUpTicket(signUpRequest.profileImageKey());
+		}
 		String password = passwordEncoder.encode(signUpRequest.password());
 
 		Users user = Users.builder().email(normalizedEmail).password(password)
-			.profileImage(null).nickname(signUpRequest.nickname()).description(null)
+			.profileImage(signUpRequest.profileImageKey()).nickname(signUpRequest.nickname()).description(null)
 			.level(signUpRequest.level()).temperature(50).build(); // temperature는 기본값
 
 		try {
@@ -135,22 +141,21 @@ public class UserService {
 			.temperature(user.getTemperature())
 			.level(user.getLevel())
 			.description(user.getDescription())
-			.profileImage(user.getProfileImage())
+			.profileImage(buildProfileImageUrl(user.getProfileImage()))
 			.build();
 	}
 
 	@Transactional
-	public void editMyProfile(Users loginUser, MultipartFile profileImage, EditProfileRequest request) {
-		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
-			() -> new UserNotFoundException(
-				HttpStatus.UNAUTHORIZED,
-				ErrorCodeConstants.UNEXISTED_USER,
-				"존재하지 않은 유저입니다."
-			));
-		user.editDescription(request.description());
-		user.editLevel(request.level());
-		user.editNickname(request.nickname());
-		// TODO : AWS 배포 후 S3 사용시 ProfileImage 수정하는 부분 추가
+	public void editMyProfile(Users loginUser, EditProfileRequest request) {
+		if (request.profileImageKey() != null) {
+			profileImageRedisService.consumeProfileUpdateTicket(loginUser.getId(), request.profileImageKey());
+		}
+		loginUser.editDescription(request.description());
+		loginUser.editLevel(request.level());
+		loginUser.editNickname(request.nickname());
+		if (request.profileImageKey() != null) {
+			loginUser.editProfileImage(request.profileImageKey());
+		}
 	}
 
 	@Transactional
@@ -220,5 +225,19 @@ public class UserService {
 		} catch (NoSuchAlgorithmException exception) {
 			throw new IllegalStateException("SHA-256 algorithm is unavailable.", exception);
 		}
+	}
+
+	private String buildProfileImageUrl(String objectKey) {
+		if (objectKey == null || objectKey.isBlank()) {
+			return objectKey;
+		}
+		if (s3Endpoint == null || s3Endpoint.isBlank()) {
+			return objectKey;
+		}
+
+		String normalizedEndpoint = s3Endpoint.endsWith("/") ? s3Endpoint.substring(0, s3Endpoint.length() - 1) : s3Endpoint;
+		String normalizedObjectKey = objectKey.startsWith("/") ? objectKey.substring(1) : objectKey;
+
+		return normalizedEndpoint + "/" + bucket + "/" + normalizedObjectKey;
 	}
 }
