@@ -37,10 +37,15 @@ public class ProjectGroupService {
 
 	@Transactional
 	public CreateProjectGroupResponse createProjectGroup(CreateProjectGroupRequest request) {
+		return this.createFromMatch(request);
+	}
+
+	@Transactional
+	public CreateProjectGroupResponse createFromMatch(CreateProjectGroupRequest request) {
 		this.validateCreateRequest(request);
 
 		List<CreateProjectGroupMemberRequest> requestMembers = request.members();
-		log.info("팀 스페이스 생성 요청: memberCount={}", requestMembers.size());
+		log.info("매칭 결과 기반 팀 스페이스 생성 요청: memberCount={}", requestMembers.size());
 
 		List<Long> userIds = requestMembers.stream()
 			.map(CreateProjectGroupMemberRequest::userId)
