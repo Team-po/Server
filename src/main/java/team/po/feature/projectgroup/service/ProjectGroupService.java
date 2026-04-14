@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,96 +39,60 @@ public class ProjectGroupService {
 	public CreateProjectGroupResponse createProjectGroup(CreateProjectGroupRequest request) {
 		this.validateCreateRequest(request);
 
-		Long groupId = request.groupId();
 		List<CreateProjectGroupMemberRequest> requestMembers = request.members();
-
-		log.info("팀 스페이스 생성 요청: groupId={}, memberCount={}", groupId, requestMembers.size());
+		log.info("팀 스페이스 생성 요청: memberCount={}", requestMembers.size());
 
 		List<Long> userIds = requestMembers.stream()
 			.map(CreateProjectGroupMemberRequest::userId)
 			.toList();
 		this.validateMembers(requestMembers, userIds);
 
-		List<Users> users = userRepository.findAllByIdInAndDeletedAtIsNull(userIds);
+		List<Users> users = userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(userIds);
 		if (users.size() != userIds.size()) {
-			log.warn("팀 스페이스 생성 실패: 존재하지 않는 사용자 포함, groupId={}, userIds={}", groupId, userIds);
+			log.warn("팀 스페이스 생성 실패: 존재하지 않는 사용자 포함, userIds={}", userIds);
 			throw new ProjectGroupException(ProjectGroupErrorType.PROJECT_GROUP_MEMBER_NOT_FOUND);
 		}
-		if (projectGroupMemberRepository.existsByUser_IdIn(userIds)) {
+
+		if (projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(userIds, ProjectGroupStatus.ACTIVE)) {
 			throw new ProjectGroupException(
 				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
-				"이미 팀에 속한 사용자가 포함되어 있습니다."
+				"이미 ACTIVE 팀에 속한 사용자가 포함되어 있습니다."
 			);
 		}
 
 		Map<Long, Users> usersById = users.stream().collect(Collectors.toMap(Users::getId, Function.identity()));
-		try {
-			ProjectGroup projectGroup = projectGroupRepository.save(ProjectGroup.builder()
-				.projectName(request.projectName().trim())
-				.projectTitle(request.projectTitle().trim())
-				.groupId(groupId)
-				.projectDescription(request.projectDescription())
-				.projectMvp(request.projectMvp())
-				.status(ProjectGroupStatus.ACTIVE)
-				.build());
 
-			List<ProjectGroupMember> members = new ArrayList<>();
-			for (CreateProjectGroupMemberRequest memberRequest : requestMembers) {
-				Users user = usersById.get(memberRequest.userId());
-				ProjectGroupMember member = new ProjectGroupMember(
-					projectGroup,
-					user,
-					memberRequest.role(),
-					memberRequest.groupRole()
-				);
+		ProjectGroup projectGroup = projectGroupRepository.save(ProjectGroup.builder()
+			.projectName(request.projectName().trim())
+			.projectTitle(request.projectTitle().trim())
+			.projectDescription(request.projectDescription())
+			.projectMvp(request.projectMvp())
+			.status(ProjectGroupStatus.ACTIVE)
+			.build());
 
-				if (memberRequest.groupRole() == GroupRole.MEMBER && Boolean.TRUE.equals(memberRequest.admin())) {
-					member.grantAdmin();
-				}
+		List<ProjectGroupMember> members = new ArrayList<>();
+		for (CreateProjectGroupMemberRequest memberRequest : requestMembers) {
+			Users user = usersById.get(memberRequest.userId());
+			ProjectGroupMember member = ProjectGroupMember.builder()
+				.projectGroup(projectGroup)
+				.user(user)
+				.memberRole(memberRequest.role())
+				.groupRole(memberRequest.groupRole())
+				.build();
 
-				members.add(member);
-			}
-			projectGroupMemberRepository.saveAllAndFlush(members);
-
-			log.info("팀 스페이스 생성 완료: projectGroupId={}, groupId={}, memberCount={}",
-				projectGroup.getId(), groupId, members.size());
-
-			return new CreateProjectGroupResponse(
-				projectGroup.getId(),
-				projectGroup.getProjectName(),
-				projectGroup.getProjectTitle(),
-				projectGroup.getStatus().name(),
-				members.size()
-			);
-		} catch (DataIntegrityViolationException exception) {
-			ProjectGroup duplicated = projectGroupRepository.findByGroupId(groupId).orElse(null);
-			if (duplicated != null) {
-				List<ProjectGroupMember> duplicatedMembers = projectGroupMemberRepository.findAllByProjectGroup_Id(
-					duplicated.getId()
-				);
-				log.info("동시 요청으로 이미 생성된 팀 스페이스 반환: groupId={}, projectGroupId={}",
-					groupId, duplicated.getId());
-				return new CreateProjectGroupResponse(
-					duplicated.getId(),
-					duplicated.getProjectName(),
-					duplicated.getProjectTitle(),
-					duplicated.getStatus().name(),
-					duplicatedMembers.size()
-				);
-			}
-			if (projectGroupMemberRepository.existsByUser_IdIn(userIds)) {
-				throw new ProjectGroupException(
-					ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
-					"이미 팀에 속한 사용자가 포함되어 있습니다."
-				);
-			}
-			log.warn("팀 스페이스 생성 중 데이터 무결성 오류 발생: groupId={}, userIds={}",
-				groupId, userIds, exception);
-			throw new ProjectGroupException(
-				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
-				"팀 스페이스 저장 중 데이터 충돌이 발생했습니다."
-			);
+			members.add(member);
 		}
+		projectGroupMemberRepository.saveAllAndFlush(members);
+
+		log.info("팀 스페이스 생성 완료: projectGroupId={}, memberCount={}", projectGroup.getId(), members.size());
+
+		return new CreateProjectGroupResponse(
+			projectGroup.getId(),
+			projectGroup.getProjectName(),
+			projectGroup.getProjectTitle(),
+			projectGroup.getStatus().name(),
+			members.size()
+		);
 	}
 
 	@Transactional
@@ -143,9 +106,7 @@ public class ProjectGroupService {
 	}
 
 	private void validateCreateRequest(CreateProjectGroupRequest request) {
-		if (request == null
-			|| request.groupId() == null
-			|| request.members() == null) {
+		if (request == null || request.members() == null) {
 			throw new ProjectGroupException(
 				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
 				"팀 스페이스 생성 요청이 올바르지 않습니다."
@@ -219,6 +180,13 @@ public class ProjectGroupService {
 				ProjectGroupErrorType.INVALID_PROJECT_GROUP_REQUEST,
 				"팀 스페이스의 방장 정보를 찾을 수 없습니다."
 			));
+
+		if (hostMember.getProjectGroup().getStatus() == ProjectGroupStatus.FINISHED) {
+			throw new ProjectGroupException(
+				ProjectGroupErrorType.PROJECT_GROUP_PERMISSION_DENIED,
+				"종료된 팀 스페이스에서는 관리자 권한을 변경할 수 없습니다."
+			);
+		}
 
 		if (!hostMember.getUser().getId().equals(requesterUserId)) {
 			throw new ProjectGroupException(

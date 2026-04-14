@@ -4,9 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.lenient;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -14,14 +12,12 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Optional;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import team.po.exception.ErrorCodeConstants;
@@ -54,25 +50,21 @@ class ProjectGroupServiceTest {
 	@InjectMocks
 	private ProjectGroupService projectGroupService;
 
-	@BeforeEach
-	void setUp() {
-		lenient().when(projectGroupRepository.findByGroupId(anyLong())).thenReturn(Optional.empty());
-		lenient().when(projectGroupMemberRepository.existsByUser_IdIn(anyList())).thenReturn(false);
-	}
-
 	@Test
 	void createProjectGroup_savesGroupAndMembers_whenRequestIsValid() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
-		when(userRepository.findAllByIdInAndDeletedAtIsNull(anyList())).thenReturn(matchedUsers);
+		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
+		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE)))
+			.thenReturn(false);
 		when(projectGroupRepository.save(any(ProjectGroup.class))).thenAnswer(invocation -> {
 			ProjectGroup saved = invocation.getArgument(0);
 			ReflectionTestUtils.setField(saved, "id", 10L);
 			return saved;
 		});
 
-		CreateProjectGroupResponse response = projectGroupService.createProjectGroup(defaultRequest(1001L));
+		CreateProjectGroupResponse response = projectGroupService.createProjectGroup(defaultRequest());
 
-		assertThat(response.groupId()).isEqualTo(10L);
+		assertThat(response.projectGroupId()).isEqualTo(10L);
 		assertThat(response.projectName()).isEqualTo("Teampo Alpha");
 		assertThat(response.status()).isEqualTo("ACTIVE");
 		assertThat(response.memberCount()).isEqualTo(4);
@@ -88,12 +80,11 @@ class ProjectGroupServiceTest {
 	@Test
 	void createProjectGroup_throwsBadRequest_whenMembersContainDuplicateUser() {
 		CreateProjectGroupRequest request = new CreateProjectGroupRequest(
-			1002L,
 			List.of(
-				new CreateProjectGroupMemberRequest(1L, MemberRole.BACKEND, GroupRole.HOST, true),
-				new CreateProjectGroupMemberRequest(1L, MemberRole.FRONTEND, GroupRole.MEMBER, false),
-				new CreateProjectGroupMemberRequest(3L, MemberRole.DESIGN, GroupRole.MEMBER, false),
-				new CreateProjectGroupMemberRequest(4L, MemberRole.BACKEND, GroupRole.MEMBER, false)
+				new CreateProjectGroupMemberRequest(1L, MemberRole.BACKEND, GroupRole.HOST),
+				new CreateProjectGroupMemberRequest(1L, MemberRole.FRONTEND, GroupRole.MEMBER),
+				new CreateProjectGroupMemberRequest(3L, MemberRole.DESIGN, GroupRole.MEMBER),
+				new CreateProjectGroupMemberRequest(4L, MemberRole.BACKEND, GroupRole.MEMBER)
 			),
 			"Teampo Alpha",
 			"주제 A",
@@ -110,11 +101,10 @@ class ProjectGroupServiceTest {
 	@Test
 	void createProjectGroup_throwsBadRequest_whenMemberSizeIsNotFour() {
 		CreateProjectGroupRequest request = new CreateProjectGroupRequest(
-			1003L,
 			List.of(
-				new CreateProjectGroupMemberRequest(1L, MemberRole.BACKEND, GroupRole.HOST, true),
-				new CreateProjectGroupMemberRequest(2L, MemberRole.FRONTEND, GroupRole.MEMBER, false),
-				new CreateProjectGroupMemberRequest(3L, MemberRole.DESIGN, GroupRole.MEMBER, false)
+				new CreateProjectGroupMemberRequest(1L, MemberRole.BACKEND, GroupRole.HOST),
+				new CreateProjectGroupMemberRequest(2L, MemberRole.FRONTEND, GroupRole.MEMBER),
+				new CreateProjectGroupMemberRequest(3L, MemberRole.DESIGN, GroupRole.MEMBER)
 			),
 			"Teampo Alpha",
 			"주제 A",
@@ -131,12 +121,11 @@ class ProjectGroupServiceTest {
 	@Test
 	void createProjectGroup_throwsBadRequest_whenHostCountIsNotOne() {
 		CreateProjectGroupRequest request = new CreateProjectGroupRequest(
-			1004L,
 			List.of(
-				new CreateProjectGroupMemberRequest(1L, MemberRole.BACKEND, GroupRole.MEMBER, false),
-				new CreateProjectGroupMemberRequest(2L, MemberRole.FRONTEND, GroupRole.MEMBER, false),
-				new CreateProjectGroupMemberRequest(3L, MemberRole.DESIGN, GroupRole.MEMBER, false),
-				new CreateProjectGroupMemberRequest(4L, MemberRole.BACKEND, GroupRole.MEMBER, false)
+				new CreateProjectGroupMemberRequest(1L, MemberRole.BACKEND, GroupRole.MEMBER),
+				new CreateProjectGroupMemberRequest(2L, MemberRole.FRONTEND, GroupRole.MEMBER),
+				new CreateProjectGroupMemberRequest(3L, MemberRole.DESIGN, GroupRole.MEMBER),
+				new CreateProjectGroupMemberRequest(4L, MemberRole.BACKEND, GroupRole.MEMBER)
 			),
 			"Teampo Alpha",
 			"주제 A",
@@ -151,188 +140,63 @@ class ProjectGroupServiceTest {
 	}
 
 	@Test
-	void createProjectGroup_savesGroup_whenHostAdminIsFalse() {
+	void createProjectGroup_savesGroup_whenHostExists() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
-		when(userRepository.findAllByIdInAndDeletedAtIsNull(anyList())).thenReturn(matchedUsers);
+		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
+		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE)))
+			.thenReturn(false);
 		when(projectGroupRepository.save(any(ProjectGroup.class))).thenAnswer(invocation -> {
 			ProjectGroup saved = invocation.getArgument(0);
 			ReflectionTestUtils.setField(saved, "id", 11L);
 			return saved;
 		});
 
-		CreateProjectGroupRequest request = new CreateProjectGroupRequest(
-			1005L,
-			List.of(
-				new CreateProjectGroupMemberRequest(1L, MemberRole.BACKEND, GroupRole.HOST, false),
-				new CreateProjectGroupMemberRequest(2L, MemberRole.FRONTEND, GroupRole.MEMBER, false),
-				new CreateProjectGroupMemberRequest(3L, MemberRole.DESIGN, GroupRole.MEMBER, false),
-				new CreateProjectGroupMemberRequest(4L, MemberRole.BACKEND, GroupRole.MEMBER, false)
-			),
-			"Teampo Alpha",
-			"주제 A",
-			"설명",
-			"MVP"
-		);
-
-		CreateProjectGroupResponse response = projectGroupService.createProjectGroup(request);
-		assertThat(response.groupId()).isEqualTo(11L);
+		CreateProjectGroupResponse response = projectGroupService.createProjectGroup(defaultRequest());
+		assertThat(response.projectGroupId()).isEqualTo(11L);
 		assertThat(response.memberCount()).isEqualTo(4);
 	}
 
 	@Test
 	void createProjectGroup_throwsNotFound_whenAnyMemberUserDoesNotExist() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L));
-		when(userRepository.findAllByIdInAndDeletedAtIsNull(anyList())).thenReturn(matchedUsers);
+		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
 
-		assertThatThrownBy(() -> projectGroupService.createProjectGroup(defaultRequest(1006L)))
+		assertThatThrownBy(() -> projectGroupService.createProjectGroup(defaultRequest()))
 			.isInstanceOf(ProjectGroupException.class)
 			.extracting("error")
 			.isEqualTo(ErrorCodeConstants.PROJECT_GROUP_MEMBER_NOT_FOUND);
 	}
 
 	@Test
-	void createProjectGroup_returnsExistingGroup_whenSameGroupIdRequestIsRetried() {
+	void createProjectGroup_throwsBadRequest_whenAnyMemberAlreadyBelongsToActiveTeam() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
-		when(userRepository.findAllByIdInAndDeletedAtIsNull(anyList())).thenReturn(matchedUsers);
+		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
+		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE)))
+			.thenReturn(true);
 
-		ProjectGroup existing = ProjectGroup.builder()
-			.projectName("Teampo Alpha")
-			.projectTitle("주제 A")
-			.groupId(2001L)
-			.projectDescription("설명")
-			.projectMvp("MVP")
-			.status(ProjectGroupStatus.ACTIVE)
-			.build();
-		ReflectionTestUtils.setField(existing, "id", 99L);
-
-		List<ProjectGroupMember> existingMembers = List.of(
-			new ProjectGroupMember(existing, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST),
-			new ProjectGroupMember(existing, mockUser(2L), MemberRole.FRONTEND, GroupRole.MEMBER),
-			new ProjectGroupMember(existing, mockUser(3L), MemberRole.DESIGN, GroupRole.MEMBER),
-			new ProjectGroupMember(existing, mockUser(4L), MemberRole.BACKEND, GroupRole.MEMBER)
-		);
-		when(projectGroupRepository.save(any(ProjectGroup.class)))
-			.thenThrow(new DataIntegrityViolationException("duplicate group id"));
-		when(projectGroupRepository.findByGroupId(2001L)).thenReturn(Optional.of(existing));
-		when(projectGroupMemberRepository.findAllByProjectGroup_Id(99L)).thenReturn(existingMembers);
-
-		CreateProjectGroupResponse response = projectGroupService.createProjectGroup(defaultRequest(2001L));
-
-		assertThat(response.groupId()).isEqualTo(99L);
-		assertThat(response.memberCount()).isEqualTo(4);
-	}
-
-	@Test
-	void createProjectGroup_returnsExistingGroup_whenSameGroupIdHasDifferentProjectInfo() {
-		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
-		when(userRepository.findAllByIdInAndDeletedAtIsNull(anyList())).thenReturn(matchedUsers);
-
-		ProjectGroup existing = ProjectGroup.builder()
-			.projectName("Teampo Alpha")
-			.projectTitle("주제 A")
-			.groupId(2002L)
-			.projectDescription("설명")
-			.projectMvp("MVP")
-			.status(ProjectGroupStatus.ACTIVE)
-			.build();
-		ReflectionTestUtils.setField(existing, "id", 97L);
-		List<ProjectGroupMember> existingMembers = List.of(
-			new ProjectGroupMember(existing, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST),
-			new ProjectGroupMember(existing, mockUser(2L), MemberRole.FRONTEND, GroupRole.MEMBER),
-			new ProjectGroupMember(existing, mockUser(3L), MemberRole.DESIGN, GroupRole.MEMBER),
-			new ProjectGroupMember(existing, mockUser(4L), MemberRole.BACKEND, GroupRole.MEMBER)
-		);
-		when(projectGroupRepository.save(any(ProjectGroup.class)))
-			.thenThrow(new DataIntegrityViolationException("duplicate group id"));
-		when(projectGroupRepository.findByGroupId(2002L)).thenReturn(Optional.of(existing));
-		when(projectGroupMemberRepository.findAllByProjectGroup_Id(97L)).thenReturn(existingMembers);
-
-		CreateProjectGroupRequest request = new CreateProjectGroupRequest(
-			2002L,
-			defaultMembers(),
-			"Teampo Alpha",
-			"다른 제목",
-			"설명",
-			"MVP"
-		);
-
-		CreateProjectGroupResponse response = projectGroupService.createProjectGroup(request);
-		assertThat(response.groupId()).isEqualTo(97L);
-		assertThat(response.memberCount()).isEqualTo(4);
-	}
-
-	@Test
-	void createProjectGroup_returnsExistingGroup_whenSameGroupIdHasDifferentMemberDefinition() {
-		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
-		when(userRepository.findAllByIdInAndDeletedAtIsNull(anyList())).thenReturn(matchedUsers);
-
-		ProjectGroup existing = ProjectGroup.builder()
-			.projectName("Teampo Alpha")
-			.projectTitle("주제 A")
-			.groupId(2003L)
-			.projectDescription("설명")
-			.projectMvp("MVP")
-			.status(ProjectGroupStatus.ACTIVE)
-			.build();
-		ReflectionTestUtils.setField(existing, "id", 96L);
-		List<ProjectGroupMember> existingMembers = List.of(
-			new ProjectGroupMember(existing, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST),
-			new ProjectGroupMember(existing, mockUser(2L), MemberRole.FRONTEND, GroupRole.MEMBER),
-			new ProjectGroupMember(existing, mockUser(3L), MemberRole.DESIGN, GroupRole.MEMBER),
-			new ProjectGroupMember(existing, mockUser(4L), MemberRole.BACKEND, GroupRole.MEMBER)
-		);
-		when(projectGroupRepository.save(any(ProjectGroup.class)))
-			.thenThrow(new DataIntegrityViolationException("duplicate group id"));
-		when(projectGroupRepository.findByGroupId(2003L)).thenReturn(Optional.of(existing));
-		when(projectGroupMemberRepository.findAllByProjectGroup_Id(96L)).thenReturn(existingMembers);
-
-		CreateProjectGroupRequest request = new CreateProjectGroupRequest(
-			2003L,
-			List.of(
-				new CreateProjectGroupMemberRequest(1L, MemberRole.BACKEND, GroupRole.MEMBER, false),
-				new CreateProjectGroupMemberRequest(2L, MemberRole.FRONTEND, GroupRole.HOST, true),
-				new CreateProjectGroupMemberRequest(3L, MemberRole.DESIGN, GroupRole.MEMBER, false),
-				new CreateProjectGroupMemberRequest(4L, MemberRole.BACKEND, GroupRole.MEMBER, false)
-			),
-			"Teampo Alpha",
-			"주제 A",
-			"설명",
-			"MVP"
-		);
-
-		CreateProjectGroupResponse response = projectGroupService.createProjectGroup(request);
-		assertThat(response.groupId()).isEqualTo(96L);
-		assertThat(response.memberCount()).isEqualTo(4);
-	}
-
-	@Test
-	void createProjectGroup_throwsBadRequest_whenAnyMemberAlreadyBelongsToTeam() {
-		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
-		when(userRepository.findAllByIdInAndDeletedAtIsNull(anyList())).thenReturn(matchedUsers);
-		when(projectGroupMemberRepository.existsByUser_IdIn(anyList())).thenReturn(true);
-
-		assertThatThrownBy(() -> projectGroupService.createProjectGroup(defaultRequest(2004L)))
+		assertThatThrownBy(() -> projectGroupService.createProjectGroup(defaultRequest()))
 			.isInstanceOf(ProjectGroupException.class)
-			.hasMessage("이미 팀에 속한 사용자가 포함되어 있습니다.");
+			.hasMessage("이미 ACTIVE 팀에 속한 사용자가 포함되어 있습니다.");
 		verify(projectGroupRepository, never()).save(any(ProjectGroup.class));
 	}
 
 	@Test
-	void createProjectGroup_throwsBadRequest_whenConcurrentInsertCausesUserUniqueConflict() {
+	void createProjectGroup_checksMembershipAgainstActiveStatusOnly() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
-		when(userRepository.findAllByIdInAndDeletedAtIsNull(anyList())).thenReturn(matchedUsers);
-		when(projectGroupMemberRepository.existsByUser_IdIn(anyList())).thenReturn(false, true);
+		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
+		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE)))
+			.thenReturn(false);
 		when(projectGroupRepository.save(any(ProjectGroup.class))).thenAnswer(invocation -> {
 			ProjectGroup saved = invocation.getArgument(0);
 			ReflectionTestUtils.setField(saved, "id", 95L);
 			return saved;
 		});
-		doThrow(new DataIntegrityViolationException("duplicate user membership"))
-			.when(projectGroupMemberRepository).saveAllAndFlush(anyList());
 
-		assertThatThrownBy(() -> projectGroupService.createProjectGroup(defaultRequest(2005L)))
-			.isInstanceOf(ProjectGroupException.class)
-			.hasMessage("이미 팀에 속한 사용자가 포함되어 있습니다.");
+		CreateProjectGroupResponse response = projectGroupService.createProjectGroup(defaultRequest());
+
+		assertThat(response.projectGroupId()).isEqualTo(95L);
+		verify(projectGroupMemberRepository)
+			.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE));
 	}
 
 	@Test
@@ -340,7 +204,6 @@ class ProjectGroupServiceTest {
 		ProjectGroup projectGroup = ProjectGroup.builder()
 			.projectName("Teampo Alpha")
 			.projectTitle("주제 A")
-			.groupId(3001L)
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
 		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
@@ -362,7 +225,6 @@ class ProjectGroupServiceTest {
 		ProjectGroup projectGroup = ProjectGroup.builder()
 			.projectName("Teampo Alpha")
 			.projectTitle("주제 A")
-			.groupId(3002L)
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
 		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
@@ -380,7 +242,6 @@ class ProjectGroupServiceTest {
 		ProjectGroup projectGroup = ProjectGroup.builder()
 			.projectName("Teampo Alpha")
 			.projectTitle("주제 A")
-			.groupId(3003L)
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
 		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
@@ -400,7 +261,6 @@ class ProjectGroupServiceTest {
 		ProjectGroup projectGroup = ProjectGroup.builder()
 			.projectName("Teampo Alpha")
 			.projectTitle("주제 A")
-			.groupId(3004L)
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
 		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
@@ -418,9 +278,8 @@ class ProjectGroupServiceTest {
 		assertThat(targetMember.isAdmin()).isFalse();
 	}
 
-	private CreateProjectGroupRequest defaultRequest(Long groupId) {
+	private CreateProjectGroupRequest defaultRequest() {
 		return new CreateProjectGroupRequest(
-			groupId,
 			defaultMembers(),
 			"Teampo Alpha",
 			"주제 A",
@@ -431,10 +290,10 @@ class ProjectGroupServiceTest {
 
 	private List<CreateProjectGroupMemberRequest> defaultMembers() {
 		return List.of(
-			new CreateProjectGroupMemberRequest(1L, MemberRole.BACKEND, GroupRole.HOST, true),
-			new CreateProjectGroupMemberRequest(2L, MemberRole.FRONTEND, GroupRole.MEMBER, false),
-			new CreateProjectGroupMemberRequest(3L, MemberRole.DESIGN, GroupRole.MEMBER, false),
-			new CreateProjectGroupMemberRequest(4L, MemberRole.BACKEND, GroupRole.MEMBER, false)
+			new CreateProjectGroupMemberRequest(1L, MemberRole.BACKEND, GroupRole.HOST),
+			new CreateProjectGroupMemberRequest(2L, MemberRole.FRONTEND, GroupRole.MEMBER),
+			new CreateProjectGroupMemberRequest(3L, MemberRole.DESIGN, GroupRole.MEMBER),
+			new CreateProjectGroupMemberRequest(4L, MemberRole.BACKEND, GroupRole.MEMBER)
 		);
 	}
 

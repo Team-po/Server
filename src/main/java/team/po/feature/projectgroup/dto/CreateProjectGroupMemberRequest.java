@@ -10,7 +10,6 @@ public record CreateProjectGroupMemberRequest(
 	@NotNull(message = "팀 역할은 필수입니다.")
 	MemberRole role,
 	@NotNull(message = "그룹 역할은 필수입니다.")
-	GroupRole groupRole,
-	Boolean admin
+	GroupRole groupRole
 ) {
 }

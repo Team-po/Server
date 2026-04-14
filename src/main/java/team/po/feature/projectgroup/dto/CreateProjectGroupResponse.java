@@ -1,7 +1,7 @@
 package team.po.feature.projectgroup.dto;
 
 public record CreateProjectGroupResponse(
-	Long groupId,
+	Long projectGroupId,
 	String projectName,
 	String projectTitle,
 	String status,

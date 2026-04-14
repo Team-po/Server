@@ -13,6 +13,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import team.po.feature.user.domain.Users;
@@ -49,6 +50,7 @@ public class ProjectGroupMember {
 	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
 	private Instant createdAt;
 
+	@Builder
 	public ProjectGroupMember(
 		ProjectGroup projectGroup,
 		Users user,
