@@ -1,16 +1,14 @@
-package team.po.exception;
+package team.po.feature.user.exception;
 
 import org.springframework.http.HttpStatus;
-import org.springframework.validation.Errors;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
-@RequiredArgsConstructor
 @Getter
-public class InvalidFieldException extends RuntimeException {
+@RequiredArgsConstructor
+public class InvalidImageContentTypeException extends RuntimeException {
 	private final HttpStatus code;
 	private final String error;
 	private final String message;
-	private final Errors errors;
 }

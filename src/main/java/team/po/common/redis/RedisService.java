@@ -7,12 +7,12 @@ import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.stereotype.Component;
 
 @Component
-public class RedisDao {
+public class RedisService {
 
 	private final RedisTemplate<String, Object> redisTemplate;
 	private final ValueOperations<String, Object> valueOperations;
 
-	public RedisDao(RedisTemplate<String, Object> redisTemplate) {
+	public RedisService(RedisTemplate<String, Object> redisTemplate) {
 		this.redisTemplate = redisTemplate;
 		this.valueOperations = redisTemplate.opsForValue();
 	}
@@ -27,6 +27,10 @@ public class RedisDao {
 
 	public Object getValue(String key) {
 		return valueOperations.get(key);
+	}
+
+	public Object getAndDeleteValue(String key) {
+		return valueOperations.getAndDelete(key);
 	}
 
 	public void deleteValue(String key) {

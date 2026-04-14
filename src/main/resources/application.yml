@@ -1,6 +1,8 @@
 spring:
   config:
-    import: optional:classpath:jwt-secret.yml
+    import:
+      - optional:classpath:jwt-secret.yml
+      - optional:classpath:s3-secret.yml
   jackson:
     # API 에서 내려가는 시간 직렬화 기준을 UTC 로 통일한다.
     time-zone: UTC
@@ -24,6 +26,22 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
+cloud:
+  aws:
+    credentials:
+      access-key: ${s3.access-key}
+      secret-key: ${s3.secret-key}
+    s3:
+      bucket: team-po
+      dir: images
+      endpoint: ${s3.endpoint:}
+      presigned-expiration: 5m
+      max-upload-size-bytes: 5242880
+      path-style-access-enabled: true
+    region:
+      static: ap-northeast-2
+    stack:
+      auto: false
 
 logging:
   level:
