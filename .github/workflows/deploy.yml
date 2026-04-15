@@ -59,24 +59,84 @@ jobs:
 
             ECR_REPOSITORY_URL="${{ secrets.ECR_REPOSITORY_URL }}"
             AWS_REGION="${{ secrets.AWS_REGION }}"
+            CLOUDWATCH_LOG_GROUP_NAME="/aws/teampo/dev/api"
             ECR_REGISTRY="${ECR_REPOSITORY_URL%/*}"
 
+            wait_for_http() {
+              url="$1"
+              for _ in $(seq 1 30); do
+                if curl -fsS "$url" >/dev/null; then
+                  return 0
+                fi
+                sleep 2
+              done
+              return 1
+            }
+
+            run_api_container() {
+              image="$1"
+              sudo docker run -d \
+                --name teampo-api \
+                --restart unless-stopped \
+                --network teampo \
+                --env-file /opt/teampo/api.env \
+                --log-driver=awslogs \
+                --log-opt awslogs-region="$AWS_REGION" \
+                --log-opt awslogs-group="$CLOUDWATCH_LOG_GROUP_NAME" \
+                --log-opt awslogs-stream=api \
+                -p 80:8080 \
+                "$image"
+            }
+
+            rollback_api() {
+              if [ -n "$PREVIOUS_IMAGE_ID" ]; then
+                sudo docker rm -f teampo-api 2>/dev/null || true
+                run_api_container "$PREVIOUS_IMAGE_ID"
+                wait_for_http http://localhost/swagger-ui/index.html
+              fi
+            }
+
+            sudo test -r /opt/teampo/api.env
             sudo docker network create teampo 2>/dev/null || true
 
             aws ecr get-login-password --region "$AWS_REGION" \
               | sudo docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
-            sudo docker pull "${ECR_REPOSITORY_URL}:latest"
-            sudo docker rm -f teampo-api 2>/dev/null || true
+            PREVIOUS_IMAGE_ID="$(sudo docker inspect -f '{{.Image}}' teampo-api 2>/dev/null || true)"
 
+            sudo docker pull "${ECR_REPOSITORY_URL}:latest"
+
+            sudo docker rm -f teampo-api-candidate 2>/dev/null || true
             sudo docker run -d \
-              --name teampo-api \
-              --restart unless-stopped \
+              --name teampo-api-candidate \
+              --restart no \
               --network teampo \
               --env-file /opt/teampo/api.env \
-              -p 80:8080 \
+              --log-driver=awslogs \
+              --log-opt awslogs-region="$AWS_REGION" \
+              --log-opt awslogs-group="$CLOUDWATCH_LOG_GROUP_NAME" \
+              --log-opt awslogs-stream=api-candidate \
+              -p 127.0.0.1:18080:8080 \
               "${ECR_REPOSITORY_URL}:latest"
 
-            sleep 10
-            curl -fsS http://localhost/swagger-ui/index.html >/dev/null
+            if ! wait_for_http http://127.0.0.1:18080/swagger-ui/index.html; then
+              sudo docker ps -a --filter name=teampo-api-candidate
+              sudo docker rm -f teampo-api-candidate 2>/dev/null || true
+              exit 1
+            fi
+
+            sudo docker rm -f teampo-api-candidate
+            sudo docker rm -f teampo-api 2>/dev/null || true
+
+            if ! run_api_container "${ECR_REPOSITORY_URL}:latest"; then
+              rollback_api
+              exit 1
+            fi
+
+            if ! wait_for_http http://localhost/swagger-ui/index.html; then
+              sudo docker ps -a --filter name=teampo-api
+              rollback_api
+              exit 1
+            fi
+
             sudo docker ps --filter name=teampo-api
