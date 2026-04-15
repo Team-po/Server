@@ -15,7 +15,7 @@ data "aws_subnets" "default" {
 }
 
 locals {
-  default_subnet_ids = slice(data.aws_subnets.default.ids, 0, 2)
+  default_subnet_ids = slice(sort(data.aws_subnets.default.ids), 0, 2)
 }
 
 resource "aws_security_group" "app" {
