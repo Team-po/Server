@@ -59,7 +59,6 @@ variable "ssh_ingress_cidr_blocks" {
 variable "app_key_name" {
   description = "EC2 SSH 접속에 사용할 AWS key pair 이름. null이면 key pair를 연결하지 않는다."
   type        = string
-  default     = null
 }
 
 variable "app_instance_type" {
