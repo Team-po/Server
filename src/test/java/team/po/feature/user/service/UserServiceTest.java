@@ -65,6 +65,7 @@ class UserServiceTest {
 	void setUp() {
 		ReflectionTestUtils.setField(userService, "s3Endpoint", "https://storage.hwangdo.kr");
 		ReflectionTestUtils.setField(userService, "bucket", "team-po");
+		ReflectionTestUtils.setField(userService, "region", "ap-northeast-2");
 	}
 
 	@Test
@@ -267,6 +268,18 @@ class UserServiceTest {
 		assertThat(response.nickname()).isEqualTo("tester");
 		assertThat(response.temperature()).isEqualTo(50);
 		assertThat(response.level()).isEqualTo(3);
+	}
+
+	@Test
+	void getMyProfile_returnsAwsS3ProfileImageUrlWhenEndpointIsBlank() {
+		ReflectionTestUtils.setField(userService, "s3Endpoint", "");
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		loginUser.editProfileImage("images/users/1/profile.png");
+
+		GetProfileResponse response = userService.getMyProfile(loginUser);
+
+		assertThat(response.profileImage())
+			.isEqualTo("https://team-po.s3.ap-northeast-2.amazonaws.com/images/users/1/profile.png");
 	}
 
 	@Test
