@@ -56,7 +56,7 @@ class ProjectRequestServiceTest {
 	@Test
 	void createProjectRequest_success() {
 		Users user = createUser(1L);
-		ProjectRequestDto dto = new ProjectRequestDto(Role.BE, "title", "desc", "mvp");
+		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(1L,
 			List.of(Status.WAITING, Status.MATCHING))).thenReturn(false);
@@ -67,7 +67,7 @@ class ProjectRequestServiceTest {
 	@Test
 	void createProjectRequest_throwsWhenUserNotFound() {
 		Users user = createUser(1L);
-		ProjectRequestDto dto = new ProjectRequestDto(Role.BE, "title", "desc", "mvp");
+		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 		assertThatThrownBy(() -> projectRequestService.createProjectRequest(user, dto))
 			.isInstanceOf(UserNotFoundException.class);
@@ -77,7 +77,7 @@ class ProjectRequestServiceTest {
 	@Test
 	void createProjectRequest_throwsWhenDuplicateRequest() {
 		Users user = createUser(1L);
-		ProjectRequestDto dto = new ProjectRequestDto(Role.BE, "title", "desc", "mvp");
+		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(1L,
 			List.of(Status.WAITING, Status.MATCHING))).thenReturn(true);
@@ -89,7 +89,7 @@ class ProjectRequestServiceTest {
 	@Test
 	void createProjectRequest_throwsWhenRaceCondition() {
 		Users user = createUser(1L);
-		ProjectRequestDto dto = new ProjectRequestDto(Role.BE, "title", "desc", "mvp");
+		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(any(), any())).thenReturn(false);
 		when(projectRequestRepository.save(any())).thenThrow(DataIntegrityViolationException.class);
@@ -102,7 +102,7 @@ class ProjectRequestServiceTest {
 	@Test
 	void cancelProjectRequest_success() {
 		Users user = createUser(1L);
-		ProjectRequest request = ProjectRequest.builder().user(user).role(Role.BE).build();
+		ProjectRequest request = ProjectRequest.builder().user(user).role(Role.BACKEND).build();
 		when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(
 			Optional.of(request));
 		projectRequestService.cancelProjectRequest(user);
@@ -131,14 +131,17 @@ class ProjectRequestServiceTest {
 	// ========== getProjectRequestStatus ==========
 
 	@Test
-	void getProjectRequestStatus_success() {
+	void getProjectRequestStatus_success_whenWaiting() {
 		Users user = createUser(1L);
-		ProjectRequest request = ProjectRequest.builder().user(user).role(Role.BE).build();
+		ProjectRequest request = ProjectRequest.builder().user(user).role(Role.BACKEND).build();
 		when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(
 			Optional.of(request));
 		ProjectRequestStatusResponse response = projectRequestService.getProjectRequestStatus(user);
 		assertThat(response.status()).isEqualTo(Status.WAITING);
+		assertThat(response.matchId()).isNull();
 	}
+
+	// whenMatching(): startMatching 구현 후 추가
 
 	@Test
 	void getProjectRequestStatus_throwsWhenNoActiveRequest() {
@@ -148,4 +151,6 @@ class ProjectRequestServiceTest {
 		assertThatThrownBy(() -> projectRequestService.getProjectRequestStatus(user))
 			.isInstanceOf(ProjectRequestNotFoundException.class);
 	}
+
+	// throwsWhenMatchingButNoMember: startMatching 구현 후 추가
 }

@@ -84,7 +84,7 @@ class ProjectRequestControllerTest {
 		mockMvc.perform(post("/api/match/request")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-					{"role": "BE", "projectTitle": null, "projectDescription": "desc", "projectMvp": "mvp"}
+					{"role": "BACKEND", "projectTitle": null, "projectDescription": "desc", "projectMvp": "mvp"}
 					"""))
 			.andExpect(status().isOk());
 
@@ -113,7 +113,7 @@ class ProjectRequestControllerTest {
 		mockMvc.perform(post("/api/match/request")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-					{"role": "BE", "projectTitle": null, "projectDescription": "desc", "projectMvp": "mvp"}
+					{"role": "BACKEND", "projectTitle": null, "projectDescription": "desc", "projectMvp": "mvp"}
 					"""))
 			.andExpect(status().isConflict())
 			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.PROJECT_REQUEST_ALREADY_EXISTS))
@@ -147,13 +147,25 @@ class ProjectRequestControllerTest {
 	// ===== getProjectRequestStatus =====
 
 	@Test
-	void getProjectRequestStatus_returnsOk() throws Exception {
+	void getProjectRequestStatus_returnsOk_whenWaiting() throws Exception {
 		when(projectRequestService.getProjectRequestStatus(any(Users.class)))
-			.thenReturn(new ProjectRequestStatusResponse(Status.WAITING));
+			.thenReturn(new ProjectRequestStatusResponse(Status.WAITING, null));
 
 		mockMvc.perform(get("/api/match/status"))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.status").value("WAITING"));
+			.andExpect(jsonPath("$.status").value("WAITING"))
+			.andExpect(jsonPath("$.matchId").isEmpty());
+	}
+
+	@Test
+	void getProjectRequestStatus_returnsOk_whenMatching() throws Exception {
+		when(projectRequestService.getProjectRequestStatus(any(Users.class)))
+			.thenReturn(new ProjectRequestStatusResponse(Status.MATCHING, 42L));
+
+		mockMvc.perform(get("/api/match/status"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("MATCHING"))
+			.andExpect(jsonPath("$.matchId").value(42));
 	}
 
 	@Test
