@@ -10,12 +10,14 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import team.po.exception.ErrorCodeConstants;
+import team.po.feature.match.domain.MatchingMember;
 import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.ProjectRequestDto;
 import team.po.feature.match.dto.ProjectRequestStatusResponse;
 import team.po.feature.match.enums.Status;
 import team.po.feature.match.exception.ProjectRequestAlreadyExistsException;
 import team.po.feature.match.exception.ProjectRequestNotFoundException;
+import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.exception.UserNotFoundException;
@@ -27,6 +29,7 @@ import team.po.feature.user.repository.UserRepository;
 public class ProjectRequestService {
 	private final ProjectRequestRepository projectRequestRepository;
 	private final UserRepository userRepository;
+	private final MatchingMemberRepository matchingMemberRepository;
 
 	@Transactional
 	public void createProjectRequest(Users loginUser, ProjectRequestDto request) {
@@ -103,6 +106,17 @@ public class ProjectRequestService {
 			"진행 중인 매칭 요청이 없습니다."
 		));
 
-		return new ProjectRequestStatusResponse(projectRequest.getStatus());
+		Long matchId = null;
+		// MATCHING: matchId 반환
+		if (projectRequest.getStatus() == Status.MATCHING) {
+			matchId = matchingMemberRepository
+				.findByUserIdAndIsAcceptedIsNullAndDeletedAtIsNull(user.getId())
+				.map(MatchingMember::getMatchingSessionId)
+				.orElseThrow(() -> {
+					log.error("MATCHING 상태이나 활성 MatchingMember가 없음. userId={}", user.getId());
+					return new IllegalStateException("MATCHING 상태의 활성 멤버를 찾을 수 없습니다.");
+				});
+		}
+		return new ProjectRequestStatusResponse(projectRequest.getStatus(), matchId);
 	}
 }
