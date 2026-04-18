@@ -41,6 +41,7 @@ public class MatchingMember {
 	@Column(name = "responded_at")
 	private Instant respondedAt;
 
+	// 사용자가 취소 요청한 경우 soft delete
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 

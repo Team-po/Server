@@ -20,6 +20,7 @@ public class MatchingSession {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
+	// Timeout 기준
 	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
 	private Instant createdAt;
 
@@ -30,6 +31,7 @@ public class MatchingSession {
 		return new MatchingSession();
 	}
 
+	// 매칭 세션 비활성 (그룹 생성 완료 또는 host가 매칭 취소)
 	public void delete() {
 		this.deletedAt = Instant.now();
 	}
