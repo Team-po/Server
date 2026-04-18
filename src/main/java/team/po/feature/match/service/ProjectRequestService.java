@@ -15,6 +15,7 @@ import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.ProjectRequestDto;
 import team.po.feature.match.dto.ProjectRequestStatusResponse;
 import team.po.feature.match.enums.Status;
+import team.po.feature.match.exception.MatchDataIntegrityException;
 import team.po.feature.match.exception.ProjectRequestAlreadyExistsException;
 import team.po.feature.match.exception.ProjectRequestNotFoundException;
 import team.po.feature.match.repository.MatchingMemberRepository;
@@ -113,8 +114,11 @@ public class ProjectRequestService {
 				.findByUserIdAndIsAcceptedIsNullAndDeletedAtIsNull(user.getId())
 				.map(MatchingMember::getMatchingSessionId)
 				.orElseThrow(() -> {
-					log.error("MATCHING 상태이나 활성 MatchingMember가 없음. userId={}", user.getId());
-					return new IllegalStateException("MATCHING 상태의 활성 멤버를 찾을 수 없습니다.");
+					log.error("활성 매칭 멤버 데이터 부정합: userId={}", user.getId());
+					return new MatchDataIntegrityException(
+						HttpStatus.INTERNAL_SERVER_ERROR,
+						ErrorCodeConstants.MATCH_DATA_ERROR,
+						"MATCHING 상태의 활성 멤버를 찾을 수 없습니다.");
 				});
 		}
 		return new ProjectRequestStatusResponse(projectRequest.getStatus(), matchId);

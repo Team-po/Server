@@ -23,4 +23,5 @@ public final class ErrorCodeConstants extends RuntimeException {
 	// Match
 	public static final String MATCH_NOT_FOUND = "MATCH_NOT_FOUND";
 	public static final String MATCH_ACCESS_DENIED = "MATCH_ACCESS_DENIED";
+	public static final String MATCH_DATA_ERROR = "MATCH_DATA_ERROR";
 }

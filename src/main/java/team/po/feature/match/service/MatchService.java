@@ -18,6 +18,7 @@ import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.MatchMemberResponse;
 import team.po.feature.match.dto.MatchProjectResponse;
 import team.po.feature.match.exception.MatchAccessDeniedException;
+import team.po.feature.match.exception.MatchDataIntegrityException;
 import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.MatchingSessionRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
@@ -92,13 +93,21 @@ public class MatchService {
 
 		if (hosts.size() != 1) {
 			log.error("매칭 호스트 데이터 부정합: matchId={}, hostCount={}", matchId, hosts.size());
-			throw new IllegalStateException("해당 매칭 세션에 호스트 정보가 없거나 중복되었습니다.");
+			throw new MatchDataIntegrityException(
+				HttpStatus.INTERNAL_SERVER_ERROR,
+				ErrorCodeConstants.MATCH_DATA_ERROR,
+				"해당 매칭 세션에 호스트 정보가 없거나 중복되었습니다."
+			);
 		}
 
 		MatchingMember hostMember = hosts.getFirst();
 		if (!Boolean.TRUE.equals(hostMember.getIsAccepted())) {
 			log.error("호스트 수락 상태 부정합: matchId={}, userId={}", matchId, hostMember.getUserId());
-			throw new IllegalStateException("호스트의 매칭 수락 상태가 유효하지 않습니다.");
+			throw new MatchDataIntegrityException(
+				HttpStatus.INTERNAL_SERVER_ERROR,
+				ErrorCodeConstants.MATCH_DATA_ERROR,
+				"호스트의 매칭 수락 상태가 유효하지 않습니다."
+			);
 		}
 
 		// 3. Host 프로젝트 정보 조회
