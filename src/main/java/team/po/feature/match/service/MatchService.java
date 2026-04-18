@@ -38,6 +38,7 @@ public class MatchService {
 	private final ProjectRequestRepository projectRequestRepository;
 	private final UserRepository userRepository;
 	private final ApplicationEventPublisher eventPublisher;
+	private final ProjectGroupService projectGroupService;
 
 	// 신규 매칭 세션 생성
 	@Transactional
@@ -177,6 +178,58 @@ public class MatchService {
 		);
 	}
 
+	@Transactional
+	public void accept(Long matchId, Users loginUser) {
+		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
+		List<MatchingMember> members = validateMatchAccessAndGetMembers(matchId, loginUser.getId());
+
+		// 2. Host 여부 확인
+		MatchingMember member = members.stream()
+			.filter(m -> m.getUserId().equals(loginUser.getId()))
+			.findFirst()
+			.orElseThrow(() -> new MatchDataIntegrityException(
+				HttpStatus.INTERNAL_SERVER_ERROR,
+				ErrorCodeConstants.MATCH_DATA_ERROR,
+				"멤버 데이터 조회 실패"
+			));
+
+		// 3. 전체 매칭 요청 조회
+		List<Long> prIds = members.stream().map(MatchingMember::getProjectRequestId).toList();
+		List<ProjectRequest> allPrs = projectRequestRepository.findAllById(prIds);
+
+		// 4. 호스트 여부 확인
+		validateNotHost(member, allPrs);
+
+		// 5. 멱등성 - 이미 수락한 경우 200 반환
+		if (Boolean.TRUE.equals(member.getIsAccepted())) {
+			log.info("이미 수락한 매칭 세션: matchId={}, userId={}", matchId, loginUser.getId());
+			return;
+		}
+
+		// 6. 이미 거절한 경우 400
+		if (Boolean.FALSE.equals(member.getIsAccepted())) {
+			throw new MatchAccessDeniedException(
+				HttpStatus.BAD_REQUEST,
+				ErrorCodeConstants.MATCH_ACCESS_DENIED,
+				"이미 거절한 매칭 세션입니다."
+			);
+		}
+
+		// 7. 수락 처리
+		member.accept();
+		log.info("매칭 수락: matchId={}, userId={}", matchId, loginUser.getId());
+
+		// 8. 전원 수락 여부 확인
+		if (!matchingMemberRepository.isAllAccepted(matchId)) {
+			eventPublisher.publishEvent(new MatchAcceptedEvent(matchId, loginUser.getId()));
+			return;
+		}
+
+		// 9. 전원 수락 시 ProjectGroup 생성
+		log.info("전원 수락 완료, ProjectGroup 생성 시작: matchId={}", matchId);
+		completeMatching(matchId, members, allPrs);
+	}
+
 	private List<MatchingMember> validateMatchAccessAndGetMembers(Long matchId, Long userId) {
 		// 1. 매칭 세션 존재 여부
 		MatchingSession session = matchingSessionRepository.findByIdAndDeletedAtIsNull(matchId)
@@ -204,4 +257,76 @@ public class MatchService {
 		return members;
 	}
 
+	private void validateNotHost(MatchingMember member, List<ProjectRequest> allPrs) {
+		ProjectRequest memberPr = allPrs.stream()
+			.filter(p -> p.getId().equals(member.getProjectRequestId()))
+			.findFirst()
+			.orElseThrow(() -> new MatchDataIntegrityException(
+				HttpStatus.INTERNAL_SERVER_ERROR,
+				ErrorCodeConstants.MATCH_DATA_ERROR,
+				"매칭 요청 데이터 조회 실패"
+			));
+		if (memberPr.isHostRequest()) {
+			throw new MatchAccessDeniedException(
+				HttpStatus.FORBIDDEN,
+				ErrorCodeConstants.MATCH_ACCESS_DENIED,
+				"호스트는 수락 또는 거절할 수 없습니다."
+			);
+		}
+	}
+
+	private void completeMatching(Long matchId, List<MatchingMember> members, List<ProjectRequest> allPrs) {
+		// 1. Host 매칭 요청 정보 조회
+		ProjectRequest hostPr = allPrs.stream()
+			.filter(ProjectRequest::isHostRequest)
+			.findFirst()
+			.orElseThrow(() -> new MatchDataIntegrityException(
+				HttpStatus.INTERNAL_SERVER_ERROR,
+				ErrorCodeConstants.MATCH_DATA_ERROR,
+				"호스트 데이터 조회 실패"
+			));
+
+		// 2. 매칭 요청 ID -> userID 매핑
+		Map<Long, Long> prToUserId = members.stream()
+			.collect(Collectors.toMap(
+				MatchingMember::getProjectRequestId,
+				MatchingMember::getUserId
+			));
+
+		// 3. CreateProjectGroupRequest 생성
+		List<CreateProjectGroupMemberRequest> memberRequests = allPrs.stream()
+			.map(pr -> new CreateProjectGroupMemberRequest(
+				prToUserId.get(pr.getId()),
+				MemberRole.valueOf(pr.getRole().name()),
+				pr.isHostRequest() ? GroupRole.HOST : GroupRole.MEMBER
+			))
+			.toList();
+
+		CreateProjectGroupRequest request = new CreateProjectGroupRequest(
+			memberRequests,
+			hostPr.getUser().getNickname() + "의 팀",
+			hostPr.getProjectTitle(),
+			hostPr.getProjectDescription(),
+			hostPr.getProjectMvp()
+		);
+
+		// 4. ProjectGroup 생성
+		CreateProjectGroupResponse response = projectGroupService.createProjectGroup(request);
+
+		// 5. ProjectRequest 상태 변경
+		allPrs.forEach(ProjectRequest::complete);
+
+		// 6. 매칭 세션 비활성화
+		matchingSessionRepository.findByIdAndDeletedAtIsNull(matchId)
+			.ifPresent(MatchingSession::delete);
+
+		// 7. 매칭 완료 이벤트 발행
+		List<Long> memberUserIds = members.stream().map(MatchingMember::getUserId).toList();
+		eventPublisher.publishEvent(
+			new MatchCompletedEvent(matchId, response.projectGroupId(), memberUserIds)
+		);
+
+		log.info("매칭 완료 및 프로젝트 그룹 생성: matchId={}, projectGroupId={}",
+			matchId, response.projectGroupId());
+	}
 }

@@ -3,6 +3,7 @@ package team.po.feature.match.controller;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -38,5 +39,15 @@ public class MatchController {
 	) {
 		MatchProjectResponse response = matchService.getMatchProject(matchId, user);
 		return ResponseEntity.ok().body(response);
+	}
+
+	@Operation(summary = "매칭 수락 API")
+	@PostMapping("/{matchId}/accept")
+	public ResponseEntity<Void> accept(
+		@PathVariable Long matchId,
+		@LoginUser Users user
+	) {
+		matchService.accept(matchId, user);
+		return ResponseEntity.ok().build();
 	}
 }

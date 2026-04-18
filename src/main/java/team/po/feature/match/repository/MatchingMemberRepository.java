@@ -42,4 +42,25 @@ public interface MatchingMemberRepository extends JpaRepository<MatchingMember, 
 		  AND (mm.isAccepted IS NULL OR mm.isAccepted = true)
 		""")
 	List<MatchingMember> findActiveValidMembersBySessionId(@Param("sessionId") Long sessionId);
+
+	// Session ID + User ID로 해당 멤버 조회
+	@Query("""
+		SELECT mm FROM MatchingMember mm
+		WHERE mm.matchingSessionId = :sessionId
+		  AND mm.userId = :userId
+		  AND mm.deletedAt IS NULL
+		""")
+	Optional<MatchingMember> findActiveBySessionIdAndUserId(
+		@Param("sessionId") Long sessionId,
+		@Param("userId") Long userId
+	);
+
+	// 전원 수락 여부 확인
+	@Query("""
+		SELECT COUNT(mm) = 0 FROM MatchingMember mm
+		WHERE mm.matchingSessionId = :sessionId
+		  AND mm.deletedAt IS NULL
+		  AND mm.isAccepted IS NULL
+		""")
+	boolean isAllAccepted(@Param("sessionId") Long sessionId);
 }

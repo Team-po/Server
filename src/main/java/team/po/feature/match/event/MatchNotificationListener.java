@@ -27,4 +27,20 @@ public class MatchNotificationListener {
 		// 	log.debug("매칭 알림 전송 완료: userId={}", userId);
 		// }
 	}
+
+	@Async
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	public void handleMatchAcceptedEvent(MatchAcceptedEvent event) {
+		log.debug("매칭 수락 이벤트 수신: matchSessionId={}, acceptedUserId={}",
+			event.matchSessionId(), event.acceptedUserId());
+		// TODO: 수락 알림 (나머지 멤버 또는 이미 수락한 멤버)
+	}
+
+	@Async
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	public void handleMatchCompletedEvent(MatchCompletedEvent event) {
+		log.debug("그룹 생성 완료 이벤트 수신: matchSessionId={}, projectGroupId={}",
+			event.matchSessionId(), event.projectGroupId());
+		// TODO: 멤버 전체에게 그룹 생성 완료 알림
+	}
 }
