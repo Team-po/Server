@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import team.po.common.redis.RedisService;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.dto.SendEmailRequest;
@@ -26,6 +27,7 @@ import team.po.feature.user.exception.EmailSendFailedException;
 import team.po.feature.user.exception.InvalidEmailAuthCodeException;
 import team.po.feature.user.repository.UserRepository;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EmailService {
@@ -66,6 +68,8 @@ public class EmailService {
 				exception
 			);
 		}
+
+		log.info("이메일 전송 성공. emailHash={}", hashEmail(email));
 	}
 
 	public void validateAuthNumber(ValidateAuthNumberRequest request) {
@@ -82,6 +86,7 @@ public class EmailService {
 		}
 
 		redisService.deleteValue(redisKey);
+		log.info("이메일 검증 성공. emailHash={}", hashEmail(email));
 	}
 
 	private void checkEmailDuplication(String email) {
