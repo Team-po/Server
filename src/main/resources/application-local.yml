@@ -5,6 +5,7 @@ spring:
     import:
       - optional:file:./config/jwt-secret.local.yml
       - optional:file:./config/s3-secret.local.yml
+      - optional:file:./config/email-secret.yml
 
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3307/teampo?serverTimezone=UTC&characterEncoding=UTF-8}
@@ -21,6 +22,15 @@ spring:
     properties:
       hibernate:
         format_sql: true
+
+  mail:
+    host: ${MAIL_HOST:${email.host:smtp.gmail.com}}
+    port: ${MAIL_PORT:${email.port:587}}
+    username: ${MAIL_USERNAME:${email.username:}}
+    password: ${MAIL_PASSWORD:${email.password:}}
+    protocol: smtp
+    auth-code-ttl: ${MAIL_AUTH_CODE_TTL:${email.auth-code-ttl:PT5M}}
+    auth-code-subject: ${MAIL_AUTH_CODE_SUBJECT:${email.auth-code-subject:TeamPo 이메일 인증번호}}
 
 cloud:
   aws:
