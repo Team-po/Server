@@ -23,6 +23,7 @@ import team.po.feature.match.enums.Role;
 import team.po.feature.match.event.MatchAcceptedEvent;
 import team.po.feature.match.event.MatchCompletedEvent;
 import team.po.feature.match.event.MatchCreatedEvent;
+import team.po.feature.match.event.MatchRejectedEvent;
 import team.po.feature.match.exception.MatchAccessDeniedException;
 import team.po.feature.match.exception.MatchDataIntegrityException;
 import team.po.feature.match.repository.MatchingMemberRepository;
@@ -231,6 +232,68 @@ public class MatchService {
 		// 9. 전원 수락 시 ProjectGroup 생성
 		log.info("전원 수락 완료, ProjectGroup 생성 시작: matchId={}", matchId);
 		completeMatching(matchId, members, allPrs);
+	}
+
+	@Transactional
+	public void reject(Long matchId, Users loginUser) {
+		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
+		List<MatchingMember> members = validateMatchAccessAndGetMembers(matchId, loginUser.getId());
+
+		// 2. MatchingMember 조회
+		MatchingMember member = members.stream()
+			.filter(m -> m.getUserId().equals(loginUser.getId()))
+			.findFirst()
+			.orElseThrow(() -> new MatchDataIntegrityException(
+				HttpStatus.INTERNAL_SERVER_ERROR,
+				ErrorCodeConstants.MATCH_DATA_ERROR,
+				"멤버 데이터 조회 실패"
+			));
+
+		// 3. 매칭 요청 정보 조회
+		List<Long> prIds = members.stream().map(MatchingMember::getProjectRequestId).toList();
+		List<ProjectRequest> allPrs = projectRequestRepository.findAllById(prIds);
+
+		// 4. 호스트 여부 조회: 호스트는 거절 불가
+		validateNotHost(member, allPrs);
+
+		// 5. 멱등성 - 이미 거절한 경우 200 반환
+		if (Boolean.FALSE.equals(member.getIsAccepted())) {
+			log.info("이미 거절한 매칭 세션: matchId={}, userId={}", matchId, loginUser.getId());
+			return;
+		}
+
+		// 6. 이미 수락한 경우 400
+		if (Boolean.TRUE.equals(member.getIsAccepted())) {
+			throw new MatchAccessDeniedException(
+				HttpStatus.BAD_REQUEST,
+				ErrorCodeConstants.MATCH_ACCESS_DENIED,
+				"이미 수락한 매칭 세션입니다."
+			);
+		}
+
+		// 7. 거절 처리
+		member.reject();
+		log.info("매칭 거절: matchId={}, userId={}", matchId, loginUser.getId());
+
+		// 8. 해당 유저 매칭 요청 상태 WAITING 복귀
+		ProjectRequest myPr = allPrs.stream()
+			.filter(pr -> pr.getId().equals(member.getProjectRequestId()))
+			.findFirst()
+			.orElseThrow(() -> new MatchDataIntegrityException(
+				HttpStatus.INTERNAL_SERVER_ERROR,
+				ErrorCodeConstants.MATCH_DATA_ERROR,
+				"매칭 요청 데이터 조회 실패"
+			));
+		myPr.resetToWaiting();
+		log.info("매칭 요청 상태 WAITING 복귀: prId={}, userId={}",
+			myPr.getId(), loginUser.getId());
+
+		// 9. 이벤트 발행
+		List<Long> remainingUserIds = members.stream()
+			.filter(m -> !m.getUserId().equals(loginUser.getId()))
+			.map(MatchingMember::getUserId)
+			.toList();
+		eventPublisher.publishEvent(new MatchRejectedEvent(matchId, loginUser.getId(), remainingUserIds));
 	}
 
 	private List<MatchingMember> validateMatchAccessAndGetMembers(Long matchId, Long userId) {

@@ -50,4 +50,14 @@ public class MatchController {
 		matchService.accept(matchId, user);
 		return ResponseEntity.ok().build();
 	}
+
+	@Operation(summary = "매칭 거절 API")
+	@PostMapping("/{matchId}/reject")
+	public ResponseEntity<Void> reject(
+		@PathVariable Long matchId,
+		@LoginUser Users user
+	) {
+		matchService.reject(matchId, user);
+		return ResponseEntity.ok().build();
+	}
 }

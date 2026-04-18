@@ -43,4 +43,12 @@ public class MatchNotificationListener {
 			event.matchSessionId(), event.projectGroupId());
 		// TODO: 멤버 전체에게 그룹 생성 완료 알림
 	}
+
+	@Async
+	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+	public void handleMatchRejectedEvent(MatchRejectedEvent event) {
+		log.debug("매칭 거절 이벤트 수신: matchSessionId={}, rejectedUserId={}",
+			event.matchSessionId(), event.rejectedUserId());
+		// TODO: 나머지 멤버에게 (또는 팀장에게) 거절 및 재매칭 예정 알림
+	}
 }
