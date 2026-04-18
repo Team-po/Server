@@ -156,7 +156,7 @@ public class ImageService {
 
 	private String uploadActionUrl() {
 		if (endpoint == null || endpoint.isBlank()) {
-			return "https://s3." + region + ".amazonaws.com/" + bucket;
+			return "https://" + bucket + ".s3." + region + ".amazonaws.com";
 		}
 
 		String normalizedEndpoint = endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1) : endpoint;

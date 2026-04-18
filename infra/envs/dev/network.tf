@@ -1,0 +1,79 @@
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+
+  filter {
+    name   = "default-for-az"
+    values = ["true"]
+  }
+}
+
+locals {
+  default_subnet_ids = slice(sort(data.aws_subnets.default.ids), 0, 2)
+}
+
+resource "aws_security_group" "app" {
+  name        = "${local.name_prefix}-app-sg"
+  description = "Security group for the teampo API EC2 instance."
+  vpc_id      = data.aws_vpc.default.id
+
+  tags = {
+    Name = "${local.name_prefix}-app-sg"
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "app_http" {
+  for_each = toset(var.app_ingress_cidr_blocks)
+
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = each.value
+  from_port         = var.app_port
+  ip_protocol       = "tcp"
+  to_port           = var.app_port
+}
+
+resource "aws_vpc_security_group_ingress_rule" "app_ssh" {
+  for_each = toset(var.ssh_ingress_cidr_blocks)
+
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = each.value
+  from_port         = 22
+  ip_protocol       = "tcp"
+  to_port           = 22
+}
+
+resource "aws_vpc_security_group_egress_rule" "app_all" {
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
+resource "aws_security_group" "db" {
+  name        = "${local.name_prefix}-db-sg"
+  description = "Security group for the teampo MySQL RDS instance."
+  vpc_id      = data.aws_vpc.default.id
+
+  tags = {
+    Name = "${local.name_prefix}-db-sg"
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "db_mysql_from_app" {
+  security_group_id            = aws_security_group.db.id
+  referenced_security_group_id = aws_security_group.app.id
+  from_port                    = 3306
+  ip_protocol                  = "tcp"
+  to_port                      = 3306
+}
+
+resource "aws_vpc_security_group_egress_rule" "db_all" {
+  security_group_id = aws_security_group.db.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
