@@ -5,6 +5,7 @@ import java.util.Map;
 import team.po.feature.match.enums.Role;
 
 public class MatchConstants {
+	public static final int TEAM_SIZE = 4;
 	// 팀 구성: BACKEND 2, FRONTEND 1, DESIGN 1 (팀장 포함)
 	// 팀장 포지션에 따라 나머지 3자리 조합 결정
 	public static final Map<Role, Map<Role, Integer>> REQUIRED_NON_HOST = Map.of(
