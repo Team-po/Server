@@ -57,10 +57,10 @@ public interface MatchingMemberRepository extends JpaRepository<MatchingMember, 
 
 	// 전원 수락 여부 확인
 	@Query("""
-		SELECT COUNT(mm) = 0 FROM MatchingMember mm
+		SELECT COUNT(mm) = :teamSize FROM MatchingMember mm
 		WHERE mm.matchingSessionId = :sessionId
 		  AND mm.deletedAt IS NULL
-		  AND mm.isAccepted IS NULL
+		  AND mm.isAccepted = true
 		""")
-	boolean isAllAccepted(@Param("sessionId") Long sessionId);
+	boolean isAllAccepted(@Param("sessionId") Long sessionId, @Param("teamSize") int teamSize);
 }

@@ -20,12 +20,15 @@ import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.MatchMemberResponse;
 import team.po.feature.match.dto.MatchProjectResponse;
 import team.po.feature.match.enums.Role;
+import team.po.feature.match.event.MatchAcceptedEvent;
+import team.po.feature.match.event.MatchCompletedEvent;
 import team.po.feature.match.event.MatchCreatedEvent;
 import team.po.feature.match.exception.MatchAccessDeniedException;
 import team.po.feature.match.exception.MatchDataIntegrityException;
 import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.MatchingSessionRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
+import team.po.feature.match.strategy.MatchConstants;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.repository.UserRepository;
 
@@ -220,7 +223,7 @@ public class MatchService {
 		log.info("매칭 수락: matchId={}, userId={}", matchId, loginUser.getId());
 
 		// 8. 전원 수락 여부 확인
-		if (!matchingMemberRepository.isAllAccepted(matchId)) {
+		if (!matchingMemberRepository.isAllAccepted(matchId, MatchConstants.TEAM_SIZE)) {
 			eventPublisher.publishEvent(new MatchAcceptedEvent(matchId, loginUser.getId()));
 			return;
 		}
