@@ -1,0 +1,161 @@
+package team.po.feature.user.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.util.HexFormat;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mail.MailSendException;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import team.po.common.redis.RedisService;
+import team.po.feature.user.dto.SendEmailRequest;
+import team.po.feature.user.dto.ValidateAuthNumberRequest;
+import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.EmailSendFailedException;
+import team.po.feature.user.exception.InvalidEmailAuthCodeException;
+import team.po.feature.user.repository.UserRepository;
+
+@ExtendWith(MockitoExtension.class)
+class EmailServiceTest {
+	private static final Duration AUTH_CODE_TTL = Duration.ofMinutes(5);
+
+	@Mock
+	private JavaMailSender javaMailSender;
+
+	@Mock
+	private RedisService redisService;
+
+	@Mock
+	private UserRepository userRepository;
+
+	private EmailService emailService;
+
+	@BeforeEach
+	void setUp() {
+		emailService = new EmailService(javaMailSender, redisService, userRepository);
+		ReflectionTestUtils.setField(emailService, "fromEmail", "no-reply@teampo.com");
+		ReflectionTestUtils.setField(emailService, "authCodeTtl", AUTH_CODE_TTL);
+		ReflectionTestUtils.setField(emailService, "authCodeSubject", "TeamPo 이메일 인증번호");
+	}
+
+	@Test
+	void sendEmail_sendsAuthCodeAndStoresItWithTtl() {
+		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
+
+		emailService.sendEmail(new SendEmailRequest(" Test@Email.com "));
+
+		ArgumentCaptor<String> authCodeCaptor = ArgumentCaptor.forClass(String.class);
+		verify(redisService).setValue(
+			eq(emailAuthCodeKey("test@email.com")),
+			authCodeCaptor.capture(),
+			eq(AUTH_CODE_TTL)
+		);
+
+		String authCode = authCodeCaptor.getValue();
+		assertThat(authCode).matches("\\d{6}");
+
+		ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+		verify(javaMailSender).send(messageCaptor.capture());
+
+		SimpleMailMessage message = messageCaptor.getValue();
+		assertThat(message.getFrom()).isEqualTo("no-reply@teampo.com");
+		assertThat(message.getTo()).containsExactly("test@email.com");
+		assertThat(message.getSubject()).isEqualTo("TeamPo 이메일 인증번호");
+		assertThat(message.getText()).contains(authCode);
+	}
+
+	@Test
+	void sendEmail_throwsWhenEmailAlreadyExists() {
+		when(userRepository.existsByEmail("test@email.com")).thenReturn(true);
+
+		assertThatThrownBy(() -> emailService.sendEmail(new SendEmailRequest(" Test@Email.com ")))
+			.isInstanceOf(DuplicatedEmailException.class)
+			.hasMessage("중복된 이메일이 존재합니다.");
+
+		verifyNoInteractions(redisService, javaMailSender);
+	}
+
+	@Test
+	void sendEmail_deletesAuthCodeWhenMailSendFails() {
+		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
+		doThrow(new MailSendException("failed"))
+			.when(javaMailSender)
+			.send(any(SimpleMailMessage.class));
+
+		assertThatThrownBy(() -> emailService.sendEmail(new SendEmailRequest("test@email.com")))
+			.isInstanceOf(EmailSendFailedException.class)
+			.hasMessage("인증번호 이메일 발송에 실패했습니다.");
+
+		verify(redisService).deleteValue(emailAuthCodeKey("test@email.com"));
+	}
+
+	@Test
+	void validateAuthNumber_consumesAuthCodeWhenMatched() {
+		when(redisService.getValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
+
+		emailService.validateAuthNumber(new ValidateAuthNumberRequest(" Test@Email.com ", 123456));
+
+		verify(redisService).getValue(emailAuthCodeKey("test@email.com"));
+		verify(redisService).deleteValue(emailAuthCodeKey("test@email.com"));
+	}
+
+	@Test
+	void validateAuthNumber_throwsWhenAuthCodeIsInvalid() {
+		when(redisService.getValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
+
+		assertThatThrownBy(() -> emailService.validateAuthNumber(
+			new ValidateAuthNumberRequest("test@email.com", 654321)
+		))
+			.isInstanceOf(InvalidEmailAuthCodeException.class)
+			.hasMessage("인증번호가 만료되었거나 올바르지 않습니다.");
+
+		verify(redisService, never()).deleteValue(emailAuthCodeKey("test@email.com"));
+	}
+
+	@Test
+	void validateAuthNumber_throwsWhenAuthCodeIsExpired() {
+		when(redisService.getValue(emailAuthCodeKey("test@email.com"))).thenReturn(null);
+
+		assertThatThrownBy(() -> emailService.validateAuthNumber(
+			new ValidateAuthNumberRequest("test@email.com", 123456)
+		))
+			.isInstanceOf(InvalidEmailAuthCodeException.class)
+			.hasMessage("인증번호가 만료되었거나 올바르지 않습니다.");
+
+		verify(redisService, never()).deleteValue(emailAuthCodeKey("test@email.com"));
+	}
+
+	private String emailAuthCodeKey(String email) {
+		return "email-auth-code:signup:" + hashEmail(email);
+	}
+
+	private String hashEmail(String email) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			byte[] hash = digest.digest(email.getBytes(StandardCharsets.UTF_8));
+			return HexFormat.of().formatHex(hash);
+		} catch (NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("SHA-256 algorithm is unavailable.", exception);
+		}
+	}
+}

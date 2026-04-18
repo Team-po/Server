@@ -39,6 +39,8 @@ public class SecurityConfig {
 			.exceptionHandling(exception -> exception.authenticationEntryPoint(this::writeUnauthorizedResponse))
 			.authorizeHttpRequests(authorize -> authorize
 				.requestMatchers(HttpMethod.POST, "/api/users/sign-up").permitAll()
+				.requestMatchers(HttpMethod.POST, "/api/signup/email").permitAll()
+				.requestMatchers(HttpMethod.POST, "/api/signup/number-validation").permitAll()
 				.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
 				.requestMatchers(HttpMethod.POST, "/api/users/sign-in").permitAll()
 				.requestMatchers(HttpMethod.POST, "/api/users/refresh-token").permitAll()
