@@ -2,10 +2,12 @@ package team.po.exception;
 
 import java.util.Optional;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import team.po.feature.match.exception.InvalidMatchStatusException;
 import team.po.feature.match.exception.MatchAccessDeniedException;
 import team.po.feature.match.exception.MatchDataIntegrityException;
 
@@ -21,5 +23,11 @@ public class CustomMatchExceptionHandler {
 	protected ResponseEntity<ExceptionResponse> matchDataIntegrityException(MatchDataIntegrityException e) {
 		return ResponseEntity.status(e.getCode())
 			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
+	}
+
+	@ExceptionHandler(InvalidMatchStatusException.class)
+	protected ResponseEntity<ExceptionResponse> invalidMatchStatusException(InvalidMatchStatusException e) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+			.body(new ExceptionResponse(ErrorCodeConstants.INVALID_MATCH_STATUS, e.getMessage(), Optional.empty()));
 	}
 }

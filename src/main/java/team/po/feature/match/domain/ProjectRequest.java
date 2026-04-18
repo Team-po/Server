@@ -18,6 +18,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
+import team.po.feature.match.exception.InvalidMatchStatusException;
 import team.po.feature.match.exception.ProjectRequestCancelNotAllowedException;
 import team.po.feature.user.domain.Users;
 
@@ -67,6 +68,7 @@ public class ProjectRequest {
 		this.status = Status.WAITING; // default
 	}
 
+	// 유저가 직접 취소
 	public void cancel() {
 		if (this.status != Status.WAITING && this.status != Status.MATCHING) {
 			throw new ProjectRequestCancelNotAllowedException();
@@ -84,4 +86,31 @@ public class ProjectRequest {
 	private boolean isNotEmpty(String str) {
 		return str != null && !str.isBlank();
 	}
+
+	// MATCHING
+
+	// 매칭 세션 배정
+	public void startMatching() {
+		if (this.status != Status.WAITING) {
+			throw new InvalidMatchStatusException("WAITING 상태인 요청만 매칭 프로세스에 진입할 수 있습니다.");
+		}
+		this.status = Status.MATCHING;
+	}
+
+	// 모든 멤버가 수락을 완료한 경우
+	public void complete() {
+		if (this.status != Status.MATCHING) {
+			throw new InvalidMatchStatusException("MATCHING 상태에서만 최종 매칭 완료가 가능합니다.");
+		}
+		this.status = Status.MATCHED;
+	}
+
+	// 수락을 거절한 경우 | Host가 매칭을 취소한 경우
+	public void resetToWaiting() {
+		if (this.status != Status.MATCHING) {
+			throw new InvalidMatchStatusException("MATCHING 상태에서만 WAITING 상태로 되돌릴 수 있습니다.");
+		}
+		this.status = Status.WAITING;
+	}
+
 }
