@@ -120,30 +120,6 @@ class ProjectRequestControllerTest {
 			.andExpect(jsonPath("$.message").value("이미 진행 중인 매칭 요청이 있습니다."));
 	}
 
-	// ===== cancelProjectRequest =====
-
-	@Test
-	void cancelProjectRequest_returnsOk() throws Exception {
-		mockMvc.perform(patch("/api/match/cancel"))
-			.andExpect(status().isOk());
-
-		verify(projectRequestService).cancelProjectRequest(any(Users.class));
-	}
-
-	@Test
-	void cancelProjectRequest_returnsNotFound_whenNoActiveRequest() throws Exception {
-		doThrow(new ProjectRequestNotFoundException(
-			HttpStatus.NOT_FOUND,
-			ErrorCodeConstants.PROJECT_REQUEST_NOT_FOUND,
-			"취소할 수 있는 매칭 요청이 없습니다."
-		)).when(projectRequestService).cancelProjectRequest(any(Users.class));
-
-		mockMvc.perform(patch("/api/match/cancel"))
-			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.PROJECT_REQUEST_NOT_FOUND))
-			.andExpect(jsonPath("$.message").value("취소할 수 있는 매칭 요청이 없습니다."));
-	}
-
 	// ===== getProjectRequestStatus =====
 
 	@Test

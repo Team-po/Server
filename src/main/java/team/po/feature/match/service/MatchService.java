@@ -20,12 +20,16 @@ import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.MatchMemberResponse;
 import team.po.feature.match.dto.MatchProjectResponse;
 import team.po.feature.match.enums.Role;
+import team.po.feature.match.enums.Status;
 import team.po.feature.match.event.MatchAcceptedEvent;
 import team.po.feature.match.event.MatchCompletedEvent;
 import team.po.feature.match.event.MatchCreatedEvent;
+import team.po.feature.match.event.MatchMemberCanceledEvent;
 import team.po.feature.match.event.MatchRejectedEvent;
+import team.po.feature.match.event.MatchSessionDisbandedEvent;
 import team.po.feature.match.exception.MatchAccessDeniedException;
 import team.po.feature.match.exception.MatchDataIntegrityException;
+import team.po.feature.match.exception.ProjectRequestNotFoundException;
 import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.MatchingSessionRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
@@ -294,6 +298,104 @@ public class MatchService {
 			.map(MatchingMember::getUserId)
 			.toList();
 		eventPublisher.publishEvent(new MatchRejectedEvent(matchId, loginUser.getId(), remainingUserIds));
+	}
+
+	@Transactional
+	public void cancel(Users loginUser) {
+		// 1. 활성 매칭 요청 조회 (WAITING or MATCHING)
+		ProjectRequest myPr = projectRequestRepository
+			.findByUserIdAndStatusIn(loginUser.getId(), List.of(Status.WAITING, Status.MATCHING))
+			.orElseThrow(() -> new ProjectRequestNotFoundException(
+				HttpStatus.NOT_FOUND,
+				ErrorCodeConstants.PROJECT_REQUEST_NOT_FOUND,
+				"취소할 수 있는 매칭 요청이 없습니다."
+			));
+
+		// 2. WAITING: 단순 취소
+		if (myPr.getStatus() == Status.WAITING) {
+			myPr.cancel();
+			log.info("매칭 요청 취소 - WAITING: prID={}, userId={}", myPr.getId(), loginUser.getId());
+			return;
+		}
+
+		// 3. MATCHING - 세션 조회
+		MatchingMember myMember = matchingMemberRepository
+			.findActiveByUserId(loginUser.getId())
+			.orElseThrow(() -> new MatchDataIntegrityException(
+				HttpStatus.INTERNAL_SERVER_ERROR,
+				ErrorCodeConstants.MATCH_DATA_ERROR,
+				"매칭 멤버 데이터 조회 실패"
+			));
+		List<Long> prIds = matchingMemberRepository
+			.findActiveValidMembersBySessionId(myMember.getMatchingSessionId()).stream()
+			.map(MatchingMember::getProjectRequestId)
+			.toList();
+		List<ProjectRequest> allPrs = projectRequestRepository.findAllById(prIds);
+
+		// 4. 호스트 여부 확인
+		if (myPr.isHostRequest()) {
+			// Host: 세션 전체 해산
+			cancelAsHost(myMember, myPr, allPrs, loginUser.getId());
+		} else {
+			cancelAsMember(myMember, myPr, loginUser.getId());
+		}
+	}
+
+	private void cancelAsMember(MatchingMember myMember, ProjectRequest myPr, Long userId) {
+		List<Long> remainingUserIds = matchingMemberRepository
+			.findActiveValidMembersBySessionId(myMember.getMatchingSessionId()).stream()
+			.map(MatchingMember::getUserId)
+			.filter(id -> !id.equals(userId))
+			.toList();
+
+		myPr.cancel();
+		myMember.cancel(); // soft delete
+
+		eventPublisher.publishEvent(
+			new MatchMemberCanceledEvent(myMember.getMatchingSessionId(), userId, remainingUserIds)
+		);
+
+		log.info("멤버 매칭 취소: prId={}, userId={}, sessionId={}",
+			myPr.getId(), userId, myMember.getMatchingSessionId());
+	}
+
+	private void cancelAsHost(MatchingMember myMember, ProjectRequest myPr, List<ProjectRequest> allPrs,
+		Long hostUserId) {
+		Long sessionId = myMember.getMatchingSessionId();
+
+		// 나머지 멤버 WAITING 복귀 + soft delete
+		List<Long> restoredUserIds = new ArrayList<>();
+		List<MatchingMember> allMembers = matchingMemberRepository
+			.findActiveValidMembersBySessionId(sessionId);
+
+		Map<Long, ProjectRequest> prMap = allPrs.stream()
+			.collect(Collectors.toMap(ProjectRequest::getId, pr -> pr));
+
+		myPr.cancel();
+		myMember.cancel();
+
+		for (MatchingMember m : allMembers) {
+			if (m.getUserId().equals(hostUserId))
+				continue;
+
+			ProjectRequest pr = prMap.get(m.getProjectRequestId());
+			if (pr != null) {
+				pr.resetToWaiting();
+				m.cancel();
+				restoredUserIds.add(m.getUserId());
+			}
+		}
+
+		// 세션 해산
+		matchingSessionRepository.findByIdAndDeletedAtIsNull(sessionId)
+			.ifPresent(MatchingSession::delete);
+
+		eventPublisher.publishEvent(
+			new MatchSessionDisbandedEvent(sessionId, hostUserId, restoredUserIds)
+		);
+
+		log.info("호스트 매칭 취소 및 세션 해산: sessionId={}, hostUserId={}, restoredCount={}",
+			sessionId, hostUserId, restoredUserIds.size());
 	}
 
 	private List<MatchingMember> validateMatchAccessAndGetMembers(Long matchId, Long userId) {

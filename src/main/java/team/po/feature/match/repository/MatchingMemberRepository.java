@@ -10,8 +10,6 @@ import org.springframework.data.repository.query.Param;
 import team.po.feature.match.domain.MatchingMember;
 
 public interface MatchingMemberRepository extends JpaRepository<MatchingMember, Long> {
-	Optional<MatchingMember> findByUserIdAndIsAcceptedIsNullAndDeletedAtIsNull(Long id);
-
 	@Query("SELECT mm FROM MatchingMember mm " +
 		"WHERE mm.matchingSessionId = :matchId AND mm.deletedAt IS NULL")
 	List<MatchingMember> findAllByMatchingSessionId(@Param("matchId") Long matchId);
@@ -63,4 +61,11 @@ public interface MatchingMemberRepository extends JpaRepository<MatchingMember, 
 		  AND mm.isAccepted = true
 		""")
 	boolean isAllAccepted(@Param("sessionId") Long sessionId, @Param("teamSize") int teamSize);
+
+	@Query("""
+		SELECT mm FROM MatchingMember mm
+		WHERE mm.userId = :userId
+		  AND mm.deletedAt IS NULL
+		""")
+	Optional<MatchingMember> findActiveByUserId(@Param("userId") Long userId);
 }

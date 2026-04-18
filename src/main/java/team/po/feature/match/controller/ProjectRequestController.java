@@ -4,7 +4,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.Errors;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -40,13 +39,6 @@ public class ProjectRequestController {
 			);
 		}
 		projectRequestService.createProjectRequest(user, request);
-		return ResponseEntity.ok().build();
-	}
-
-	@Operation(summary = "매칭 취소 API")
-	@PatchMapping(value = "/cancel")
-	public ResponseEntity<Void> cancelProjectRequest(@LoginUser Users user) {
-		projectRequestService.cancelProjectRequest(user);
 		return ResponseEntity.ok().build();
 	}
 

@@ -83,19 +83,6 @@ public class ProjectRequestService {
 		}
 	}
 
-	@Transactional
-	public void cancelProjectRequest(Users user) {
-		ProjectRequest projectRequest = projectRequestRepository.findByUserIdAndStatusIn(
-			user.getId(),
-			List.of(Status.WAITING, Status.MATCHING)
-		).orElseThrow(() -> new ProjectRequestNotFoundException(
-			HttpStatus.NOT_FOUND,
-			ErrorCodeConstants.PROJECT_REQUEST_NOT_FOUND,
-			"취소할 수 있는 매칭 요청이 없습니다."
-		));
-		projectRequest.cancel();
-	}
-
 	@Transactional(readOnly = true)
 	public ProjectRequestStatusResponse getProjectRequestStatus(Users user) {
 		ProjectRequest projectRequest = projectRequestRepository.findByUserIdAndStatusIn(

@@ -97,37 +97,6 @@ class ProjectRequestServiceTest {
 			.isInstanceOf(ProjectRequestAlreadyExistsException.class);
 	}
 
-	// ========== cancelProjectRequest ==========
-
-	@Test
-	void cancelProjectRequest_success() {
-		Users user = createUser(1L);
-		ProjectRequest request = ProjectRequest.builder().user(user).role(Role.BACKEND).build();
-		when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(
-			Optional.of(request));
-		projectRequestService.cancelProjectRequest(user);
-		assertThat(request.getStatus()).isEqualTo(Status.CANCELED);
-	}
-
-	@Test
-	void cancelProjectRequest_throwsWhenNoActiveRequest() {
-		Users user = createUser(1L);
-		when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(
-			Optional.empty());
-		assertThatThrownBy(() -> projectRequestService.cancelProjectRequest(user))
-			.isInstanceOf(ProjectRequestNotFoundException.class);
-	}
-
-	@Test
-	void cancelProjectRequest_throwsWhenMatched() {
-		Users user = createUser(1L);
-		// MATCHED는 findBy 대상이 아니니까 empty 반환
-		when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(
-			Optional.empty());
-		assertThatThrownBy(() -> projectRequestService.cancelProjectRequest(user))
-			.isInstanceOf(ProjectRequestNotFoundException.class);
-	}
-
 	// ========== getProjectRequestStatus ==========
 
 	@Test
