@@ -1,10 +1,12 @@
 package team.po.feature.match.service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +19,8 @@ import team.po.feature.match.domain.MatchingSession;
 import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.MatchMemberResponse;
 import team.po.feature.match.dto.MatchProjectResponse;
+import team.po.feature.match.enums.Role;
+import team.po.feature.match.event.MatchCreatedEvent;
 import team.po.feature.match.exception.MatchAccessDeniedException;
 import team.po.feature.match.exception.MatchDataIntegrityException;
 import team.po.feature.match.repository.MatchingMemberRepository;
@@ -33,6 +37,57 @@ public class MatchService {
 	private final MatchingMemberRepository matchingMemberRepository;
 	private final ProjectRequestRepository projectRequestRepository;
 	private final UserRepository userRepository;
+	private final ApplicationEventPublisher eventPublisher;
+
+	// 신규 매칭 세션 생성
+	@Transactional
+	public void createMatchingSession(ProjectRequest host, List<ProjectRequest> members) {
+		// 1. 매칭 세션 생성 및 저장
+		MatchingSession session = matchingSessionRepository.save(MatchingSession.create());
+
+		// 2. Host 정보 등록 및 요청 상태 변경 (WAITING -> MATCHING)
+		matchingMemberRepository.save(
+			MatchingMember.createForHost(session.getId(), host.getId(), host.getUser().getId())
+		);
+		host.startMatching();
+
+		// 3. 멤버 정보 등록 및 상태 변경 (WAITING -> MATCHING)
+		for (ProjectRequest member : members) {
+			matchingMemberRepository.save(
+				MatchingMember.createForMember(session.getId(), member.getId(), member.getUser().getId())
+			);
+			member.startMatching();
+		}
+
+		// 4. userId 목록
+		List<Long> allUserIds = new ArrayList<>();
+		allUserIds.add(host.getUser().getId());
+		members.forEach(m -> allUserIds.add(m.getUser().getId()));
+
+		// 5. 매칭 생성 이벤트 발행 (AFTER_COMMIT 시점에)
+		eventPublisher.publishEvent(new MatchCreatedEvent(session.getId(), allUserIds));
+
+		log.info("매칭 세션 생성 완료: sessionId={}, hostId={}, memberCount={}",
+			session.getId(), host.getId(), members.size());
+	}
+
+	// 기존 매칭 세션의 빈자리 채우기
+	@Transactional
+	public void fillVacancy(MatchingSession session, Role role, ProjectRequest candidate) {
+		// 1. 새로운 멤버 등록 (MatchingMember 생성)
+		matchingMemberRepository.save(
+			MatchingMember.createForMember(session.getId(), candidate.getId(), candidate.getUser().getId())
+		);
+
+		// 2. 후보자 상태 변경 (WAITING -> MATCHING)
+		candidate.startMatching();
+
+		// 3. 이벤트 발행 (새로 합류한 멤버에게만)
+		eventPublisher.publishEvent(new MatchCreatedEvent(session.getId(), List.of(candidate.getUser().getId())));
+
+		log.info("매칭 세션 빈자리 증원 완료: sessionId={}, role={}, newMemberId={}",
+			session.getId(), role, candidate.getId());
+	}
 
 	// 매칭 세션 멤버 목록 조회
 	@Transactional(readOnly = true)
