@@ -74,4 +74,14 @@ public class ProjectRequest {
 		this.status = Status.CANCELED;
 		this.canceledAt = Instant.now();
 	}
+
+	public boolean isHostRequest() {
+		return isNotEmpty(projectTitle)
+			&& isNotEmpty(projectMvp)
+			&& isNotEmpty(projectDescription);
+	}
+
+	private boolean isNotEmpty(String str) {
+		return str != null && !str.isBlank();
+	}
 }
