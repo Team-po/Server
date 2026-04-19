@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import team.po.feature.match.domain.MatchingMember;
@@ -19,11 +20,14 @@ import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.MatchMemberResponse;
 import team.po.feature.match.dto.MatchProjectResponse;
 import team.po.feature.match.enums.Role;
+import team.po.feature.match.enums.Status;
 import team.po.feature.match.exception.MatchAccessDeniedException;
 import team.po.feature.match.exception.MatchDataIntegrityException;
+import team.po.feature.match.exception.ProjectRequestNotFoundException;
 import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.MatchingSessionRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
+import team.po.feature.projectgroup.service.ProjectGroupService;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.repository.UserRepository;
 
@@ -41,6 +45,12 @@ class MatchServiceTest {
 
 	@Mock
 	private UserRepository userRepository;
+
+	@Mock
+	private ApplicationEventPublisher eventPublisher;
+
+	@Mock
+	private ProjectGroupService projectGroupService;
 
 	@InjectMocks
 	private MatchService matchService;
@@ -202,5 +212,287 @@ class MatchServiceTest {
 
 		assertThatThrownBy(() -> matchService.getMatchProject(42L, loginUser))
 			.isInstanceOf(MatchDataIntegrityException.class);
+	}
+
+	// ===== accept =====
+
+	@Test
+	void accept_success_notAllAccepted() {
+		Users loginUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+
+		MatchingMember hostMember = MatchingMember.createForHost(42L, 1L, 1L);
+		MatchingMember myMember = MatchingMember.createForMember(42L, 2L, 2L);
+		ReflectionTestUtils.setField(myMember, "id", 2L);
+
+		Users hostUser = createUser(1L);
+		ProjectRequest hostPr = createHostRequest(hostUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 2L);
+
+		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllByMatchingSessionId(42L))
+			.thenReturn(List.of(hostMember, myMember));
+		when(projectRequestRepository.findAllById(any())).thenReturn(List.of(hostPr, myPr));
+		when(matchingMemberRepository.isAllAccepted(42L, 4)).thenReturn(false);
+
+		matchService.accept(42L, loginUser);
+
+		assertThat(myMember.getIsAccepted()).isTrue();
+		verify(matchingMemberRepository).isAllAccepted(42L, 4);
+	}
+
+	@Test
+	void accept_idempotent_whenAlreadyAccepted() {
+		Users loginUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+
+		MatchingMember myMember = MatchingMember.createForMember(42L, 2L, 2L);
+		myMember.accept(); // 이미 수락
+
+		Users hostUser = createUser(1L);
+		ProjectRequest hostPr = createHostRequest(hostUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 2L);
+
+		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllByMatchingSessionId(42L))
+			.thenReturn(List.of(MatchingMember.createForHost(42L, 1L, 1L), myMember));
+		when(projectRequestRepository.findAllById(any())).thenReturn(List.of(hostPr, myPr));
+
+		matchService.accept(42L, loginUser);
+
+		verify(matchingMemberRepository, never()).isAllAccepted(any(), anyInt());
+	}
+
+	@Test
+	void accept_throwsForbidden_whenHost() {
+		Users loginUser = createUser(1L);
+		MatchingSession session = createSession(42L);
+
+		MatchingMember hostMember = MatchingMember.createForHost(42L, 1L, 1L);
+		ProjectRequest hostPr = createHostRequest(loginUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+
+		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllByMatchingSessionId(42L)).thenReturn(List.of(hostMember));
+		when(projectRequestRepository.findAllById(any())).thenReturn(List.of(hostPr));
+
+		assertThatThrownBy(() -> matchService.accept(42L, loginUser))
+			.isInstanceOf(MatchAccessDeniedException.class);
+	}
+
+	@Test
+	void accept_throwsBadRequest_whenAlreadyRejected() {
+		Users loginUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+
+		MatchingMember myMember = MatchingMember.createForMember(42L, 2L, 2L);
+		myMember.reject(); // 이미 거절
+
+		Users hostUser = createUser(1L);
+		ProjectRequest hostPr = createHostRequest(hostUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 2L);
+
+		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllByMatchingSessionId(42L))
+			.thenReturn(List.of(MatchingMember.createForHost(42L, 1L, 1L), myMember));
+		when(projectRequestRepository.findAllById(any())).thenReturn(List.of(hostPr, myPr));
+
+		assertThatThrownBy(() -> matchService.accept(42L, loginUser))
+			.isInstanceOf(MatchAccessDeniedException.class);
+	}
+
+	// ===== reject =====
+
+	@Test
+	void reject_success() {
+		Users loginUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+
+		MatchingMember myMember = MatchingMember.createForMember(42L, 2L, 2L);
+		ReflectionTestUtils.setField(myMember, "id", 2L);
+
+		Users hostUser = createUser(1L);
+		ProjectRequest hostPr = createHostRequest(hostUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 2L);
+		myPr.startMatching();
+
+		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllByMatchingSessionId(42L))
+			.thenReturn(List.of(MatchingMember.createForHost(42L, 1L, 1L), myMember));
+		when(projectRequestRepository.findAllById(any())).thenReturn(List.of(hostPr, myPr));
+
+		matchService.reject(42L, loginUser);
+
+		assertThat(myMember.getIsAccepted()).isFalse();
+		assertThat(myPr.getStatus()).isEqualTo(Status.WAITING);
+	}
+
+	@Test
+	void reject_idempotent_whenAlreadyRejected() {
+		Users loginUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+
+		MatchingMember myMember = MatchingMember.createForMember(42L, 2L, 2L);
+		myMember.reject(); // 이미 거절
+
+		Users hostUser = createUser(1L);
+		ProjectRequest hostPr = createHostRequest(hostUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 2L);
+
+		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllByMatchingSessionId(42L))
+			.thenReturn(List.of(MatchingMember.createForHost(42L, 1L, 1L), myMember));
+		when(projectRequestRepository.findAllById(any())).thenReturn(List.of(hostPr, myPr));
+
+		matchService.reject(42L, loginUser);
+
+		assertThat(myMember.getIsAccepted()).isFalse();
+		verify(projectRequestRepository, never()).save(any());
+	}
+
+	@Test
+	void reject_throwsForbidden_whenHost() {
+		Users loginUser = createUser(1L);
+		MatchingSession session = createSession(42L);
+
+		MatchingMember hostMember = MatchingMember.createForHost(42L, 1L, 1L);
+		ProjectRequest hostPr = createHostRequest(loginUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+
+		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllByMatchingSessionId(42L)).thenReturn(List.of(hostMember));
+		when(projectRequestRepository.findAllById(any())).thenReturn(List.of(hostPr));
+
+		assertThatThrownBy(() -> matchService.reject(42L, loginUser))
+			.isInstanceOf(MatchAccessDeniedException.class);
+	}
+
+	@Test
+	void reject_throwsBadRequest_whenAlreadyAccepted() {
+		Users loginUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+
+		MatchingMember myMember = MatchingMember.createForMember(42L, 2L, 2L);
+		myMember.accept(); // 이미 수락
+
+		Users hostUser = createUser(1L);
+		ProjectRequest hostPr = createHostRequest(hostUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 2L);
+
+		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllByMatchingSessionId(42L))
+			.thenReturn(List.of(MatchingMember.createForHost(42L, 1L, 1L), myMember));
+		when(projectRequestRepository.findAllById(any())).thenReturn(List.of(hostPr, myPr));
+
+		assertThatThrownBy(() -> matchService.reject(42L, loginUser))
+			.isInstanceOf(MatchAccessDeniedException.class);
+	}
+
+	// ===== cancel =====
+
+	@Test
+	void cancel_success_whenWaiting() {
+		Users loginUser = createUser(1L);
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 1L);
+
+		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+			.thenReturn(Optional.of(myPr));
+
+		matchService.cancel(loginUser);
+
+		assertThat(myPr.getStatus()).isEqualTo(Status.CANCELED);
+	}
+
+	@Test
+	void cancel_success_whenMatchingMember() {
+		Users loginUser = createUser(2L);
+
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 2L);
+		myPr.startMatching();
+
+		MatchingMember myMember = MatchingMember.createForMember(42L, 2L, 2L);
+		ReflectionTestUtils.setField(myMember, "id", 2L);
+
+		when(projectRequestRepository.findByUserIdAndStatusIn(eq(2L), any()))
+			.thenReturn(Optional.of(myPr));
+		when(matchingMemberRepository.findActiveByUserId(2L))
+			.thenReturn(Optional.of(myMember));
+		when(matchingMemberRepository.findActiveValidMembersBySessionId(42L))
+			.thenReturn(List.of(myMember));
+		when(projectRequestRepository.findAllById(any())).thenReturn(List.of(myPr));
+
+		matchService.cancel(loginUser);
+
+		assertThat(myPr.getStatus()).isEqualTo(Status.CANCELED);
+		assertThat(myMember.isDeleted()).isTrue();
+	}
+
+	@Test
+	void cancel_success_whenMatchingHost_disbandSession() {
+		Users loginUser = createUser(1L);
+		Users member2 = createUser(2L);
+
+		ProjectRequest hostPr = createHostRequest(loginUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+		hostPr.startMatching();
+
+		ProjectRequest memberPr = createMemberRequest(member2);
+		ReflectionTestUtils.setField(memberPr, "id", 2L);
+		memberPr.startMatching();
+
+		MatchingMember hostMember = MatchingMember.createForHost(42L, 1L, 1L);
+		MatchingMember member = MatchingMember.createForMember(42L, 2L, 2L);
+
+		MatchingSession session = createSession(42L);
+
+		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+			.thenReturn(Optional.of(hostPr));
+		when(matchingMemberRepository.findActiveByUserId(1L))
+			.thenReturn(Optional.of(hostMember));
+		when(matchingMemberRepository.findActiveValidMembersBySessionId(42L))
+			.thenReturn(List.of(hostMember, member));
+		when(projectRequestRepository.findAllById(any()))
+			.thenReturn(List.of(hostPr, memberPr));
+		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L))
+			.thenReturn(Optional.of(session));
+
+		matchService.cancel(loginUser);
+
+		assertThat(hostPr.getStatus()).isEqualTo(Status.CANCELED);
+		assertThat(memberPr.getStatus()).isEqualTo(Status.WAITING);
+		assertThat(hostMember.isDeleted()).isTrue();
+		assertThat(member.isDeleted()).isTrue();
+		assertThat(session.isDeleted()).isTrue();
+	}
+
+	@Test
+	void cancel_throwsNotFound_whenNoActiveRequest() {
+		Users loginUser = createUser(1L);
+
+		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> matchService.cancel(loginUser))
+			.isInstanceOf(ProjectRequestNotFoundException.class);
 	}
 }
