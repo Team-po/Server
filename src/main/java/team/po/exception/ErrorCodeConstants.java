@@ -15,6 +15,11 @@ public final class ErrorCodeConstants extends RuntimeException {
 	public static final String INVALID_IMAGE_CONTENT_TYPE = "INVALID_IMAGE_CONTENT_TYPE";
 	public static final String INVALID_PROFILE_IMAGE_KEY = "INVALID_PROFILE_IMAGE_KEY";
 
+	// ProjectGroup
+	public static final String INVALID_PROJECT_GROUP_REQUEST = "INVALID_PROJECT_GROUP_REQUEST";
+	public static final String PROJECT_GROUP_MEMBER_NOT_FOUND = "PROJECT_GROUP_MEMBER_NOT_FOUND";
+	public static final String PROJECT_GROUP_PERMISSION_DENIED = "PROJECT_GROUP_PERMISSION_DENIED";
+
 	// ProjectRequest
 	public static final String PROJECT_REQUEST_NOT_FOUND = "PROJECT_REQUEST_NOT_FOUND";
 	public static final String PROJECT_REQUEST_ALREADY_EXISTS = "PROJECT_REQUEST_ALREADY_EXISTS";

@@ -42,15 +42,20 @@ public class LoginUserArgumentResolver implements HandlerMethodArgumentResolver 
 		if (authentication == null
 			|| !authentication.isAuthenticated()
 			|| authentication instanceof AnonymousAuthenticationToken) {
-			throw new InvalidAuthenticationException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.NO_AUTHENTICATED_USER,
-				"인증된 유저를 찾을 수 없습니다.");
+			throw new InvalidAuthenticationException(
+				HttpStatus.UNAUTHORIZED,
+				ErrorCodeConstants.NO_AUTHENTICATED_USER,
+				"인증된 유저를 찾을 수 없습니다."
+			);
 		}
 
 		Object principal = authentication.getPrincipal();
-
 		if (!(principal instanceof UserPrincipal userPrincipal)) {
-			throw new InvalidAuthenticationException(HttpStatus.INTERNAL_SERVER_ERROR,
-				ErrorCodeConstants.INVALID_SECURITY_CONTEXT, "인증된 사용자 정보를 해석할 수 없습니다.");
+			throw new InvalidAuthenticationException(
+				HttpStatus.INTERNAL_SERVER_ERROR,
+				ErrorCodeConstants.INVALID_SECURITY_CONTEXT,
+				"인증된 사용자 정보를 해석할 수 없습니다."
+			);
 		}
 
 		return userRepository.findByIdAndDeletedAtIsNull(userPrincipal.id())
