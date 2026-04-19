@@ -34,6 +34,12 @@ import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.MatchingSessionRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
 import team.po.feature.match.strategy.MatchConstants;
+import team.po.feature.projectgroup.domain.GroupRole;
+import team.po.feature.projectgroup.domain.MemberRole;
+import team.po.feature.projectgroup.dto.CreateProjectGroupMemberRequest;
+import team.po.feature.projectgroup.dto.CreateProjectGroupRequest;
+import team.po.feature.projectgroup.dto.CreateProjectGroupResponse;
+import team.po.feature.projectgroup.service.ProjectGroupService;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.repository.UserRepository;
 

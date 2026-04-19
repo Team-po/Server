@@ -98,7 +98,7 @@ public class ProjectRequestService {
 		// MATCHING: matchId 반환
 		if (projectRequest.getStatus() == Status.MATCHING) {
 			matchId = matchingMemberRepository
-				.findByUserIdAndIsAcceptedIsNullAndDeletedAtIsNull(user.getId())
+				.findActiveByUserId(user.getId())
 				.map(MatchingMember::getMatchingSessionId)
 				.orElseThrow(() -> {
 					log.error("활성 매칭 멤버 데이터 부정합: userId={}", user.getId());
