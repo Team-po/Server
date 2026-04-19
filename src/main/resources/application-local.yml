@@ -30,6 +30,7 @@ spring:
     password: ${MAIL_PASSWORD:${email.password:}}
     protocol: smtp
     auth-code-ttl: ${MAIL_AUTH_CODE_TTL:${email.auth-code-ttl:PT5M}}
+    verified-ttl: ${MAIL_VERIFIED_TTL:${email.verified-ttl:PT10M}}
     auth-code-subject: ${MAIL_AUTH_CODE_SUBJECT:${email.auth-code-subject:TeamPo 이메일 인증번호}}
 
 cloud:

@@ -23,6 +23,7 @@ import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.dto.SendEmailRequest;
 import team.po.feature.user.dto.ValidateAuthNumberRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.EmailNotVerifiedException;
 import team.po.feature.user.exception.EmailSendFailedException;
 import team.po.feature.user.exception.InvalidEmailAuthCodeException;
 import team.po.feature.user.repository.UserRepository;
@@ -32,6 +33,8 @@ import team.po.feature.user.repository.UserRepository;
 @RequiredArgsConstructor
 public class EmailService {
 	private static final String EMAIL_AUTH_CODE_KEY_PREFIX = "email-auth-code:signup:";
+	private static final String VERIFIED_EMAIL_KEY_PREFIX = "email-auth-verified:signup:";
+	private static final String VERIFIED_VALUE = "true";
 	private static final int AUTH_CODE_ORIGIN = 100_000;
 	private static final int AUTH_CODE_BOUND = 900_000;
 
@@ -45,6 +48,9 @@ public class EmailService {
 
 	@Value("${spring.mail.auth-code-ttl:PT5M}")
 	private Duration authCodeTtl;
+
+	@Value("${spring.mail.verified-ttl:PT10M}")
+	private Duration verifiedTtl;
 
 	@Value("${spring.mail.auth-code-subject:TeamPo 이메일 인증번호}")
 	private String authCodeSubject;
@@ -74,8 +80,8 @@ public class EmailService {
 
 	public void validateAuthNumber(ValidateAuthNumberRequest request) {
 		String email = normalizeEmail(request.email());
-		String redisKey = createEmailAuthCodeKey(email);
-		Object savedAuthCode = redisService.getValue(redisKey);
+		String authCodeKey = createEmailAuthCodeKey(email);
+		Object savedAuthCode = redisService.getValue(authCodeKey);
 
 		if (!String.valueOf(request.authNumber()).equals(savedAuthCode)) {
 			throw new InvalidEmailAuthCodeException(
@@ -85,8 +91,22 @@ public class EmailService {
 			);
 		}
 
-		redisService.deleteValue(redisKey);
+		redisService.setValue(createVerifiedEmailKey(email), VERIFIED_VALUE, verifiedTtl);
+		redisService.deleteValue(authCodeKey);
 		log.info("이메일 검증 성공. emailHash={}", hashEmail(email));
+	}
+
+	public void consumeVerifiedSignUpEmail(String email) {
+		String normalizedEmail = normalizeEmail(email);
+		Object verified = redisService.getAndDeleteValue(createVerifiedEmailKey(normalizedEmail));
+
+		if (!VERIFIED_VALUE.equals(verified)) {
+			throw new EmailNotVerifiedException(
+				HttpStatus.BAD_REQUEST,
+				ErrorCodeConstants.EMAIL_NOT_VERIFIED,
+				"이메일 인증이 필요합니다."
+			);
+		}
 	}
 
 	private void checkEmailDuplication(String email) {
@@ -128,6 +148,10 @@ public class EmailService {
 
 	private String createEmailAuthCodeKey(String email) {
 		return EMAIL_AUTH_CODE_KEY_PREFIX + hashEmail(email);
+	}
+
+	private String createVerifiedEmailKey(String email) {
+		return VERIFIED_EMAIL_KEY_PREFIX + hashEmail(email);
 	}
 
 	private String normalizeEmail(String email) {

@@ -31,6 +31,7 @@ import team.po.common.redis.RedisService;
 import team.po.feature.user.dto.SendEmailRequest;
 import team.po.feature.user.dto.ValidateAuthNumberRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.EmailNotVerifiedException;
 import team.po.feature.user.exception.EmailSendFailedException;
 import team.po.feature.user.exception.InvalidEmailAuthCodeException;
 import team.po.feature.user.repository.UserRepository;
@@ -38,6 +39,7 @@ import team.po.feature.user.repository.UserRepository;
 @ExtendWith(MockitoExtension.class)
 class EmailServiceTest {
 	private static final Duration AUTH_CODE_TTL = Duration.ofMinutes(5);
+	private static final Duration VERIFIED_TTL = Duration.ofMinutes(10);
 
 	@Mock
 	private JavaMailSender javaMailSender;
@@ -55,6 +57,7 @@ class EmailServiceTest {
 		emailService = new EmailService(javaMailSender, redisService, userRepository);
 		ReflectionTestUtils.setField(emailService, "fromEmail", "no-reply@teampo.com");
 		ReflectionTestUtils.setField(emailService, "authCodeTtl", AUTH_CODE_TTL);
+		ReflectionTestUtils.setField(emailService, "verifiedTtl", VERIFIED_TTL);
 		ReflectionTestUtils.setField(emailService, "authCodeSubject", "TeamPo 이메일 인증번호");
 	}
 
@@ -116,6 +119,7 @@ class EmailServiceTest {
 		emailService.validateAuthNumber(new ValidateAuthNumberRequest(" Test@Email.com ", 123456));
 
 		verify(redisService).getValue(emailAuthCodeKey("test@email.com"));
+		verify(redisService).setValue(emailVerifiedKey("test@email.com"), "true", VERIFIED_TTL);
 		verify(redisService).deleteValue(emailAuthCodeKey("test@email.com"));
 	}
 
@@ -145,8 +149,30 @@ class EmailServiceTest {
 		verify(redisService, never()).deleteValue(emailAuthCodeKey("test@email.com"));
 	}
 
+	@Test
+	void consumeVerifiedSignUpEmail_deletesAndPassesWhenVerifiedFlagExists() {
+		when(redisService.getAndDeleteValue(emailVerifiedKey("test@email.com"))).thenReturn("true");
+
+		emailService.consumeVerifiedSignUpEmail(" Test@Email.com ");
+
+		verify(redisService).getAndDeleteValue(emailVerifiedKey("test@email.com"));
+	}
+
+	@Test
+	void consumeVerifiedSignUpEmail_throwsWhenVerifiedFlagDoesNotExist() {
+		when(redisService.getAndDeleteValue(emailVerifiedKey("test@email.com"))).thenReturn(null);
+
+		assertThatThrownBy(() -> emailService.consumeVerifiedSignUpEmail("test@email.com"))
+			.isInstanceOf(EmailNotVerifiedException.class)
+			.hasMessage("이메일 인증이 필요합니다.");
+	}
+
 	private String emailAuthCodeKey(String email) {
 		return "email-auth-code:signup:" + hashEmail(email);
+	}
+
+	private String emailVerifiedKey(String email) {
+		return "email-auth-verified:signup:" + hashEmail(email);
 	}
 
 	private String hashEmail(String email) {

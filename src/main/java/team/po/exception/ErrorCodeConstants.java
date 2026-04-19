@@ -15,6 +15,7 @@ public final class ErrorCodeConstants extends RuntimeException {
 	public static final String INVALID_IMAGE_CONTENT_TYPE = "INVALID_IMAGE_CONTENT_TYPE";
 	public static final String INVALID_PROFILE_IMAGE_KEY = "INVALID_PROFILE_IMAGE_KEY";
 	public static final String INVALID_EMAIL_AUTH_CODE = "INVALID_EMAIL_AUTH_CODE";
+	public static final String EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED";
 	public static final String EMAIL_SEND_FAILED = "EMAIL_SEND_FAILED";
 
 	// ProjectRequest

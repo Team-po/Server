@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.EmailNotVerifiedException;
 import team.po.feature.user.exception.EmailSendFailedException;
 import team.po.feature.user.exception.InvalidAuthenticationException;
 import team.po.feature.user.exception.InvalidEmailAuthCodeException;
@@ -95,6 +96,12 @@ public class CustomUserExceptionHandler {
 
 	@ExceptionHandler(EmailSendFailedException.class)
 	protected ResponseEntity<ExceptionResponse> emailSendFailedException(EmailSendFailedException e) {
+		return ResponseEntity.status(e.getCode())
+			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
+	}
+
+	@ExceptionHandler(EmailNotVerifiedException.class)
+	protected ResponseEntity<ExceptionResponse> emailNotVerifiedException(EmailNotVerifiedException e) {
 		return ResponseEntity.status(e.getCode())
 			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
 	}
