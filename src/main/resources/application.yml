@@ -1,52 +1,59 @@
 spring:
-  config:
-    import:
-      - optional:classpath:jwt-secret.yml
-      - optional:classpath:s3-secret.yml
   jackson:
     # API 에서 내려가는 시간 직렬화 기준을 UTC 로 통일한다.
     time-zone: UTC
   datasource:
     # DB 연결 해석 기준도 UTC 로 맞춰 환경별 시간 차이를 줄인다.
-    url: jdbc:mysql://localhost:3307/teampo?serverTimezone=UTC&characterEncoding=UTF-8
-    username: root
-    password: root
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
 
   jpa:
     hibernate:
       ddl-auto: none
-    show-sql: true
+    show-sql: ${JPA_SHOW_SQL:false}
     properties:
       hibernate:
-        format_sql: true
+        format_sql: ${JPA_FORMAT_SQL:false}
         # JDBC 레벨에서 읽고 쓰는 시간을 UTC 기준으로 고정한다.
         jdbc.time_zone: UTC
 
   flyway:
     enabled: true
     baseline-on-migrate: true
+
 cloud:
   aws:
     credentials:
-      access-key: ${s3.access-key}
-      secret-key: ${s3.secret-key}
+      access-key: ${S3_ACCESS_KEY}
+      secret-key: ${S3_SECRET_KEY}
     s3:
-      bucket: team-po
-      dir: images
-      endpoint: ${s3.endpoint:}
-      presigned-expiration: 5m
-      max-upload-size-bytes: 5242880
-      path-style-access-enabled: true
+      bucket: ${S3_BUCKET}
+      dir: ${S3_DIR:images}
+      endpoint: ${S3_ENDPOINT:}
+      presigned-expiration: ${S3_PRESIGNED_EXPIRATION:5m}
+      max-upload-size-bytes: ${S3_MAX_UPLOAD_SIZE_BYTES:5242880}
+      path-style-access-enabled: ${S3_PATH_STYLE_ACCESS_ENABLED:false}
     region:
-      static: ap-northeast-2
+      static: ${AWS_REGION:ap-northeast-2}
     stack:
       auto: false
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:30m}
+  refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:14d}
 
 logging:
   level:
     org.springframework: info
-    team.po: debug
+    team.po: ${APP_LOG_LEVEL:info}
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}

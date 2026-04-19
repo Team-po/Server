@@ -66,6 +66,18 @@ class ProfileImagePresignServiceTest {
 	}
 
 	@Test
+	void createProfileUploadUrl_usesAwsS3UrlWhenEndpointIsBlank() {
+		ReflectionTestUtils.setField(profileImagePresignService, "endpoint", "");
+
+		ProfileImageUploadUrlResponse response = profileImagePresignService.createProfileUploadUrl(
+			authenticatedUser(1L, "test@email.com"),
+			new ProfileImageUploadUrlRequest("image/png")
+		);
+
+		assertThat(response.uploadUrl()).isEqualTo("https://team-po.s3.ap-northeast-2.amazonaws.com");
+	}
+
+	@Test
 	void createProfileUploadUrl_normalizesContentTypeBeforeSigning() {
 		ProfileImageUploadUrlResponse response = profileImagePresignService.createProfileUploadUrl(
 			authenticatedUser(1L, "test@email.com"),

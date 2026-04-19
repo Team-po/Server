@@ -52,6 +52,8 @@ public class UserService {
 	private String s3Endpoint;
 	@Value("${cloud.aws.s3.bucket}")
 	private String bucket;
+	@Value("${cloud.aws.region.static}")
+	private String region;
 
 	public void signUp(SignUpRequest signUpRequest) {
 		String normalizedEmail = this.normalizeEmail(signUpRequest.email());
@@ -231,12 +233,13 @@ public class UserService {
 		if (objectKey == null || objectKey.isBlank()) {
 			return objectKey;
 		}
+		String normalizedObjectKey = objectKey.startsWith("/") ? objectKey.substring(1) : objectKey;
+
 		if (s3Endpoint == null || s3Endpoint.isBlank()) {
-			return objectKey;
+			return "https://" + bucket + ".s3." + region + ".amazonaws.com/" + normalizedObjectKey;
 		}
 
 		String normalizedEndpoint = s3Endpoint.endsWith("/") ? s3Endpoint.substring(0, s3Endpoint.length() - 1) : s3Endpoint;
-		String normalizedObjectKey = objectKey.startsWith("/") ? objectKey.substring(1) : objectKey;
 
 		return normalizedEndpoint + "/" + bucket + "/" + normalizedObjectKey;
 	}

@@ -13,3 +13,18 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
+
+cloud:
+  aws:
+    credentials:
+      access-key: test-access-key
+      secret-key: test-secret-key
+    s3:
+      bucket: test-bucket
+    region:
+      static: ap-northeast-2
+
+jwt:
+  secret: YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
+  access-token-expiration: 30m
+  refresh-token-expiration: 14d
