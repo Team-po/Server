@@ -73,6 +73,8 @@ class EmailServiceTest {
 			authCodeCaptor.capture(),
 			eq(AUTH_CODE_TTL)
 		);
+		verify(redisService).deleteValue(emailAuthFailCountKey("test@email.com"));
+		verify(redisService).deleteValue(emailVerifiedKey("test@email.com"));
 
 		String authCode = authCodeCaptor.getValue();
 		assertThat(authCode).matches("\\d{6}");
@@ -133,12 +135,44 @@ class EmailServiceTest {
 			.isInstanceOf(InvalidEmailAuthCodeException.class)
 			.hasMessage("인증번호가 만료되었거나 올바르지 않습니다.");
 
+		verify(redisService).incrementValue(emailAuthFailCountKey("test@email.com"));
 		verify(redisService, never()).deleteValue(emailAuthCodeKey("test@email.com"));
+	}
+
+	@Test
+	void validateAuthNumber_setsFailCountTtlWhenFirstAuthCodeFailureOccurs() {
+		when(redisService.getValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
+		when(redisService.incrementValue(emailAuthFailCountKey("test@email.com"))).thenReturn(1L);
+
+		assertThatThrownBy(() -> emailService.validateAuthNumber(
+			new ValidateAuthNumberRequest("test@email.com", 654321)
+		))
+			.isInstanceOf(InvalidEmailAuthCodeException.class);
+
+		verify(redisService).expire(emailAuthFailCountKey("test@email.com"), AUTH_CODE_TTL);
+		verify(redisService, never()).deleteValue(emailAuthCodeKey("test@email.com"));
+		verify(redisService, never()).deleteValue(emailAuthFailCountKey("test@email.com"));
+	}
+
+	@Test
+	void validateAuthNumber_deletesAuthCodeWhenFailureCountReachesLimit() {
+		when(redisService.getValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
+		when(redisService.incrementValue(emailAuthFailCountKey("test@email.com"))).thenReturn(5L);
+
+		assertThatThrownBy(() -> emailService.validateAuthNumber(
+			new ValidateAuthNumberRequest("test@email.com", 654321)
+		))
+			.isInstanceOf(InvalidEmailAuthCodeException.class);
+
+		verify(redisService, never()).expire(emailAuthFailCountKey("test@email.com"), AUTH_CODE_TTL);
+		verify(redisService).deleteValue(emailAuthCodeKey("test@email.com"));
+		verify(redisService).deleteValue(emailAuthFailCountKey("test@email.com"));
 	}
 
 	@Test
 	void validateAuthNumber_throwsWhenAuthCodeIsExpired() {
 		when(redisService.getValue(emailAuthCodeKey("test@email.com"))).thenReturn(null);
+		when(redisService.incrementValue(emailAuthFailCountKey("test@email.com"))).thenReturn(1L);
 
 		assertThatThrownBy(() -> emailService.validateAuthNumber(
 			new ValidateAuthNumberRequest("test@email.com", 123456)
@@ -146,6 +180,7 @@ class EmailServiceTest {
 			.isInstanceOf(InvalidEmailAuthCodeException.class)
 			.hasMessage("인증번호가 만료되었거나 올바르지 않습니다.");
 
+		verify(redisService).incrementValue(emailAuthFailCountKey("test@email.com"));
 		verify(redisService, never()).deleteValue(emailAuthCodeKey("test@email.com"));
 	}
 
@@ -169,6 +204,10 @@ class EmailServiceTest {
 
 	private String emailAuthCodeKey(String email) {
 		return "email-auth-code:signup:" + hashEmail(email);
+	}
+
+	private String emailAuthFailCountKey(String email) {
+		return "email-auth-fail-count:signup:" + hashEmail(email);
 	}
 
 	private String emailVerifiedKey(String email) {

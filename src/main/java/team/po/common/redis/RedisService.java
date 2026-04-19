@@ -33,6 +33,14 @@ public class RedisService {
 		return valueOperations.getAndDelete(key);
 	}
 
+	public Long incrementValue(String key) {
+		return valueOperations.increment(key);
+	}
+
+	public void expire(String key, Duration timeout) {
+		redisTemplate.expire(key, timeout);
+	}
+
 	public void deleteValue(String key) {
 		redisTemplate.delete(key);
 	}

@@ -33,10 +33,12 @@ import team.po.feature.user.repository.UserRepository;
 @RequiredArgsConstructor
 public class EmailService {
 	private static final String EMAIL_AUTH_CODE_KEY_PREFIX = "email-auth-code:signup:";
+	private static final String EMAIL_AUTH_FAIL_COUNT_KEY_PREFIX = "email-auth-fail-count:signup:";
 	private static final String VERIFIED_EMAIL_KEY_PREFIX = "email-auth-verified:signup:";
 	private static final String VERIFIED_VALUE = "true";
 	private static final int AUTH_CODE_ORIGIN = 100_000;
 	private static final int AUTH_CODE_BOUND = 900_000;
+	private static final int MAX_AUTH_CODE_FAILURE_COUNT = 5;
 
 	private final JavaMailSender javaMailSender;
 	private final RedisService redisService;
@@ -60,13 +62,15 @@ public class EmailService {
 		checkEmailDuplication(email);
 
 		String authCode = createAuthCode();
-		String redisKey = createEmailAuthCodeKey(email);
-		redisService.setValue(redisKey, authCode, authCodeTtl);
+		String authCodeKey = createEmailAuthCodeKey(email);
+		redisService.setValue(authCodeKey, authCode, authCodeTtl);
+		redisService.deleteValue(createAuthFailCountKey(email));
+		redisService.deleteValue(createVerifiedEmailKey(email));
 
 		try {
 			javaMailSender.send(createAuthCodeMessage(email, authCode));
 		} catch (MailException exception) {
-			redisService.deleteValue(redisKey);
+			redisService.deleteValue(authCodeKey);
 			throw new EmailSendFailedException(
 				HttpStatus.BAD_GATEWAY,
 				ErrorCodeConstants.EMAIL_SEND_FAILED,
@@ -81,9 +85,11 @@ public class EmailService {
 	public void validateAuthNumber(ValidateAuthNumberRequest request) {
 		String email = normalizeEmail(request.email());
 		String authCodeKey = createEmailAuthCodeKey(email);
+		String failCountKey = createAuthFailCountKey(email);
 		Object savedAuthCode = redisService.getValue(authCodeKey);
 
 		if (!String.valueOf(request.authNumber()).equals(savedAuthCode)) {
+			recordAuthCodeFailure(email, authCodeKey, failCountKey);
 			throw new InvalidEmailAuthCodeException(
 				HttpStatus.BAD_REQUEST,
 				ErrorCodeConstants.INVALID_EMAIL_AUTH_CODE,
@@ -93,6 +99,7 @@ public class EmailService {
 
 		redisService.setValue(createVerifiedEmailKey(email), VERIFIED_VALUE, verifiedTtl);
 		redisService.deleteValue(authCodeKey);
+		redisService.deleteValue(failCountKey);
 		log.info("이메일 검증 성공. emailHash={}", hashEmail(email));
 	}
 
@@ -116,6 +123,19 @@ public class EmailService {
 				ErrorCodeConstants.EMAIL_ALREADY_EXISTS,
 				"중복된 이메일이 존재합니다."
 			);
+		}
+	}
+
+	private void recordAuthCodeFailure(String email, String authCodeKey, String failCountKey) {
+		Long failCount = redisService.incrementValue(failCountKey);
+		if (Long.valueOf(1L).equals(failCount)) {
+			redisService.expire(failCountKey, authCodeTtl);
+		}
+
+		if (failCount != null && failCount >= MAX_AUTH_CODE_FAILURE_COUNT) {
+			redisService.deleteValue(authCodeKey);
+			redisService.deleteValue(failCountKey);
+			log.info("이메일 인증번호 실패 횟수 초과. emailHash={}", hashEmail(email));
 		}
 	}
 
@@ -148,6 +168,10 @@ public class EmailService {
 
 	private String createEmailAuthCodeKey(String email) {
 		return EMAIL_AUTH_CODE_KEY_PREFIX + hashEmail(email);
+	}
+
+	private String createAuthFailCountKey(String email) {
+		return EMAIL_AUTH_FAIL_COUNT_KEY_PREFIX + hashEmail(email);
 	}
 
 	private String createVerifiedEmailKey(String email) {
