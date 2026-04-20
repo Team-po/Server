@@ -1,5 +1,7 @@
 package team.po.feature.user.service;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -9,13 +11,18 @@ import java.util.HexFormat;
 import java.util.Locale;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.MailException;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StreamUtils;
 import org.springframework.util.StringUtils;
 
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import team.po.common.redis.RedisService;
@@ -36,6 +43,8 @@ public class EmailService {
 	private static final String EMAIL_AUTH_FAIL_COUNT_KEY_PREFIX = "email-auth-fail-count:signup:";
 	private static final String VERIFIED_EMAIL_KEY_PREFIX = "email-auth-verified:signup:";
 	private static final String VERIFIED_VALUE = "true";
+	private static final String EMAIL_VERIFICATION_TEMPLATE_PATH = "templates/email-verification.html";
+	private static final String VERIFICATION_CODE_PLACEHOLDER = "__VERIFICATION_CODE__";
 	private static final int AUTH_CODE_ORIGIN = 100_000;
 	private static final int AUTH_CODE_BOUND = 900_000;
 	private static final int MAX_AUTH_CODE_FAILURE_COUNT = 5;
@@ -69,7 +78,7 @@ public class EmailService {
 
 		try {
 			javaMailSender.send(createAuthCodeMessage(email, authCode));
-		} catch (MailException exception) {
+		} catch (MailException | MessagingException | IOException exception) {
 			redisService.deleteValue(authCodeKey);
 			throw new EmailSendFailedException(
 				HttpStatus.BAD_GATEWAY,
@@ -143,27 +152,26 @@ public class EmailService {
 		return String.valueOf(secureRandom.nextInt(AUTH_CODE_BOUND) + AUTH_CODE_ORIGIN);
 	}
 
-	private SimpleMailMessage createAuthCodeMessage(String email, String authCode) {
-		SimpleMailMessage message = new SimpleMailMessage();
+	private MimeMessage createAuthCodeMessage(String email, String authCode) throws MessagingException, IOException {
+		MimeMessage message = javaMailSender.createMimeMessage();
+		MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
 		if (StringUtils.hasText(fromEmail)) {
-			message.setFrom(fromEmail);
+			helper.setFrom(fromEmail);
 		}
-		message.setTo(email);
-		message.setSubject(authCodeSubject);
-		message.setText(createAuthCodeText(authCode));
+		helper.setTo(email);
+		helper.setSubject(authCodeSubject);
+		helper.setText(createAuthCodeHtml(authCode), true);
 
 		return message;
 	}
 
-	private String createAuthCodeText(String authCode) {
-		return """
-			TeamPo 이메일 인증번호입니다.
-
-			인증번호: %s
-
-			인증번호는 %d분 동안 유효합니다.
-			본인이 요청하지 않았다면 이 메일을 무시해주세요.
-			""".formatted(authCode, authCodeTtl.toMinutes());
+	private String createAuthCodeHtml(String authCode) throws IOException {
+		Resource template = new ClassPathResource(EMAIL_VERIFICATION_TEMPLATE_PATH);
+		String html;
+		try (InputStream inputStream = template.getInputStream()) {
+			html = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
+		}
+		return html.replace(VERIFICATION_CODE_PLACEHOLDER, authCode);
 	}
 
 	private String createEmailAuthCodeKey(String email) {

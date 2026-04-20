@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -15,6 +16,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.Properties;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,10 +25,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mail.MailSendException;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import jakarta.mail.Session;
+import jakarta.mail.internet.MimeMessage;
 import team.po.common.redis.RedisService;
 import team.po.feature.user.dto.SendEmailRequest;
 import team.po.feature.user.dto.ValidateAuthNumberRequest;
@@ -51,10 +54,13 @@ class EmailServiceTest {
 	private UserRepository userRepository;
 
 	private EmailService emailService;
+	private MimeMessage mimeMessage;
 
 	@BeforeEach
 	void setUp() {
 		emailService = new EmailService(javaMailSender, redisService, userRepository);
+		mimeMessage = new MimeMessage(Session.getInstance(new Properties()));
+		lenient().when(javaMailSender.createMimeMessage()).thenReturn(mimeMessage);
 		ReflectionTestUtils.setField(emailService, "fromEmail", "no-reply@teampo.com");
 		ReflectionTestUtils.setField(emailService, "authCodeTtl", AUTH_CODE_TTL);
 		ReflectionTestUtils.setField(emailService, "verifiedTtl", VERIFIED_TTL);
@@ -62,7 +68,7 @@ class EmailServiceTest {
 	}
 
 	@Test
-	void sendEmail_sendsAuthCodeAndStoresItWithTtl() {
+	void sendEmail_sendsAuthCodeHtmlAndStoresItWithTtl() throws Exception {
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
 
 		emailService.sendEmail(new SendEmailRequest(" Test@Email.com "));
@@ -79,14 +85,15 @@ class EmailServiceTest {
 		String authCode = authCodeCaptor.getValue();
 		assertThat(authCode).matches("\\d{6}");
 
-		ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
-		verify(javaMailSender).send(messageCaptor.capture());
-
-		SimpleMailMessage message = messageCaptor.getValue();
-		assertThat(message.getFrom()).isEqualTo("no-reply@teampo.com");
-		assertThat(message.getTo()).containsExactly("test@email.com");
-		assertThat(message.getSubject()).isEqualTo("TeamPo 이메일 인증번호");
-		assertThat(message.getText()).contains(authCode);
+		verify(javaMailSender).send(mimeMessage);
+		mimeMessage.saveChanges();
+		assertThat(mimeMessage.getFrom()[0].toString()).isEqualTo("no-reply@teampo.com");
+		assertThat(mimeMessage.getRecipients(MimeMessage.RecipientType.TO)[0].toString()).isEqualTo("test@email.com");
+		assertThat(mimeMessage.getSubject()).isEqualTo("TeamPo 이메일 인증번호");
+		assertThat(mimeMessage.getContentType()).contains("text/html");
+		assertThat(mimeMessage.getContent().toString())
+			.contains(authCode)
+			.doesNotContain("__VERIFICATION_CODE__");
 	}
 
 	@Test
@@ -105,7 +112,7 @@ class EmailServiceTest {
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
 		doThrow(new MailSendException("failed"))
 			.when(javaMailSender)
-			.send(any(SimpleMailMessage.class));
+			.send(any(MimeMessage.class));
 
 		assertThatThrownBy(() -> emailService.sendEmail(new SendEmailRequest("test@email.com")))
 			.isInstanceOf(EmailSendFailedException.class)
