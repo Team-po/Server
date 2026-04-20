@@ -123,6 +123,7 @@ class EmailServiceTest {
 		verify(redisService).getValue(emailAuthCodeKey("test@email.com"));
 		verify(redisService).setValue(emailVerifiedKey("test@email.com"), "true", VERIFIED_TTL);
 		verify(redisService).deleteValue(emailAuthCodeKey("test@email.com"));
+		verify(redisService).deleteValue(emailAuthFailCountKey("test@email.com"));
 	}
 
 	@Test
