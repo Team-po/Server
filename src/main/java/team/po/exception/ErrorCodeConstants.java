@@ -18,6 +18,11 @@ public final class ErrorCodeConstants extends RuntimeException {
 	public static final String EMAIL_NOT_VERIFIED = "EMAIL_NOT_VERIFIED";
 	public static final String EMAIL_SEND_FAILED = "EMAIL_SEND_FAILED";
 
+	// ProjectGroup
+	public static final String INVALID_PROJECT_GROUP_REQUEST = "INVALID_PROJECT_GROUP_REQUEST";
+	public static final String PROJECT_GROUP_MEMBER_NOT_FOUND = "PROJECT_GROUP_MEMBER_NOT_FOUND";
+	public static final String PROJECT_GROUP_PERMISSION_DENIED = "PROJECT_GROUP_PERMISSION_DENIED";
+
 	// ProjectRequest
 	public static final String PROJECT_REQUEST_NOT_FOUND = "PROJECT_REQUEST_NOT_FOUND";
 	public static final String PROJECT_REQUEST_ALREADY_EXISTS = "PROJECT_REQUEST_ALREADY_EXISTS";

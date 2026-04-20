@@ -22,7 +22,7 @@ import team.po.feature.user.exception.InvalidTokenException;
 import team.po.feature.user.exception.UserNotFoundException;
 
 @RestControllerAdvice
-public class CustomUserExceptionHandler {
+public class CustomExceptionHandler {
 	@ExceptionHandler(InvalidFieldException.class)
 	protected ResponseEntity<ExceptionResponse> invalidFieldException(InvalidFieldException e) {
 		Map<String, String> fieldErrors = new LinkedHashMap<>();
