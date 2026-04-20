@@ -39,7 +39,7 @@ resource "aws_vpc_security_group_ingress_rule" "app_http" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "app_https" {
-  for_each = toset(var.app_ingress_cidr_blocks)
+  for_each = var.app_port == 443 ? toset([]) : toset(var.app_ingress_cidr_blocks)
 
   security_group_id = aws_security_group.app.id
   cidr_ipv4         = each.value
