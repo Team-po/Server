@@ -15,9 +15,6 @@ spring:
 
 cloud:
   aws:
-    credentials:
-      access-key: test-access-key
-      secret-key: test-secret-key
     s3:
       bucket: test-bucket
     region:
