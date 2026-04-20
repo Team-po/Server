@@ -45,7 +45,7 @@ variable "app_port" {
 }
 
 variable "app_ingress_cidr_blocks" {
-  description = "API 포트 접근을 허용할 CIDR 목록. dev 기본값은 전체 공개이므로 운영 전에는 제한해야 한다."
+  description = "API HTTP/HTTPS 포트 접근을 허용할 CIDR 목록. dev 기본값은 전체 공개이므로 운영 전에는 제한해야 한다."
   type        = list(string)
   default     = ["0.0.0.0/0"]
 }
