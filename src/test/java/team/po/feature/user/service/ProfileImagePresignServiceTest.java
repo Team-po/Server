@@ -14,6 +14,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.ProfileImageUploadUrlRequest;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
@@ -29,15 +33,20 @@ class ProfileImagePresignServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		profileImagePresignService = new ImageService(profileImageRedisService);
-		ReflectionTestUtils.setField(profileImagePresignService, "accessKey", "test-access-key");
-		ReflectionTestUtils.setField(profileImagePresignService, "secretKey", "test-secret-key");
-		ReflectionTestUtils.setField(profileImagePresignService, "region", "ap-northeast-2");
-		ReflectionTestUtils.setField(profileImagePresignService, "endpoint", "http://localhost:9000");
-		ReflectionTestUtils.setField(profileImagePresignService, "bucket", "team-po");
-		ReflectionTestUtils.setField(profileImagePresignService, "dir", "images");
-		ReflectionTestUtils.setField(profileImagePresignService, "presignedExpiration", java.time.Duration.ofMinutes(5));
-		ReflectionTestUtils.setField(profileImagePresignService, "maxUploadSizeBytes", 5_242_880L);
+		profileImagePresignService = imageService(
+			StaticCredentialsProvider.create(AwsBasicCredentials.create("test-access-key", "test-secret-key"))
+		);
+	}
+
+	private ImageService imageService(AwsCredentialsProvider credentialsProvider) {
+		ImageService imageService = new ImageService(profileImageRedisService, credentialsProvider);
+		ReflectionTestUtils.setField(imageService, "region", "ap-northeast-2");
+		ReflectionTestUtils.setField(imageService, "endpoint", "http://localhost:9000");
+		ReflectionTestUtils.setField(imageService, "bucket", "team-po");
+		ReflectionTestUtils.setField(imageService, "dir", "images");
+		ReflectionTestUtils.setField(imageService, "presignedExpiration", java.time.Duration.ofMinutes(5));
+		ReflectionTestUtils.setField(imageService, "maxUploadSizeBytes", 5_242_880L);
+		return imageService;
 	}
 
 	@Test
@@ -86,6 +95,25 @@ class ProfileImagePresignServiceTest {
 
 		assertThat(response.contentType()).isEqualTo("image/jpeg");
 		assertThat(response.objectKey()).endsWith(".jpg");
+	}
+
+	@Test
+	void createProfileUploadUrl_includesSecurityTokenWhenUsingSessionCredentials() {
+		profileImagePresignService = imageService(
+			StaticCredentialsProvider.create(
+				AwsSessionCredentials.create("test-access-key", "test-secret-key", "test-session-token")
+			)
+		);
+
+		ProfileImageUploadUrlResponse response = profileImagePresignService.createProfileUploadUrl(
+			authenticatedUser(1L, "test@email.com"),
+			new ProfileImageUploadUrlRequest("image/png")
+		);
+
+		assertThat(response.formFields())
+			.containsEntry("X-Amz-Security-Token", "test-session-token");
+		assertThat(decodedPolicy(response))
+			.contains("\"x-amz-security-token\":\"test-session-token\"");
 	}
 
 	@Test

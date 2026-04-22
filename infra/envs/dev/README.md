@@ -40,7 +40,7 @@ AWS_PROFILE=teampo-terraform terraform apply -var 'db_password=<secure-password>
 
 - local state 파일은 커밋하면 안 됩니다.
 - 이 환경은 S3 backend를 사용합니다. `infra/bootstrap` 적용 전에는 `terraform init`이 실패합니다.
-- 현재 Spring 설정은 정적 S3 Access Key를 요구합니다. 운영 배포 전에는 장기 Access Key 대신 AWS Role 기반 인증을 쓰도록 애플리케이션 설정을 바꾸는 편이 안전합니다.
+- 애플리케이션 EC2에는 S3 업로드/삭제용 IAM Role이 연결됩니다. 운영 배포에서는 장기 S3 Access Key를 주입하지 말고 인스턴스 프로파일 기반 인증을 사용하세요.
 - EC2는 SSH 22번 포트를 엽니다. `app_key_name`에 AWS key pair 이름을 지정해야 SSH 접속이 가능합니다.
 - RDS는 public 접근을 막고 EC2 보안 그룹에서만 MySQL 접속을 허용합니다. 다만 subnet은 Default VPC의 default subnet을 사용합니다.
 - Redis는 EC2 내부 Docker 컨테이너로 실행되며 외부 포트를 열지 않습니다.

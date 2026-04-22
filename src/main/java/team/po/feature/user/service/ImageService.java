@@ -23,6 +23,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.ProfileImageUploadUrlRequest;
@@ -50,12 +53,7 @@ public class ImageService {
 	);
 
 	private final ProfileImageRedisService profileImageRedisService;
-
-	@Value("${cloud.aws.credentials.access-key}")
-	private String accessKey;
-
-	@Value("${cloud.aws.credentials.secret-key}")
-	private String secretKey;
+	private final AwsCredentialsProvider credentialsProvider;
 
 	@Value("${cloud.aws.region.static}")
 	private String region;
@@ -96,10 +94,12 @@ public class ImageService {
 		Instant expiresAt = now.plus(presignedExpiration);
 		String dateStamp = DATE_STAMP_FORMATTER.format(now);
 		String amzDate = AMZ_DATE_FORMATTER.format(now);
-		String credential = accessKey + "/" + credentialScope(dateStamp);
-		String policy = createPostPolicy(expiresAt, objectKey, contentType, amzDate, credential);
+		AwsCredentials credentials = credentialsProvider.resolveCredentials();
+		String credential = credentials.accessKeyId() + "/" + credentialScope(dateStamp);
+		String sessionToken = sessionToken(credentials);
+		String policy = createPostPolicy(expiresAt, objectKey, contentType, amzDate, credential, sessionToken);
 		String encodedPolicy = Base64.getEncoder().encodeToString(policy.getBytes(StandardCharsets.UTF_8));
-		String signature = signature(encodedPolicy, dateStamp);
+		String signature = signature(encodedPolicy, dateStamp, credentials.secretAccessKey());
 
 		Map<String, String> formFields = new LinkedHashMap<>();
 		formFields.put("key", objectKey);
@@ -107,6 +107,9 @@ public class ImageService {
 		formFields.put("X-Amz-Algorithm", SIGNATURE_ALGORITHM);
 		formFields.put("X-Amz-Credential", credential);
 		formFields.put("X-Amz-Date", amzDate);
+		if (sessionToken != null) {
+			formFields.put("X-Amz-Security-Token", sessionToken);
+		}
 		formFields.put("Policy", encodedPolicy);
 		formFields.put("X-Amz-Signature", signature);
 
@@ -172,32 +175,51 @@ public class ImageService {
 		String objectKey,
 		String contentType,
 		String amzDate,
-		String credential
+		String credential,
+		String sessionToken
 	) {
+		String securityTokenCondition = "";
+		if (sessionToken != null) {
+			securityTokenCondition = ",{\"x-amz-security-token\":\"%s\"}".formatted(jsonEscape(sessionToken));
+		}
+
 		return """
-			{"expiration":"%s","conditions":[{"bucket":"%s"},{"key":"%s"},{"Content-Type":"%s"},["content-length-range",1,%d],{"x-amz-algorithm":"%s"},{"x-amz-credential":"%s"},{"x-amz-date":"%s"}]}
+			{"expiration":"%s","conditions":[{"bucket":"%s"},{"key":"%s"},{"Content-Type":"%s"},["content-length-range",1,%d],{"x-amz-algorithm":"%s"},{"x-amz-credential":"%s"},{"x-amz-date":"%s"}%s]}
 			""".formatted(
 			POLICY_EXPIRATION_FORMATTER.format(expiresAt.truncatedTo(ChronoUnit.MILLIS)),
-			bucket,
-			objectKey,
-			contentType,
+			jsonEscape(bucket),
+			jsonEscape(objectKey),
+			jsonEscape(contentType),
 			maxUploadSizeBytes,
-			SIGNATURE_ALGORITHM,
-			credential,
-			amzDate
+			jsonEscape(SIGNATURE_ALGORITHM),
+			jsonEscape(credential),
+			jsonEscape(amzDate),
+			securityTokenCondition
 		).strip();
 	}
 
-	private String signature(String encodedPolicy, String dateStamp) {
-		byte[] signingKey = signingKey(dateStamp);
+	private String signature(String encodedPolicy, String dateStamp, String secretAccessKey) {
+		byte[] signingKey = signingKey(dateStamp, secretAccessKey);
 		return HexFormat.of().formatHex(hmac(signingKey, encodedPolicy));
 	}
 
-	private byte[] signingKey(String dateStamp) {
-		byte[] dateKey = hmac(("AWS4" + secretKey).getBytes(StandardCharsets.UTF_8), dateStamp);
+	private byte[] signingKey(String dateStamp, String secretAccessKey) {
+		byte[] dateKey = hmac(("AWS4" + secretAccessKey).getBytes(StandardCharsets.UTF_8), dateStamp);
 		byte[] regionKey = hmac(dateKey, region);
 		byte[] serviceKey = hmac(regionKey, S3_SERVICE);
 		return hmac(serviceKey, AWS4_REQUEST);
+	}
+
+	private String sessionToken(AwsCredentials credentials) {
+		if (credentials instanceof AwsSessionCredentials sessionCredentials) {
+			return sessionCredentials.sessionToken();
+		}
+		return null;
+	}
+
+	private String jsonEscape(String value) {
+		return value.replace("\\", "\\\\")
+			.replace("\"", "\\\"");
 	}
 
 	private byte[] hmac(byte[] key, String data) {
