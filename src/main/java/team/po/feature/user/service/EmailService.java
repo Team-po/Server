@@ -79,7 +79,7 @@ public class EmailService {
 		String email = normalizeEmail(request.email());
 		String authCodeKey = createEmailAuthCodeKey(email);
 		String failCountKey = createAuthFailCountKey(email);
-		Object savedAuthCode = redisService.getValue(authCodeKey);
+		String savedAuthCode = redisService.getStringValue(authCodeKey);
 
 		if (!String.valueOf(request.authNumber()).equals(savedAuthCode)) {
 			recordAuthCodeFailure(email, authCodeKey, failCountKey);

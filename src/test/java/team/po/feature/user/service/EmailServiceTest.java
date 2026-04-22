@@ -125,11 +125,11 @@ class EmailServiceTest {
 
 	@Test
 	void validateAuthNumber_consumesAuthCodeWhenMatched() {
-		when(redisService.getValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
+		when(redisService.getStringValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
 
 		emailService.validateAuthNumber(new ValidateAuthNumberRequest(" Test@Email.com ", 123456));
 
-		verify(redisService).getValue(emailAuthCodeKey("test@email.com"));
+		verify(redisService).getStringValue(emailAuthCodeKey("test@email.com"));
 		verify(redisService).setValue(emailVerifiedKey("test@email.com"), "true", VERIFIED_TTL);
 		verify(redisService).deleteValue(emailAuthCodeKey("test@email.com"));
 		verify(redisService).deleteValue(emailAuthFailCountKey("test@email.com"));
@@ -137,7 +137,7 @@ class EmailServiceTest {
 
 	@Test
 	void validateAuthNumber_throwsWhenAuthCodeIsInvalid() {
-		when(redisService.getValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
+		when(redisService.getStringValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
 
 		assertThatThrownBy(() -> emailService.validateAuthNumber(
 			new ValidateAuthNumberRequest("test@email.com", 654321)
@@ -151,7 +151,7 @@ class EmailServiceTest {
 
 	@Test
 	void validateAuthNumber_setsFailCountTtlWhenFirstAuthCodeFailureOccurs() {
-		when(redisService.getValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
+		when(redisService.getStringValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
 		when(redisService.incrementValue(emailAuthFailCountKey("test@email.com"))).thenReturn(1L);
 
 		assertThatThrownBy(() -> emailService.validateAuthNumber(
@@ -166,7 +166,7 @@ class EmailServiceTest {
 
 	@Test
 	void validateAuthNumber_deletesAuthCodeWhenFailureCountReachesLimit() {
-		when(redisService.getValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
+		when(redisService.getStringValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
 		when(redisService.incrementValue(emailAuthFailCountKey("test@email.com"))).thenReturn(5L);
 
 		assertThatThrownBy(() -> emailService.validateAuthNumber(
@@ -181,7 +181,7 @@ class EmailServiceTest {
 
 	@Test
 	void validateAuthNumber_throwsWhenAuthCodeIsExpired() {
-		when(redisService.getValue(emailAuthCodeKey("test@email.com"))).thenReturn(null);
+		when(redisService.getStringValue(emailAuthCodeKey("test@email.com"))).thenReturn(null);
 		when(redisService.incrementValue(emailAuthFailCountKey("test@email.com"))).thenReturn(1L);
 
 		assertThatThrownBy(() -> emailService.validateAuthNumber(
