@@ -26,11 +26,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mail.MailSendException;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
 import team.po.common.redis.RedisService;
+import team.po.config.EmailAuthProperties;
 import team.po.feature.user.dto.SendEmailRequest;
 import team.po.feature.user.dto.ValidateAuthNumberRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
@@ -58,13 +58,15 @@ class EmailServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		emailService = new EmailService(javaMailSender, redisService, userRepository);
+		EmailAuthProperties emailAuthProperties = new EmailAuthProperties(
+			"no-reply@teampo.com",
+			AUTH_CODE_TTL,
+			VERIFIED_TTL,
+			"TeamPo 이메일 인증번호"
+		);
+		emailService = new EmailService(javaMailSender, redisService, userRepository, emailAuthProperties);
 		mimeMessage = new MimeMessage(Session.getInstance(new Properties()));
 		lenient().when(javaMailSender.createMimeMessage()).thenReturn(mimeMessage);
-		ReflectionTestUtils.setField(emailService, "fromEmail", "no-reply@teampo.com");
-		ReflectionTestUtils.setField(emailService, "authCodeTtl", AUTH_CODE_TTL);
-		ReflectionTestUtils.setField(emailService, "verifiedTtl", VERIFIED_TTL);
-		ReflectionTestUtils.setField(emailService, "authCodeSubject", "TeamPo 이메일 인증번호");
 	}
 
 	@Test

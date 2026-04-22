@@ -6,11 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
-import java.time.Duration;
 import java.util.HexFormat;
 import java.util.Locale;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
@@ -24,8 +22,8 @@ import org.springframework.util.StringUtils;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import team.po.common.redis.RedisService;
+import team.po.config.EmailAuthProperties;
 import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.dto.SendEmailRequest;
 import team.po.feature.user.dto.ValidateAuthNumberRequest;
@@ -35,7 +33,6 @@ import team.po.feature.user.exception.EmailSendFailedException;
 import team.po.feature.user.exception.InvalidEmailAuthCodeException;
 import team.po.feature.user.repository.UserRepository;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EmailService {
@@ -52,19 +49,8 @@ public class EmailService {
 	private final JavaMailSender javaMailSender;
 	private final RedisService redisService;
 	private final UserRepository userRepository;
+	private final EmailAuthProperties emailAuthProperties;
 	private final SecureRandom secureRandom = new SecureRandom();
-
-	@Value("${spring.mail.username:}")
-	private String fromEmail;
-
-	@Value("${spring.mail.auth-code-ttl:PT5M}")
-	private Duration authCodeTtl;
-
-	@Value("${spring.mail.verified-ttl:PT10M}")
-	private Duration verifiedTtl;
-
-	@Value("${spring.mail.auth-code-subject:TeamPo 이메일 인증번호}")
-	private String authCodeSubject;
 
 	public void sendEmail(SendEmailRequest request) {
 		String email = normalizeEmail(request.email());
@@ -72,7 +58,7 @@ public class EmailService {
 
 		String authCode = createAuthCode();
 		String authCodeKey = createEmailAuthCodeKey(email);
-		redisService.setValue(authCodeKey, authCode, authCodeTtl);
+		redisService.setValue(authCodeKey, authCode, emailAuthProperties.authCodeTtl());
 		redisService.deleteValue(createAuthFailCountKey(email));
 		redisService.deleteValue(createVerifiedEmailKey(email));
 
@@ -87,8 +73,6 @@ public class EmailService {
 				exception
 			);
 		}
-
-		log.info("이메일 전송 성공. emailHash={}", hashEmail(email));
 	}
 
 	public void validateAuthNumber(ValidateAuthNumberRequest request) {
@@ -106,10 +90,9 @@ public class EmailService {
 			);
 		}
 
-		redisService.setValue(createVerifiedEmailKey(email), VERIFIED_VALUE, verifiedTtl);
+		redisService.setValue(createVerifiedEmailKey(email), VERIFIED_VALUE, emailAuthProperties.verifiedTtl());
 		redisService.deleteValue(authCodeKey);
 		redisService.deleteValue(failCountKey);
-		log.info("이메일 검증 성공. emailHash={}", hashEmail(email));
 	}
 
 	public void consumeVerifiedSignUpEmail(String email) {
@@ -138,13 +121,12 @@ public class EmailService {
 	private void recordAuthCodeFailure(String email, String authCodeKey, String failCountKey) {
 		Long failCount = redisService.incrementValue(failCountKey);
 		if (Long.valueOf(1L).equals(failCount)) {
-			redisService.expire(failCountKey, authCodeTtl);
+			redisService.expire(failCountKey, emailAuthProperties.authCodeTtl());
 		}
 
 		if (failCount != null && failCount >= MAX_AUTH_CODE_FAILURE_COUNT) {
 			redisService.deleteValue(authCodeKey);
 			redisService.deleteValue(failCountKey);
-			log.info("이메일 인증번호 실패 횟수 초과. emailHash={}", hashEmail(email));
 		}
 	}
 
@@ -155,11 +137,11 @@ public class EmailService {
 	private MimeMessage createAuthCodeMessage(String email, String authCode) throws MessagingException, IOException {
 		MimeMessage message = javaMailSender.createMimeMessage();
 		MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
-		if (StringUtils.hasText(fromEmail)) {
-			helper.setFrom(fromEmail);
+		if (StringUtils.hasText(emailAuthProperties.username())) {
+			helper.setFrom(emailAuthProperties.username());
 		}
 		helper.setTo(email);
-		helper.setSubject(authCodeSubject);
+		helper.setSubject(emailAuthProperties.authCodeSubject());
 		helper.setText(createAuthCodeHtml(authCode), true);
 
 		return message;

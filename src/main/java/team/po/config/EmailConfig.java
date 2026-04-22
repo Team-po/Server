@@ -13,7 +13,7 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.util.StringUtils;
 
 @Configuration
-@EnableConfigurationProperties(MailProperties.class)
+@EnableConfigurationProperties({MailProperties.class, EmailAuthProperties.class})
 public class EmailConfig {
 
 	private static final String DEFAULT_PROTOCOL = "smtp";
@@ -23,7 +23,7 @@ public class EmailConfig {
 	@ConditionalOnMissingBean(JavaMailSender.class)
 	public JavaMailSender javaMailSender(MailProperties mailProperties) {
 		JavaMailSenderImpl javaMailSender = new JavaMailSenderImpl();
-		String protocol = mailProtocol(mailProperties);
+		String protocol = createMailProtocol(mailProperties);
 
 		javaMailSender.setHost(mailProperties.getHost());
 		if (mailProperties.getPort() != null) {
@@ -65,7 +65,7 @@ public class EmailConfig {
 		return properties;
 	}
 
-	private String mailProtocol(MailProperties mailProperties) {
+	private String createMailProtocol(MailProperties mailProperties) {
 		if (StringUtils.hasText(mailProperties.getProtocol())) {
 			return mailProperties.getProtocol().toLowerCase(Locale.ROOT);
 		}
