@@ -34,6 +34,7 @@ import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.EmailNotVerifiedException;
 import team.po.feature.user.exception.InvalidPasswordException;
 import team.po.feature.user.exception.InvalidProfileImageKeyException;
 import team.po.feature.user.exception.InvalidTokenException;
@@ -57,6 +58,9 @@ class UserServiceTest {
 
 	@Mock
 	private ProfileImageRedisService profileImageRedisService;
+
+	@Mock
+	private EmailService emailService;
 
 	@InjectMocks
 	private UserService userService;
@@ -88,6 +92,7 @@ class UserServiceTest {
 		assertThat(savedUser.getTemperature()).isEqualTo(50);
 		assertThat(savedUser.getLevel()).isEqualTo(5);
 		verify(profileImageRedisService).consumeSignUpTicket("images/sign-up/test.png");
+		verify(emailService).consumeVerifiedSignUpEmail("test@email.com");
 	}
 
 	@Test
@@ -105,6 +110,25 @@ class UserServiceTest {
 			.hasMessage("발급되지 않았거나 만료된 프로필 이미지 키입니다.");
 
 		verify(passwordEncoder, never()).encode(any());
+		verify(emailService, never()).consumeVerifiedSignUpEmail(any());
+		verify(userRepository, never()).save(any());
+	}
+
+	@Test
+	void signUp_throwsWhenEmailWasNotVerified() {
+		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 3, null);
+		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
+		doThrow(new EmailNotVerifiedException(
+			org.springframework.http.HttpStatus.BAD_REQUEST,
+			team.po.exception.ErrorCodeConstants.EMAIL_NOT_VERIFIED,
+			"이메일 인증이 필요합니다."
+		)).when(emailService).consumeVerifiedSignUpEmail("test@email.com");
+
+		assertThatThrownBy(() -> userService.signUp(request))
+			.isInstanceOf(EmailNotVerifiedException.class)
+			.hasMessage("이메일 인증이 필요합니다.");
+
+		verify(passwordEncoder, never()).encode(any());
 		verify(userRepository, never()).save(any());
 	}
 
@@ -116,6 +140,7 @@ class UserServiceTest {
 		assertThatThrownBy(() -> userService.signUp(request))
 			.isInstanceOf(DuplicatedEmailException.class);
 
+		verify(emailService, never()).consumeVerifiedSignUpEmail(any());
 		verify(passwordEncoder, never()).encode(any());
 		verify(userRepository, never()).save(any());
 	}

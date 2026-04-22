@@ -68,8 +68,8 @@ public class JwtTokenProvider {
 	}
 
 	public boolean isRefreshTokenMatched(String email, String refreshToken) {
-		Object savedToken = redisService.getValue(createRefreshTokenKey(email));
-		return savedToken != null && refreshToken.equals(savedToken.toString());
+		String savedToken = redisService.getStringValue(createRefreshTokenKey(email));
+		return savedToken != null && refreshToken.equals(savedToken);
 	}
 
 	public Authentication getAuthentication(String accessToken) {
