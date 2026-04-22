@@ -11,7 +11,10 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import team.po.feature.user.exception.DuplicatedEmailException;
+import team.po.feature.user.exception.EmailNotVerifiedException;
+import team.po.feature.user.exception.EmailSendFailedException;
 import team.po.feature.user.exception.InvalidAuthenticationException;
+import team.po.feature.user.exception.InvalidEmailAuthCodeException;
 import team.po.feature.user.exception.InvalidImageContentTypeException;
 import team.po.feature.user.exception.InvalidPasswordException;
 import team.po.feature.user.exception.InvalidProfileImageKeyException;
@@ -81,6 +84,24 @@ public class CustomExceptionHandler {
 
 	@ExceptionHandler(InvalidProfileImageKeyException.class)
 	protected ResponseEntity<ExceptionResponse> invalidProfileImageKeyException(InvalidProfileImageKeyException e) {
+		return ResponseEntity.status(e.getCode())
+			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
+	}
+
+	@ExceptionHandler(InvalidEmailAuthCodeException.class)
+	protected ResponseEntity<ExceptionResponse> invalidEmailAuthCodeException(InvalidEmailAuthCodeException e) {
+		return ResponseEntity.status(e.getCode())
+			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
+	}
+
+	@ExceptionHandler(EmailSendFailedException.class)
+	protected ResponseEntity<ExceptionResponse> emailSendFailedException(EmailSendFailedException e) {
+		return ResponseEntity.status(e.getCode())
+			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
+	}
+
+	@ExceptionHandler(EmailNotVerifiedException.class)
+	protected ResponseEntity<ExceptionResponse> emailNotVerifiedException(EmailNotVerifiedException e) {
 		return ResponseEntity.status(e.getCode())
 			.body(new ExceptionResponse(e.getError(), e.getMessage(), Optional.empty()));
 	}

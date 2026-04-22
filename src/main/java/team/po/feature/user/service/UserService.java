@@ -48,6 +48,7 @@ public class UserService {
 	private final AuthenticationManager authenticationManager;
 	private final JwtTokenProvider jwtTokenProvider;
 	private final ProfileImageRedisService profileImageRedisService;
+	private final EmailService emailService;
 	@Value("${cloud.aws.s3.endpoint:}")
 	private String s3Endpoint;
 	@Value("${cloud.aws.s3.bucket}")
@@ -61,6 +62,7 @@ public class UserService {
 		if (signUpRequest.profileImageKey() != null) {
 			profileImageRedisService.consumeSignUpTicket(signUpRequest.profileImageKey());
 		}
+		emailService.consumeVerifiedSignUpEmail(normalizedEmail);
 		String password = passwordEncoder.encode(signUpRequest.password());
 
 		Users user = Users.builder().email(normalizedEmail).password(password)
