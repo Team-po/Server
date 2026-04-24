@@ -26,8 +26,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import team.po.exception.CustomExceptionHandler;
+import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
 import team.po.common.jwt.UserPrincipal;
-import team.po.exception.ErrorCodeConstants;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
@@ -36,12 +37,6 @@ import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInResponse;
-import team.po.feature.user.exception.DuplicatedEmailException;
-import team.po.feature.user.exception.InvalidImageContentTypeException;
-import team.po.feature.user.exception.InvalidPasswordException;
-import team.po.feature.user.exception.InvalidProfileImageKeyException;
-import team.po.feature.user.exception.InvalidTokenException;
-import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.service.ImageService;
 import team.po.feature.user.repository.UserRepository;
 import team.po.feature.user.service.UserService;
@@ -86,7 +81,7 @@ class UserControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(signUpRequestJson("invalid-email", "123", "", 0, null)))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
 			.andExpect(jsonPath("$.fieldErrors.email").value("이메일 형식이 올바르지 않습니다."))
 			.andExpect(jsonPath("$.fieldErrors.password").value("비밀번호는 8글자 이상이어야 합니다."))
 			.andExpect(jsonPath("$.fieldErrors.nickname").value("닉네임 입력은 필수입니다."))
@@ -95,18 +90,15 @@ class UserControllerTest {
 
 	@Test
 	void signUp_returnsConflict_whenEmailAlreadyExists() throws Exception {
-		doThrow(new DuplicatedEmailException(
-			HttpStatus.CONFLICT,
-			ErrorCodeConstants.EMAIL_ALREADY_EXISTS,
-			"중복된 이메일이 존재합니다."
-		)).when(userService).signUp(new team.po.feature.user.dto.SignUpRequest("test@email.com", "password123", "tester", 3, null));
+		doThrow(new ApplicationException(ErrorCode.EMAIL_ALREADY_EXISTS))
+			.when(userService).signUp(new team.po.feature.user.dto.SignUpRequest("test@email.com", "password123", "tester", 3, null));
 
 		mockMvc.perform(post("/api/users/sign-up")
 				.with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(signUpRequestJson("test@email.com", "password123", "tester", 3, null)))
 			.andExpect(status().isConflict())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.EMAIL_ALREADY_EXISTS))
+			.andExpect(jsonPath("$.code").value(ErrorCode.EMAIL_ALREADY_EXISTS.getCode()))
 			.andExpect(jsonPath("$.message").value("중복된 이메일이 존재합니다."));
 	}
 
@@ -132,7 +124,7 @@ class UserControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(signUpRequestJson("test@email.com", "password123", "tester", 3, profileImageKey)))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
 			.andExpect(jsonPath("$.fieldErrors.profileImageKey").value("프로필 이미지 키는 255자 이하여야 합니다."));
 	}
 
@@ -143,7 +135,7 @@ class UserControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(signUpRequestJson("test@email.com", "password123", "tester", 3, "https://evil.com/image.png")))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
 			.andExpect(jsonPath("$.fieldErrors.profileImageKey").value("프로필 이미지 키 형식이 올바르지 않습니다."));
 	}
 
@@ -160,16 +152,13 @@ class UserControllerTest {
 
 	@Test
 	void checkEmailDuplicate_returnsConflict_whenEmailAlreadyExists() throws Exception {
-		doThrow(new DuplicatedEmailException(
-			HttpStatus.CONFLICT,
-			ErrorCodeConstants.EMAIL_ALREADY_EXISTS,
-			"중복된 이메일이 존재합니다."
-		)).when(userService).checkEmailDuplication("test@email.com");
+		doThrow(new ApplicationException(ErrorCode.EMAIL_ALREADY_EXISTS))
+			.when(userService).checkEmailDuplication("test@email.com");
 
 		mockMvc.perform(get("/api/users/check-email")
 				.param("email", "test@email.com"))
 			.andExpect(status().isConflict())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.EMAIL_ALREADY_EXISTS))
+			.andExpect(jsonPath("$.code").value(ErrorCode.EMAIL_ALREADY_EXISTS.getCode()))
 			.andExpect(jsonPath("$.message").value("중복된 이메일이 존재합니다."));
 	}
 
@@ -200,7 +189,7 @@ class UserControllerTest {
 					{"email":"test@email.com","password":"wrong-password"}
 					"""))
 			.andExpect(status().isUnauthorized())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_CREDENTIALS))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_CREDENTIALS.getCode()))
 			.andExpect(jsonPath("$.message").value("이메일 또는 비밀번호가 올바르지 않습니다."));
 	}
 
@@ -227,17 +216,14 @@ class UserControllerTest {
 					{"refreshToken":""}
 					"""))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
 			.andExpect(jsonPath("$.fieldErrors.refreshToken").exists());
 	}
 
 	@Test
 	void refreshToken_returnsUnauthorized_whenRefreshTokenIsInvalid() throws Exception {
-		doThrow(new InvalidTokenException(
-			HttpStatus.UNAUTHORIZED,
-			ErrorCodeConstants.INVALID_TOKEN,
-			"유효하지 않은 리프레스 토큰입니다."
-		)).when(userService).refreshToken(any());
+		doThrow(new ApplicationException(ErrorCode.INVALID_TOKEN, "유효하지 않은 리프레스 토큰입니다."))
+			.when(userService).refreshToken(any());
 
 		mockMvc.perform(post("/api/users/refresh-token")
 				.contentType(MediaType.APPLICATION_JSON)
@@ -245,7 +231,7 @@ class UserControllerTest {
 					{"refreshToken":"invalid-refresh-token"}
 					"""))
 			.andExpect(status().isUnauthorized())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_TOKEN))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_TOKEN.getCode()))
 			.andExpect(jsonPath("$.message").value("유효하지 않은 리프레스 토큰입니다."));
 	}
 
@@ -278,7 +264,7 @@ class UserControllerTest {
 
 		mockMvc.perform(get("/api/users/me"))
 			.andExpect(status().isUnauthorized())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNEXISTED_USER))
+			.andExpect(jsonPath("$.code").value(ErrorCode.UNEXISTED_USER.getCode()))
 			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
 
 		verifyNoInteractions(userService);
@@ -327,7 +313,7 @@ class UserControllerTest {
 					{"contentType":""}
 					"""))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
 			.andExpect(jsonPath("$.fieldErrors.contentType").value("이미지 Content-Type은 필수입니다."));
 	}
 
@@ -378,18 +364,15 @@ class UserControllerTest {
 					{"contentType":""}
 					"""))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
 			.andExpect(jsonPath("$.fieldErrors.contentType").value("이미지 Content-Type은 필수입니다."));
 	}
 
 	@Test
 	void createProfileImageUploadUrl_returnsBadRequest_whenContentTypeIsUnsupported() throws Exception {
 		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
-		doThrow(new InvalidImageContentTypeException(
-			HttpStatus.BAD_REQUEST,
-			ErrorCodeConstants.INVALID_IMAGE_CONTENT_TYPE,
-			"지원하지 않는 이미지 형식입니다."
-		)).when(profileImagePresignService).createProfileUploadUrl(
+		doThrow(new ApplicationException(ErrorCode.INVALID_IMAGE_CONTENT_TYPE))
+			.when(profileImagePresignService).createProfileUploadUrl(
 			authenticatedUser,
 			new team.po.feature.user.dto.ProfileImageUploadUrlRequest("application/pdf")
 		);
@@ -401,18 +384,14 @@ class UserControllerTest {
 					{"contentType":"application/pdf"}
 					"""))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_IMAGE_CONTENT_TYPE))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_IMAGE_CONTENT_TYPE.getCode()))
 			.andExpect(jsonPath("$.message").value("지원하지 않는 이미지 형식입니다."));
 	}
 
 	@Test
 	void editMyProfile_returnsBadRequest_whenProfileImageKeyWasNotIssued() throws Exception {
 		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
-		doThrow(new InvalidProfileImageKeyException(
-			HttpStatus.BAD_REQUEST,
-			ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY,
-			"발급되지 않았거나 만료된 프로필 이미지 키입니다."
-		)).when(userService).editMyProfile(
+		doThrow(new ApplicationException(ErrorCode.INVALID_PROFILE_IMAGE_KEY)).when(userService).editMyProfile(
 			authenticatedUser,
 			new EditProfileRequest("updated-description", "updated-nickname", 4, "images/users/1/test.png")
 		);
@@ -422,7 +401,7 @@ class UserControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(editProfileRequestJson("updated-description", "updated-nickname", 4, "images/users/1/test.png")))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_PROFILE_IMAGE_KEY.getCode()))
 			.andExpect(jsonPath("$.message").value("발급되지 않았거나 만료된 프로필 이미지 키입니다."));
 	}
 
@@ -449,7 +428,7 @@ class UserControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(editProfileRequestJson("updated-description", "", 0, null)))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
 			.andExpect(jsonPath("$.fieldErrors.nickname").value("닉네임 입력은 필수입니다."))
 			.andExpect(jsonPath("$.fieldErrors.level").value("레벨은 1 이상이어야 합니다."));
 	}
@@ -465,7 +444,7 @@ class UserControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(editProfileRequestJson("updated-description", "updated-nickname", 4, profileImageKey)))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
 			.andExpect(jsonPath("$.fieldErrors.profileImageKey").value("프로필 이미지 키는 255자 이하여야 합니다."));
 	}
 
@@ -478,7 +457,7 @@ class UserControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(editProfileRequestJson("updated-description", "updated-nickname", 4, "../evil.png")))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
 			.andExpect(jsonPath("$.fieldErrors.profileImageKey").value("프로필 이미지 키 형식이 올바르지 않습니다."));
 	}
 
@@ -491,7 +470,7 @@ class UserControllerTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(editProfileRequestJson("updated-description", "updated-nickname", 4, null)))
 			.andExpect(status().isUnauthorized())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNEXISTED_USER))
+			.andExpect(jsonPath("$.code").value(ErrorCode.UNEXISTED_USER.getCode()))
 			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
 
 		verifyNoInteractions(userService);
@@ -526,7 +505,7 @@ class UserControllerTest {
 					{"currentPassword":"123","afterPassword":"123"}
 					"""))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
 			.andExpect(jsonPath("$.fieldErrors.currentPassword").value("비밀번호는 8글자 이상이어야 합니다."))
 			.andExpect(jsonPath("$.fieldErrors.afterPassword").value("비밀번호는 8글자 이상이어야 합니다."));
 	}
@@ -534,11 +513,7 @@ class UserControllerTest {
 	@Test
 	void editPassword_returnsUnauthorized_whenPasswordDoesNotMatch() throws Exception {
 		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
-		doThrow(new InvalidPasswordException(
-			HttpStatus.UNAUTHORIZED,
-			ErrorCodeConstants.UNMATCHED_PASSWORD,
-			"현재 비밀번호와 동일하지 않습니다."
-		)).when(userService).editPassword(
+		doThrow(new ApplicationException(ErrorCode.UNMATCHED_PASSWORD)).when(userService).editPassword(
 			authenticatedUser,
 			new EditPasswordRequest("password123", "newPassword123")
 		);
@@ -550,7 +525,7 @@ class UserControllerTest {
 					{"currentPassword":"password123","afterPassword":"newPassword123"}
 					"""))
 			.andExpect(status().isUnauthorized())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNMATCHED_PASSWORD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.UNMATCHED_PASSWORD.getCode()))
 			.andExpect(jsonPath("$.message").value("현재 비밀번호와 동일하지 않습니다."));
 	}
 
@@ -583,18 +558,14 @@ class UserControllerTest {
 					{"password":"123"}
 					"""))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
 			.andExpect(jsonPath("$.fieldErrors.password").value("비밀번호는 8글자 이상이어야 합니다."));
 	}
 
 	@Test
 	void deleteUser_returnsUnauthorized_whenPasswordDoesNotMatch() throws Exception {
 		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
-		doThrow(new InvalidPasswordException(
-			HttpStatus.UNAUTHORIZED,
-			ErrorCodeConstants.UNMATCHED_PASSWORD,
-			"현재 비밀번호와 동일하지 않습니다."
-		)).when(userService).deleteUser(
+		doThrow(new ApplicationException(ErrorCode.UNMATCHED_PASSWORD)).when(userService).deleteUser(
 			authenticatedUser,
 			new DeleteUserRequest("password123")
 		);
@@ -606,7 +577,7 @@ class UserControllerTest {
 					{"password":"password123"}
 					"""))
 			.andExpect(status().isUnauthorized())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.UNMATCHED_PASSWORD))
+			.andExpect(jsonPath("$.code").value(ErrorCode.UNMATCHED_PASSWORD.getCode()))
 			.andExpect(jsonPath("$.message").value("현재 비밀번호와 동일하지 않습니다."));
 	}
 

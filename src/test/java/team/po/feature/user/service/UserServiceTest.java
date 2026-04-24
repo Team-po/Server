@@ -23,6 +23,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
+import team.po.exception.ApplicationException;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
@@ -33,12 +34,6 @@ import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
-import team.po.feature.user.exception.DuplicatedEmailException;
-import team.po.feature.user.exception.EmailNotVerifiedException;
-import team.po.feature.user.exception.InvalidPasswordException;
-import team.po.feature.user.exception.InvalidProfileImageKeyException;
-import team.po.feature.user.exception.InvalidTokenException;
-import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -99,14 +94,11 @@ class UserServiceTest {
 	void signUp_throwsWhenProfileImageKeyWasNotIssued() {
 		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 5, "images/sign-up/test.png");
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
-		org.mockito.Mockito.doThrow(new InvalidProfileImageKeyException(
-			org.springframework.http.HttpStatus.BAD_REQUEST,
-			team.po.exception.ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY,
-			"발급되지 않았거나 만료된 프로필 이미지 키입니다."
-		)).when(profileImageRedisService).consumeSignUpTicket("images/sign-up/test.png");
+		org.mockito.Mockito.doThrow(new ApplicationException(team.po.exception.ErrorCode.INVALID_PROFILE_IMAGE_KEY))
+			.when(profileImageRedisService).consumeSignUpTicket("images/sign-up/test.png");
 
 		assertThatThrownBy(() -> userService.signUp(request))
-			.isInstanceOf(InvalidProfileImageKeyException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("발급되지 않았거나 만료된 프로필 이미지 키입니다.");
 
 		verify(passwordEncoder, never()).encode(any());
@@ -118,14 +110,11 @@ class UserServiceTest {
 	void signUp_throwsWhenEmailWasNotVerified() {
 		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 3, null);
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
-		doThrow(new EmailNotVerifiedException(
-			org.springframework.http.HttpStatus.BAD_REQUEST,
-			team.po.exception.ErrorCodeConstants.EMAIL_NOT_VERIFIED,
-			"이메일 인증이 필요합니다."
-		)).when(emailService).consumeVerifiedSignUpEmail("test@email.com");
+		doThrow(new ApplicationException(team.po.exception.ErrorCode.EMAIL_NOT_VERIFIED))
+			.when(emailService).consumeVerifiedSignUpEmail("test@email.com");
 
 		assertThatThrownBy(() -> userService.signUp(request))
-			.isInstanceOf(EmailNotVerifiedException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("이메일 인증이 필요합니다.");
 
 		verify(passwordEncoder, never()).encode(any());
@@ -138,7 +127,8 @@ class UserServiceTest {
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(true);
 
 		assertThatThrownBy(() -> userService.signUp(request))
-			.isInstanceOf(DuplicatedEmailException.class);
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("중복된 이메일이 존재합니다.");
 
 		verify(emailService, never()).consumeVerifiedSignUpEmail(any());
 		verify(passwordEncoder, never()).encode(any());
@@ -159,7 +149,7 @@ class UserServiceTest {
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(true);
 
 		assertThatThrownBy(() -> userService.checkEmailDuplication(" Test@Email.com "))
-			.isInstanceOf(DuplicatedEmailException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("중복된 이메일이 존재합니다.");
 
 		verify(userRepository).existsByEmail("test@email.com");
@@ -234,7 +224,7 @@ class UserServiceTest {
 		when(jwtTokenProvider.validateRefreshToken("invalid-refresh-token")).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.refreshToken(request))
-			.isInstanceOf(InvalidTokenException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("유효하지 않은 리프레시 토큰입니다.");
 	}
 
@@ -247,7 +237,7 @@ class UserServiceTest {
 		when(userRepository.findById(1L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> userService.refreshToken(request))
-			.isInstanceOf(InvalidTokenException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("존재하지 않는 유저의 리프레시 토큰입니다.");
 
 		verify(jwtTokenProvider, never()).isRefreshTokenMatched(any(), any());
@@ -272,7 +262,7 @@ class UserServiceTest {
 		when(jwtTokenProvider.isRefreshTokenMatched("test@email.com", "refresh-token")).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.refreshToken(request))
-			.isInstanceOf(InvalidTokenException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("유효하지 않은 리프레시 토큰입니다.");
 
 		verify(jwtTokenProvider, never()).generateAccessToken(any(), any());
@@ -329,14 +319,11 @@ class UserServiceTest {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4, "images/users/1/new.png");
 		loginUser.editProfileImage("profile.png");
-		org.mockito.Mockito.doThrow(new InvalidProfileImageKeyException(
-			org.springframework.http.HttpStatus.BAD_REQUEST,
-			team.po.exception.ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY,
-			"발급되지 않았거나 만료된 프로필 이미지 키입니다."
-		)).when(profileImageRedisService).consumeProfileUpdateTicket(1L, "images/users/1/new.png");
+		org.mockito.Mockito.doThrow(new ApplicationException(team.po.exception.ErrorCode.INVALID_PROFILE_IMAGE_KEY))
+			.when(profileImageRedisService).consumeProfileUpdateTicket(1L, "images/users/1/new.png");
 
 		assertThatThrownBy(() -> userService.editMyProfile(loginUser, request))
-			.isInstanceOf(InvalidProfileImageKeyException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("발급되지 않았거나 만료된 프로필 이미지 키입니다.");
 
 		assertThat(loginUser.getProfileImage()).isEqualTo("profile.png");
@@ -370,7 +357,7 @@ class UserServiceTest {
 		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.editPassword(loginUser, request))
-			.isInstanceOf(InvalidPasswordException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("현재 비밀번호와 동일하지 않습니다.");
 
 		verify(passwordEncoder, never()).encode(any());
@@ -427,7 +414,7 @@ class UserServiceTest {
 		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.deleteUser(loginUser, request))
-			.isInstanceOf(InvalidPasswordException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("현재 비밀번호와 동일하지 않습니다.");
 
 		verify(jwtTokenProvider, never()).deleteRefreshToken(any());

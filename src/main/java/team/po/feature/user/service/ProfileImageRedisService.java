@@ -3,13 +3,12 @@ package team.po.feature.user.service;
 import java.time.Duration;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
 import team.po.common.redis.RedisService;
-import team.po.exception.ErrorCodeConstants;
-import team.po.feature.user.exception.InvalidProfileImageKeyException;
+import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
 
 @Service
 @RequiredArgsConstructor
@@ -42,11 +41,7 @@ public class ProfileImageRedisService {
 	private void consumeTicket(String redisKey) {
 		Object ticket = redisService.getAndDeleteValue(redisKey);
 		if (ticket == null) {
-			throw new InvalidProfileImageKeyException(
-				HttpStatus.BAD_REQUEST,
-				ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY,
-				"발급되지 않았거나 만료된 프로필 이미지 키입니다."
-			);
+			throw new ApplicationException(ErrorCode.INVALID_PROFILE_IMAGE_KEY);
 		}
 	}
 
