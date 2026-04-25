@@ -48,7 +48,7 @@ public class LevelBasedMatchingStrategy implements MatchingStrategy {
 				.filter(pr -> Math.abs(hostLevel - pr.getUser().getLevel()) <= MatchConstants.LEVEL_RANGE) // 레벨 필터
 				.sorted(
 					Comparator.comparingDouble((ProjectRequest pr) ->
-							matchingScorer.caculateScore(host, pr))
+							matchingScorer.calculateScore(host, pr))
 						.reversed()
 						.thenComparing(ProjectRequest::getCreatedAt)
 				)
