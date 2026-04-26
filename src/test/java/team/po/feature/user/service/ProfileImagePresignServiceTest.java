@@ -18,10 +18,10 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import team.po.exception.ApplicationException;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.ProfileImageUploadUrlRequest;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
-import team.po.feature.user.exception.InvalidImageContentTypeException;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileImagePresignServiceTest {
@@ -122,7 +122,7 @@ class ProfileImagePresignServiceTest {
 			authenticatedUser(1L, "test@email.com"),
 			new ProfileImageUploadUrlRequest("application/pdf")
 		))
-			.isInstanceOf(InvalidImageContentTypeException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("지원하지 않는 이미지 형식입니다.");
 	}
 

@@ -3,6 +3,8 @@ package team.po.config;
 import java.io.IOException;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -24,10 +26,13 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import jakarta.servlet.http.HttpServletResponse;
 import team.po.common.jwt.JwtAuthenticationFilter;
 import team.po.common.jwt.JwtTokenProvider;
+import team.po.exception.ErrorCode;
+import team.po.exception.ExceptionResponse;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+	private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
 	@Bean
 	public SecurityFilterChain filterChain(
@@ -54,7 +59,8 @@ public class SecurityConfig {
 				.requestMatchers("/error").permitAll()
 				.anyRequest().authenticated()
 			)
-			.addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class);
+			.addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider, objectMapper),
+				UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
 	}
@@ -97,6 +103,6 @@ public class SecurityConfig {
 		response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 		response.setCharacterEncoding("UTF-8");
-		response.getWriter().write("{\"message\":\"Authentication is required.\"}");
+		objectMapper.writeValue(response.getWriter(), ExceptionResponse.from(ErrorCode.NO_AUTHENTICATED_USER));
 	}
 }

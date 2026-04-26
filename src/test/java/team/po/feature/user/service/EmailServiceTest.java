@@ -31,12 +31,9 @@ import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
 import team.po.common.redis.RedisService;
 import team.po.config.EmailAuthProperties;
+import team.po.exception.ApplicationException;
 import team.po.feature.user.dto.SendEmailRequest;
 import team.po.feature.user.dto.ValidateAuthNumberRequest;
-import team.po.feature.user.exception.DuplicatedEmailException;
-import team.po.feature.user.exception.EmailNotVerifiedException;
-import team.po.feature.user.exception.EmailSendFailedException;
-import team.po.feature.user.exception.InvalidEmailAuthCodeException;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -103,7 +100,7 @@ class EmailServiceTest {
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(true);
 
 		assertThatThrownBy(() -> emailService.sendEmail(new SendEmailRequest(" Test@Email.com ")))
-			.isInstanceOf(DuplicatedEmailException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("중복된 이메일이 존재합니다.");
 
 		verifyNoInteractions(redisService, javaMailSender);
@@ -117,7 +114,7 @@ class EmailServiceTest {
 			.send(any(MimeMessage.class));
 
 		assertThatThrownBy(() -> emailService.sendEmail(new SendEmailRequest("test@email.com")))
-			.isInstanceOf(EmailSendFailedException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("인증번호 이메일 발송에 실패했습니다.");
 
 		verify(redisService).deleteValue(emailAuthCodeKey("test@email.com"));
@@ -142,7 +139,7 @@ class EmailServiceTest {
 		assertThatThrownBy(() -> emailService.validateAuthNumber(
 			new ValidateAuthNumberRequest("test@email.com", 654321)
 		))
-			.isInstanceOf(InvalidEmailAuthCodeException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("인증번호가 만료되었거나 올바르지 않습니다.");
 
 		verify(redisService).incrementValue(emailAuthFailCountKey("test@email.com"));
@@ -157,7 +154,7 @@ class EmailServiceTest {
 		assertThatThrownBy(() -> emailService.validateAuthNumber(
 			new ValidateAuthNumberRequest("test@email.com", 654321)
 		))
-			.isInstanceOf(InvalidEmailAuthCodeException.class);
+			.isInstanceOf(ApplicationException.class);
 
 		verify(redisService).expire(emailAuthFailCountKey("test@email.com"), AUTH_CODE_TTL);
 		verify(redisService, never()).deleteValue(emailAuthCodeKey("test@email.com"));
@@ -172,7 +169,7 @@ class EmailServiceTest {
 		assertThatThrownBy(() -> emailService.validateAuthNumber(
 			new ValidateAuthNumberRequest("test@email.com", 654321)
 		))
-			.isInstanceOf(InvalidEmailAuthCodeException.class);
+			.isInstanceOf(ApplicationException.class);
 
 		verify(redisService, never()).expire(emailAuthFailCountKey("test@email.com"), AUTH_CODE_TTL);
 		verify(redisService).deleteValue(emailAuthCodeKey("test@email.com"));
@@ -187,7 +184,7 @@ class EmailServiceTest {
 		assertThatThrownBy(() -> emailService.validateAuthNumber(
 			new ValidateAuthNumberRequest("test@email.com", 123456)
 		))
-			.isInstanceOf(InvalidEmailAuthCodeException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("인증번호가 만료되었거나 올바르지 않습니다.");
 
 		verify(redisService).incrementValue(emailAuthFailCountKey("test@email.com"));
@@ -208,7 +205,7 @@ class EmailServiceTest {
 		when(redisService.getAndDeleteValue(emailVerifiedKey("test@email.com"))).thenReturn(null);
 
 		assertThatThrownBy(() -> emailService.consumeVerifiedSignUpEmail("test@email.com"))
-			.isInstanceOf(EmailNotVerifiedException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("이메일 인증이 필요합니다.");
 	}
 

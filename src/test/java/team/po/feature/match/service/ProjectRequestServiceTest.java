@@ -15,16 +15,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import team.po.exception.ApplicationException;
 import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.ProjectRequestDto;
 import team.po.feature.match.dto.ProjectRequestStatusResponse;
 import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
-import team.po.feature.match.exception.ProjectRequestAlreadyExistsException;
-import team.po.feature.match.exception.ProjectRequestNotFoundException;
 import team.po.feature.match.repository.ProjectRequestRepository;
 import team.po.feature.user.domain.Users;
-import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -70,7 +68,8 @@ class ProjectRequestServiceTest {
 		ProjectRequestDto dto = new ProjectRequestDto(Role.BE, "title", "desc", "mvp");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 		assertThatThrownBy(() -> projectRequestService.createProjectRequest(user, dto))
-			.isInstanceOf(UserNotFoundException.class);
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("존재하지 않는 유저입니다.");
 		verify(projectRequestRepository, never()).save(any());
 	}
 
@@ -82,7 +81,8 @@ class ProjectRequestServiceTest {
 		when(projectRequestRepository.existsByUserIdAndStatusIn(1L,
 			List.of(Status.WAITING, Status.MATCHING))).thenReturn(true);
 		assertThatThrownBy(() -> projectRequestService.createProjectRequest(user, dto))
-			.isInstanceOf(ProjectRequestAlreadyExistsException.class);
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("이미 진행 중인 매칭 요청이 있습니다.");
 		verify(projectRequestRepository, never()).save(any());
 	}
 
@@ -94,7 +94,8 @@ class ProjectRequestServiceTest {
 		when(projectRequestRepository.existsByUserIdAndStatusIn(any(), any())).thenReturn(false);
 		when(projectRequestRepository.save(any())).thenThrow(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> projectRequestService.createProjectRequest(user, dto))
-			.isInstanceOf(ProjectRequestAlreadyExistsException.class);
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("이미 진행 중인 매칭 요청이 있습니다.");
 	}
 
 	// ========== cancelProjectRequest ==========
@@ -115,7 +116,8 @@ class ProjectRequestServiceTest {
 		when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(
 			Optional.empty());
 		assertThatThrownBy(() -> projectRequestService.cancelProjectRequest(user))
-			.isInstanceOf(ProjectRequestNotFoundException.class);
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("취소할 수 있는 매칭 요청이 없습니다.");
 	}
 
 	@Test
@@ -125,7 +127,8 @@ class ProjectRequestServiceTest {
 		when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(
 			Optional.empty());
 		assertThatThrownBy(() -> projectRequestService.cancelProjectRequest(user))
-			.isInstanceOf(ProjectRequestNotFoundException.class);
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("취소할 수 있는 매칭 요청이 없습니다.");
 	}
 
 	// ========== getProjectRequestStatus ==========
@@ -146,6 +149,7 @@ class ProjectRequestServiceTest {
 		when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(
 			Optional.empty());
 		assertThatThrownBy(() -> projectRequestService.getProjectRequestStatus(user))
-			.isInstanceOf(ProjectRequestNotFoundException.class);
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("진행 중인 매칭 요청이 없습니다.");
 	}
 }

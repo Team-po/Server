@@ -16,9 +16,10 @@ import jakarta.persistence.Table;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
 import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
-import team.po.feature.match.exception.ProjectRequestCancelNotAllowedException;
 import team.po.feature.user.domain.Users;
 
 @Entity
@@ -69,7 +70,7 @@ public class ProjectRequest {
 
 	public void cancel() {
 		if (this.status != Status.WAITING && this.status != Status.MATCHING) {
-			throw new ProjectRequestCancelNotAllowedException();
+			throw new ApplicationException(ErrorCode.PROJECT_REQUEST_CANCEL_NOT_ALLOWED);
 		}
 		this.status = Status.CANCELED;
 		this.canceledAt = Instant.now();

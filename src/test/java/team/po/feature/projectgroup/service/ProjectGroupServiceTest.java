@@ -20,7 +20,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import team.po.exception.ErrorCodeConstants;
+import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
 import team.po.feature.projectgroup.domain.GroupRole;
 import team.po.feature.projectgroup.domain.MemberRole;
 import team.po.feature.projectgroup.domain.ProjectGroup;
@@ -29,7 +30,6 @@ import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 import team.po.feature.projectgroup.dto.CreateProjectGroupMemberRequest;
 import team.po.feature.projectgroup.dto.CreateProjectGroupRequest;
 import team.po.feature.projectgroup.dto.CreateProjectGroupResponse;
-import team.po.feature.projectgroup.exception.ProjectGroupException;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.user.domain.Users;
@@ -93,9 +93,9 @@ class ProjectGroupServiceTest {
 		);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.INVALID_PROJECT_GROUP_REQUEST);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_PROJECT_GROUP_REQUEST.getCode());
 	}
 
 	@Test
@@ -113,9 +113,9 @@ class ProjectGroupServiceTest {
 		);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.INVALID_PROJECT_GROUP_REQUEST);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_PROJECT_GROUP_REQUEST.getCode());
 	}
 
 	@Test
@@ -134,9 +134,9 @@ class ProjectGroupServiceTest {
 		);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.INVALID_PROJECT_GROUP_REQUEST);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_PROJECT_GROUP_REQUEST.getCode());
 	}
 
 	@Test
@@ -162,9 +162,9 @@ class ProjectGroupServiceTest {
 		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(defaultRequest()))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.PROJECT_GROUP_MEMBER_NOT_FOUND);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_MEMBER_NOT_FOUND.getCode());
 	}
 
 	@Test
@@ -175,7 +175,7 @@ class ProjectGroupServiceTest {
 			.thenReturn(true);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(defaultRequest()))
-			.isInstanceOf(ProjectGroupException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("이미 ACTIVE 팀에 속한 사용자가 포함되어 있습니다.");
 		verify(projectGroupRepository, never()).save(any(ProjectGroup.class));
 	}
@@ -232,9 +232,9 @@ class ProjectGroupServiceTest {
 			.thenReturn(Optional.of(hostMember));
 
 		assertThatThrownBy(() -> projectGroupService.grantAdminPermission(20L, 99L, 2L))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.PROJECT_GROUP_PERMISSION_DENIED);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
 	}
 
 	@Test
@@ -251,9 +251,9 @@ class ProjectGroupServiceTest {
 			.thenReturn(Optional.of(hostMember));
 
 		assertThatThrownBy(() -> projectGroupService.revokeAdminPermission(30L, 1L, 1L))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.PROJECT_GROUP_PERMISSION_DENIED);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
 	}
 
 	@Test

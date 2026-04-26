@@ -19,18 +19,17 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
-import team.po.exception.ErrorCodeConstants;
+import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.ProfileImageUploadUrlRequest;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
-import team.po.feature.user.exception.InvalidImageContentTypeException;
 
 @Service
 @RequiredArgsConstructor
@@ -129,11 +128,7 @@ public class ImageService {
 			.split(";", 2)[0];
 
 		if (!CONTENT_TYPE_TO_EXTENSION.containsKey(normalizedContentType)) {
-			throw new InvalidImageContentTypeException(
-				HttpStatus.BAD_REQUEST,
-				ErrorCodeConstants.INVALID_IMAGE_CONTENT_TYPE,
-				"지원하지 않는 이미지 형식입니다."
-			);
+			throw new ApplicationException(ErrorCode.INVALID_IMAGE_CONTENT_TYPE);
 		}
 
 		return normalizedContentType;

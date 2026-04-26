@@ -11,7 +11,6 @@ import java.util.Locale;
 
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
-import org.springframework.http.HttpStatus;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -24,13 +23,10 @@ import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import team.po.common.redis.RedisService;
 import team.po.config.EmailAuthProperties;
-import team.po.exception.ErrorCodeConstants;
+import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
 import team.po.feature.user.dto.SendEmailRequest;
 import team.po.feature.user.dto.ValidateAuthNumberRequest;
-import team.po.feature.user.exception.DuplicatedEmailException;
-import team.po.feature.user.exception.EmailNotVerifiedException;
-import team.po.feature.user.exception.EmailSendFailedException;
-import team.po.feature.user.exception.InvalidEmailAuthCodeException;
 import team.po.feature.user.repository.UserRepository;
 
 @Service
@@ -66,10 +62,9 @@ public class EmailService {
 			javaMailSender.send(createAuthCodeMessage(email, authCode));
 		} catch (MailException | MessagingException | IOException exception) {
 			redisService.deleteValue(authCodeKey);
-			throw new EmailSendFailedException(
-				HttpStatus.BAD_GATEWAY,
-				ErrorCodeConstants.EMAIL_SEND_FAILED,
-				"인증번호 이메일 발송에 실패했습니다.",
+			throw new ApplicationException(
+				ErrorCode.EMAIL_SEND_FAILED,
+				ErrorCode.EMAIL_SEND_FAILED.getMessage(),
 				exception
 			);
 		}
@@ -83,11 +78,7 @@ public class EmailService {
 
 		if (!String.valueOf(request.authNumber()).equals(savedAuthCode)) {
 			recordAuthCodeFailure(email, authCodeKey, failCountKey);
-			throw new InvalidEmailAuthCodeException(
-				HttpStatus.BAD_REQUEST,
-				ErrorCodeConstants.INVALID_EMAIL_AUTH_CODE,
-				"인증번호가 만료되었거나 올바르지 않습니다."
-			);
+			throw new ApplicationException(ErrorCode.INVALID_EMAIL_AUTH_CODE);
 		}
 
 		redisService.setValue(createVerifiedEmailKey(email), VERIFIED_VALUE, emailAuthProperties.verifiedTtl());
@@ -100,21 +91,13 @@ public class EmailService {
 		Object verified = redisService.getAndDeleteValue(createVerifiedEmailKey(normalizedEmail));
 
 		if (!VERIFIED_VALUE.equals(verified)) {
-			throw new EmailNotVerifiedException(
-				HttpStatus.BAD_REQUEST,
-				ErrorCodeConstants.EMAIL_NOT_VERIFIED,
-				"이메일 인증이 필요합니다."
-			);
+			throw new ApplicationException(ErrorCode.EMAIL_NOT_VERIFIED);
 		}
 	}
 
 	private void checkEmailDuplication(String email) {
 		if (userRepository.existsByEmail(email)) {
-			throw new DuplicatedEmailException(
-				HttpStatus.CONFLICT,
-				ErrorCodeConstants.EMAIL_ALREADY_EXISTS,
-				"중복된 이메일이 존재합니다."
-			);
+			throw new ApplicationException(ErrorCode.EMAIL_ALREADY_EXISTS);
 		}
 	}
 
