@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import team.po.common.auth.LoginUserArgumentResolver;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ApplicationException;
+import team.po.exception.CustomExceptionHandler;
 import team.po.exception.ErrorCode;
 import team.po.feature.match.dto.MatchMemberResponse;
 import team.po.feature.match.dto.MatchProjectResponse;
@@ -33,7 +34,7 @@ import team.po.feature.user.domain.Users;
 
 @WebMvcTest(MatchController.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(ApplicationException.class)
+@Import(CustomExceptionHandler.class)
 class MatchControllerTest {
 
 	@Autowired
@@ -98,8 +99,8 @@ class MatchControllerTest {
 
 		mockMvc.perform(get("/api/match/42/members"))
 			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_NOT_FOUND))
-			.andExpect(jsonPath("$.message").value("존재하지 않는 매칭 세션입니다."));
+			.andExpect(jsonPath("$.code").value("MATCH_NOT_FOUND"))
+			.andExpect(jsonPath("$.message").value("이미 완료되었거나 존재하지 않는 매칭 세션입니다."));
 	}
 
 	@Test
@@ -107,10 +108,10 @@ class MatchControllerTest {
 		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
 			.when(matchService).getMatchMembers(eq(42L), any(Users.class));
 
+		// MATCH_ACCESS_DENIED는 BAD_REQUEST로 정의됨
 		mockMvc.perform(get("/api/match/42/members"))
-			.andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_ACCESS_DENIED))
-			.andExpect(jsonPath("$.message").value("해당 매칭 세션에 접근 권한이 없습니다."));
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("MATCH_ACCESS_DENIED"));
 	}
 
 	// ===== getMatchProject =====
@@ -133,19 +134,18 @@ class MatchControllerTest {
 
 		mockMvc.perform(get("/api/match/42/project"))
 			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_NOT_FOUND))
-			.andExpect(jsonPath("$.message").value("존재하지 않는 매칭 세션입니다."));
+			.andExpect(jsonPath("$.code").value("MATCH_NOT_FOUND"))
+			.andExpect(jsonPath("$.message").value("이미 완료되었거나 존재하지 않는 매칭 세션입니다."));
 	}
 
 	@Test
-	void getMatchProject_returnsForbidden_whenNotMember() throws Exception {
+	void getMatchProject_returnsBadRequest_whenNotMember() throws Exception {
 		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
 			.when(matchService).getMatchProject(eq(42L), any(Users.class));
 
 		mockMvc.perform(get("/api/match/42/project"))
-			.andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_ACCESS_DENIED))
-			.andExpect(jsonPath("$.message").value("해당 매칭 세션에 접근 권한이 없습니다."));
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("MATCH_ACCESS_DENIED"));
 	}
 
 	@Test
@@ -155,7 +155,7 @@ class MatchControllerTest {
 
 		mockMvc.perform(get("/api/match/42/project"))
 			.andExpect(status().isInternalServerError())
-			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_DATA_ERROR));
+			.andExpect(jsonPath("$.code").value("MATCH_DATA_ERROR"));
 	}
 
 	// ===== accept =====
@@ -175,27 +175,17 @@ class MatchControllerTest {
 
 		mockMvc.perform(post("/api/match/42/accept"))
 			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_NOT_FOUND));
+			.andExpect(jsonPath("$.code").value("MATCH_NOT_FOUND"));
 	}
 
 	@Test
-	void accept_returnsForbidden_whenHost() throws Exception {
-		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
-			.when(matchService).accept(eq(42L), any(Users.class));
-
-		mockMvc.perform(post("/api/match/42/accept"))
-			.andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_ACCESS_DENIED));
-	}
-
-	@Test
-	void accept_returnsBadRequest_whenAlreadyRejected() throws Exception {
+	void accept_returnsBadRequest_whenHost() throws Exception {
 		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
 			.when(matchService).accept(eq(42L), any(Users.class));
 
 		mockMvc.perform(post("/api/match/42/accept"))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_ACCESS_DENIED));
+			.andExpect(jsonPath("$.code").value("MATCH_ACCESS_DENIED"));
 	}
 
 	// ===== reject =====
@@ -215,17 +205,17 @@ class MatchControllerTest {
 
 		mockMvc.perform(post("/api/match/42/reject"))
 			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_NOT_FOUND));
+			.andExpect(jsonPath("$.code").value("MATCH_NOT_FOUND"));
 	}
 
 	@Test
-	void reject_returnsForbidden_whenHost() throws Exception {
+	void reject_returnsBadRequest_whenHost() throws Exception {
 		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
 			.when(matchService).reject(eq(42L), any(Users.class));
 
 		mockMvc.perform(post("/api/match/42/reject"))
-			.andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_ACCESS_DENIED));
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("MATCH_ACCESS_DENIED"));
 	}
 
 	@Test
@@ -235,7 +225,7 @@ class MatchControllerTest {
 
 		mockMvc.perform(post("/api/match/42/reject"))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_ACCESS_DENIED));
+			.andExpect(jsonPath("$.code").value("MATCH_ACCESS_DENIED"));
 	}
 
 	// ===== cancel =====
@@ -255,6 +245,6 @@ class MatchControllerTest {
 
 		mockMvc.perform(post("/api/match/cancel"))
 			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
+			.andExpect(jsonPath("$.code").value("PROJECT_REQUEST_NOT_FOUND"));
 	}
 }

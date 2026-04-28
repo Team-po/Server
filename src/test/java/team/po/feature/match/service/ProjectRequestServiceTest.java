@@ -12,15 +12,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import team.po.exception.ApplicationException;
-import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.ProjectRequestDto;
-import team.po.feature.match.dto.ProjectRequestStatusResponse;
 import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
+import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.repository.UserRepository;

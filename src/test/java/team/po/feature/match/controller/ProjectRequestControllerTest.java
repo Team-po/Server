@@ -14,7 +14,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -23,9 +22,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
-import team.po.exception.ApplicationException;
 import team.po.common.auth.LoginUserArgumentResolver;
 import team.po.common.jwt.UserPrincipal;
+import team.po.exception.ApplicationException;
 import team.po.exception.CustomExceptionHandler;
 import team.po.exception.ErrorCode;
 import team.po.feature.match.dto.ProjectRequestStatusResponse;
@@ -70,9 +69,10 @@ class ProjectRequestControllerTest {
 		SecurityContextHolder.clearContext();
 	}
 
+	// ===== createProjectRequest =====
+
 	@Test
 	void createProjectRequest_returnsOk_whenRequestIsMember() throws Exception {
-		// Member 신청: 제목/설명/MVP 모두 비어있어야 함
 		mockMvc.perform(post("/api/match/request")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -83,7 +83,6 @@ class ProjectRequestControllerTest {
 
 	@Test
 	void createProjectRequest_returnsOk_whenRequestIsHost() throws Exception {
-		// Host 신청: 제목/설명/MVP 모두 존재해야 함
 		mockMvc.perform(post("/api/match/request")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -94,7 +93,6 @@ class ProjectRequestControllerTest {
 
 	@Test
 	void createProjectRequest_returnsBadRequest_whenHostInputIncomplete() throws Exception {
-		// Host 신청 시도 중 하나만 누락된 경우 (Validation 작동 확인)
 		mockMvc.perform(post("/api/match/request")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -119,33 +117,12 @@ class ProjectRequestControllerTest {
 			.andExpect(jsonPath("$.message").value("이미 진행 중인 매칭 요청이 있습니다."));
 	}
 
-	// ===== cancelProjectRequest =====
-
-	@Test
-	void cancelProjectRequest_returnsOk() throws Exception {
-		mockMvc.perform(patch("/api/match/cancel"))
-			.andExpect(status().isOk());
-
-		verify(projectRequestService).cancelProjectRequest(any(Users.class));
-	}
-
-	@Test
-	void cancelProjectRequest_returnsNotFound_whenNoActiveRequest() throws Exception {
-		doThrow(new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND, "취소할 수 있는 매칭 요청이 없습니다."))
-			.when(projectRequestService).cancelProjectRequest(any(Users.class));
-
-		mockMvc.perform(patch("/api/match/cancel"))
-			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value(ErrorCode.PROJECT_REQUEST_NOT_FOUND.getCode()))
-			.andExpect(jsonPath("$.message").value("취소할 수 있는 매칭 요청이 없습니다."));
-	}
-
 	// ===== getProjectRequestStatus =====
 
 	@Test
 	void getProjectRequestStatus_returnsOk() throws Exception {
 		when(projectRequestService.getProjectRequestStatus(any(Users.class)))
-			.thenReturn(new ProjectRequestStatusResponse(Status.WAITING));
+			.thenReturn(new ProjectRequestStatusResponse(Status.WAITING, null));
 
 		mockMvc.perform(get("/api/match/status"))
 			.andExpect(status().isOk())
@@ -154,7 +131,7 @@ class ProjectRequestControllerTest {
 
 	@Test
 	void getProjectRequestStatus_returnsNotFound_whenNoActiveRequest() throws Exception {
-		doThrow(new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND, "진행 중인 매칭 요청이 없습니다."))
+		doThrow(new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND))
 			.when(projectRequestService).getProjectRequestStatus(any(Users.class));
 
 		mockMvc.perform(get("/api/match/status"))
