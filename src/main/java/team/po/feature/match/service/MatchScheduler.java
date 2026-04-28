@@ -109,7 +109,7 @@ public class MatchScheduler {
 		if (currentMembers.size() >= MatchConstants.TEAM_SIZE)
 			return;
 
-		List<Long> prIds = currentMembers.stream().map(MatchingMember::getProjectRequestId).toList();
+		List<Long> prIds = currentMembers.stream().map(m -> m.getProjectRequest().getId()).toList();
 		List<ProjectRequest> allPrs = projectRequestRepository.findAllById(prIds);
 
 		// Host Project Request 조회
@@ -131,7 +131,7 @@ public class MatchScheduler {
 		Set<Long> blacklist = new HashSet<>(
 			matchingMemberRepository.findRejectedUserIdsBySessionId(session.getId())
 		);
-		currentMembers.forEach(m -> blacklist.add(m.getUserId()));
+		currentMembers.forEach(m -> blacklist.add(m.getUser().getId()));
 
 		// 부족한 포지션별로 scoring 적용
 		for (Role role : targetComposition.keySet()) {

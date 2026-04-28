@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import team.po.exception.ErrorCodeConstants;
-import team.po.feature.match.domain.MatchingMember;
 import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.ProjectRequestDto;
 import team.po.feature.match.dto.ProjectRequestStatusResponse;
@@ -99,7 +98,7 @@ public class ProjectRequestService {
 		if (projectRequest.getStatus() == Status.MATCHING) {
 			matchId = matchingMemberRepository
 				.findCurrentActiveByUserId(user.getId())
-				.map(MatchingMember::getMatchingSessionId)
+				.map(m -> m.getMatchingSession().getId())
 				.orElseThrow(() -> {
 					log.error("활성 매칭 멤버 데이터 부정합: userId={}", user.getId());
 					return new MatchDataIntegrityException(

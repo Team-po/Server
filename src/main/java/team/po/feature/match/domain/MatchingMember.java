@@ -4,13 +4,17 @@ import java.time.Instant;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import team.po.feature.user.domain.Users;
 
 @Entity
 @Table(name = "matching_member")
@@ -22,14 +26,13 @@ public class MatchingMember {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
-	@Column(name = "matching_session_id", nullable = false)
-	private Long matchingSessionId;
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "matching_session_id", nullable = false)
+	private MatchingSession matchingSession;
 
-	@Column(name = "project_request_id", nullable = false)
-	private Long projectRequestId;
-
-	@Column(name = "user_id", nullable = false)
-	private Long userId;
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "project_request_id", nullable = false)
+	private ProjectRequest projectRequest;
 
 	// default: host - true, member - null
 	@Column(name = "is_accepted")
@@ -46,28 +49,26 @@ public class MatchingMember {
 	private Instant deletedAt;
 
 	@Builder
-	private MatchingMember(Long matchingSessionId, Long projectRequestId, Long userId, Boolean isAccepted) {
-		this.matchingSessionId = matchingSessionId;
-		this.projectRequestId = projectRequestId;
-		this.userId = userId;
+	private MatchingMember(MatchingSession matchingSession, ProjectRequest projectRequest,
+		Boolean isAccepted) {
+		this.matchingSession = matchingSession;
+		this.projectRequest = projectRequest;
 		this.isAccepted = isAccepted;
 	}
 
 	// 팀장은 수락으로 간주
-	public static MatchingMember createForHost(Long matchingSessionId, Long projectRequestId, Long userId) {
+	public static MatchingMember createForHost(MatchingSession session, ProjectRequest hostPr) {
 		return MatchingMember.builder()
-			.matchingSessionId(matchingSessionId)
-			.projectRequestId(projectRequestId)
-			.userId(userId)
+			.matchingSession(session)
+			.projectRequest(hostPr)
 			.isAccepted(true)
 			.build();
 	}
 
-	public static MatchingMember createForMember(Long matchingSessionId, Long projectRequestId, Long userId) {
+	public static MatchingMember createForMember(MatchingSession session, ProjectRequest memberPr) {
 		return MatchingMember.builder()
-			.matchingSessionId(matchingSessionId)
-			.projectRequestId(projectRequestId)
-			.userId(userId)
+			.matchingSession(session)
+			.projectRequest(memberPr)
 			.isAccepted(null)
 			.build();
 	}
@@ -91,5 +92,9 @@ public class MatchingMember {
 
 	public boolean isDeleted() {
 		return this.deletedAt != null;
+	}
+
+	public Users getUser() {
+		return this.projectRequest.getUser();
 	}
 }
