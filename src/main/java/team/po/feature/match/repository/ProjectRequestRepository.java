@@ -22,9 +22,9 @@ public interface ProjectRequestRepository extends JpaRepository<ProjectRequest, 
 	@Query("""
 		SELECT pr FROM ProjectRequest pr
 		WHERE pr.status = team.po.feature.match.enums.Status.WAITING
-		  AND (pr.projectTitle IS NOT NULL AND pr.projectTitle != '')
-		  AND (pr.projectDescription IS NOT NULL AND pr.projectDescription != '')
-		  AND (pr.projectMvp IS NOT NULL AND pr.projectMvp != '')
+			AND TRIM(pr.projectTitle) != ''
+		    AND TRIM(pr.projectDescription) != ''
+		    AND TRIM(pr.projectMvp) != ''
 		ORDER BY pr.createdAt ASC
 		""")
 	List<ProjectRequest> findWaitingHosts(Pageable pageable);
@@ -34,7 +34,7 @@ public interface ProjectRequestRepository extends JpaRepository<ProjectRequest, 
 		SELECT pr FROM ProjectRequest pr
 		WHERE pr.status = team.po.feature.match.enums.Status.WAITING
 		  AND pr.role = :role
-		  AND (pr.projectTitle IS NULL OR pr.projectTitle = '')
+		  AND (TRIM(COALESCE(pr.projectTitle, '')) = '')
 		ORDER BY pr.createdAt ASC
 		""")
 	List<ProjectRequest> findWaitingMembersByRole(@Param("role") Role role);

@@ -2,6 +2,8 @@ package team.po.feature.match.domain;
 
 import java.time.Instant;
 
+import org.springframework.util.StringUtils;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -78,13 +80,9 @@ public class ProjectRequest {
 	}
 
 	public boolean isHostRequest() {
-		return isNotEmpty(projectTitle)
-			&& isNotEmpty(projectMvp)
-			&& isNotEmpty(projectDescription);
-	}
-
-	private boolean isNotEmpty(String str) {
-		return str != null && !str.isBlank();
+		return StringUtils.hasText(projectTitle)
+			&& StringUtils.hasText(projectMvp)
+			&& StringUtils.hasText(projectDescription);
 	}
 
 	// MATCHING

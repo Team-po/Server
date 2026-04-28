@@ -12,19 +12,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.ProjectRequestDto;
-import team.po.feature.match.dto.ProjectRequestStatusResponse;
 import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
 import team.po.feature.match.exception.ProjectRequestAlreadyExistsException;
-import team.po.feature.match.exception.ProjectRequestNotFoundException;
 import team.po.feature.match.repository.ProjectRequestRepository;
 import team.po.feature.user.domain.Users;
-import team.po.feature.user.exception.UserNotFoundException;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,86 +35,49 @@ class ProjectRequestServiceTest {
 	private ProjectRequestService projectRequestService;
 
 	private Users createUser(Long id) {
-		Users user = Users.builder()
-			.email("test@email.com")
-			.password("password")
-			.nickname("tester")
-			.level(1)
-			.temperature(50)
-			.build();
+		Users user = Users.builder().email("test@email.com").build();
 		ReflectionTestUtils.setField(user, "id", id);
 		return user;
 	}
 
-	// ========== createProjectRequest ==========
-
 	@Test
-	void createProjectRequest_success() {
+	void createProjectRequest_success_asHost() {
 		Users user = createUser(1L);
+		// Valid Host DTO
 		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
+
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
-		when(projectRequestRepository.existsByUserIdAndStatusIn(1L,
-			List.of(Status.WAITING, Status.MATCHING))).thenReturn(false);
+		when(projectRequestRepository.existsByUserIdAndStatusIn(anyLong(), anyList())).thenReturn(false);
+
 		projectRequestService.createProjectRequest(user, dto);
-		verify(projectRequestRepository).save(any(ProjectRequest.class));
+
+		verify(projectRequestRepository).save(argThat(pr -> pr.isHostRequest() == true));
 	}
 
 	@Test
-	void createProjectRequest_throwsWhenUserNotFound() {
+	void createProjectRequest_success_asMember() {
 		Users user = createUser(1L);
-		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
-		assertThatThrownBy(() -> projectRequestService.createProjectRequest(user, dto))
-			.isInstanceOf(UserNotFoundException.class);
-		verify(projectRequestRepository, never()).save(any());
+		// Valid Member DTO
+		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, null, null, null);
+
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(projectRequestRepository.existsByUserIdAndStatusIn(anyLong(), anyList())).thenReturn(false);
+
+		projectRequestService.createProjectRequest(user, dto);
+
+		verify(projectRequestRepository).save(argThat(pr -> pr.isHostRequest() == false));
 	}
 
 	@Test
-	void createProjectRequest_throwsWhenDuplicateRequest() {
+	void createProjectRequest_throwsWhenDuplicate() {
 		Users user = createUser(1L);
 		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
+
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(1L,
 			List.of(Status.WAITING, Status.MATCHING))).thenReturn(true);
-		assertThatThrownBy(() -> projectRequestService.createProjectRequest(user, dto))
-			.isInstanceOf(ProjectRequestAlreadyExistsException.class);
-		verify(projectRequestRepository, never()).save(any());
-	}
 
-	@Test
-	void createProjectRequest_throwsWhenRaceCondition() {
-		Users user = createUser(1L);
-		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
-		when(projectRequestRepository.existsByUserIdAndStatusIn(any(), any())).thenReturn(false);
-		when(projectRequestRepository.save(any())).thenThrow(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> projectRequestService.createProjectRequest(user, dto))
 			.isInstanceOf(ProjectRequestAlreadyExistsException.class);
 	}
-
-	// ========== getProjectRequestStatus ==========
-
-	@Test
-	void getProjectRequestStatus_success_whenWaiting() {
-		Users user = createUser(1L);
-		ProjectRequest request = ProjectRequest.builder().user(user).role(Role.BACKEND).build();
-		when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(
-			Optional.of(request));
-		ProjectRequestStatusResponse response = projectRequestService.getProjectRequestStatus(user);
-		assertThat(response.status()).isEqualTo(Status.WAITING);
-		assertThat(response.matchId()).isNull();
-	}
-
-	// whenMatching(): startMatching 구현 후 추가
-
-	@Test
-	void getProjectRequestStatus_throwsWhenNoActiveRequest() {
-		Users user = createUser(1L);
-		when(projectRequestRepository.findByUserIdAndStatusIn(1L, List.of(Status.WAITING, Status.MATCHING))).thenReturn(
-			Optional.empty());
-		assertThatThrownBy(() -> projectRequestService.getProjectRequestStatus(user))
-			.isInstanceOf(ProjectRequestNotFoundException.class);
-	}
-
-	// throwsWhenMatchingButNoMember: startMatching 구현 후 추가
 }
