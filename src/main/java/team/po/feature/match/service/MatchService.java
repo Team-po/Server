@@ -38,7 +38,6 @@ import team.po.feature.projectgroup.dto.CreateProjectGroupRequest;
 import team.po.feature.projectgroup.dto.CreateProjectGroupResponse;
 import team.po.feature.projectgroup.service.ProjectGroupService;
 import team.po.feature.user.domain.Users;
-import team.po.feature.user.repository.UserRepository;
 
 @Slf4j
 @Service
@@ -47,7 +46,6 @@ public class MatchService {
 	private final MatchingSessionRepository matchingSessionRepository;
 	private final MatchingMemberRepository matchingMemberRepository;
 	private final ProjectRequestRepository projectRequestRepository;
-	private final UserRepository userRepository;
 	private final ApplicationEventPublisher eventPublisher;
 	private final ProjectGroupService projectGroupService;
 
@@ -104,8 +102,17 @@ public class MatchService {
 	// 매칭 세션 멤버 목록 조회
 	@Transactional(readOnly = true)
 	public MatchMemberResponse getMatchMembers(Long matchId, Users loginUser) {
+		// 0. 이미 완료된 매칭 세션인지 검증
+		MatchingSession session = matchingSessionRepository
+			.findByIdAndDeletedAtIsNull(matchId)
+			.orElseThrow(() -> new MatchAccessDeniedException(
+				HttpStatus.NOT_FOUND,
+				ErrorCodeConstants.MATCH_NOT_FOUND,
+				"이미 완료되었거나 존재하지 않는 매칭 세션입니다."
+			));
+
 		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
-		List<MatchingMember> members = validateMatchAccessAndGetMembers(matchId, loginUser.getId());
+		List<MatchingMember> members = validateMatchAccessAndGetMembers(session, loginUser.getId());
 
 		// 2. MatchingMember dto
 		List<MatchMemberResponse.MemberDto> memberDtos = members.stream()
@@ -127,8 +134,17 @@ public class MatchService {
 	// 매칭 세션 프로젝트 정보 조회
 	@Transactional(readOnly = true)
 	public MatchProjectResponse getMatchProject(Long matchId, Users loginUser) {
+		// 0. 이미 완료된 매칭 세션인지 검증
+		MatchingSession session = matchingSessionRepository
+			.findByIdAndDeletedAtIsNull(matchId)
+			.orElseThrow(() -> new MatchAccessDeniedException(
+				HttpStatus.NOT_FOUND,
+				ErrorCodeConstants.MATCH_NOT_FOUND,
+				"이미 완료되었거나 존재하지 않는 매칭 세션입니다."
+			));
+
 		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
-		List<MatchingMember> members = validateMatchAccessAndGetMembers(matchId, loginUser.getId());
+		List<MatchingMember> members = validateMatchAccessAndGetMembers(session, loginUser.getId());
 
 		// 2. Host 검증 (단일 & 수락 상태)
 		List<MatchingMember> hosts = members.stream()
@@ -166,8 +182,17 @@ public class MatchService {
 
 	@Transactional
 	public void accept(Long matchId, Users loginUser) {
+		// 0. 이미 완료된 매칭 세션인지 검증
+		MatchingSession session = matchingSessionRepository
+			.findByIdWithLock(matchId)
+			.orElseThrow(() -> new MatchAccessDeniedException(
+				HttpStatus.NOT_FOUND,
+				ErrorCodeConstants.MATCH_NOT_FOUND,
+				"이미 완료되었거나 존재하지 않는 매칭 세션입니다."
+			));
+
 		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
-		List<MatchingMember> members = validateMatchAccessAndGetMembers(matchId, loginUser.getId());
+		List<MatchingMember> members = validateMatchAccessAndGetMembers(session, loginUser.getId());
 		MatchingMember me = members.stream()
 			.filter(m -> m.getUser().getId().equals(loginUser.getId())) // 리스트 중 내 ID와 일치하는 객체 찾기
 			.findFirst()
@@ -197,13 +222,21 @@ public class MatchService {
 
 		// 6. 전원 수락 시 ProjectGroup 생성
 		log.info("전원 수락 완료, ProjectGroup 생성 시작: matchId={}", matchId);
-		completeMatching(matchId, members);
+		completeMatching(session, members);
 	}
 
 	@Transactional
 	public void reject(Long matchId, Users loginUser) {
+		// 0. 이미 완료된 매칭 세션인지 검증
+		MatchingSession session = matchingSessionRepository
+			.findByIdWithLock(matchId)
+			.orElseThrow(() -> new MatchAccessDeniedException(
+				HttpStatus.NOT_FOUND,
+				ErrorCodeConstants.MATCH_NOT_FOUND,
+				"이미 완료되었거나 존재하지 않는 매칭 세션입니다."
+			));
 		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
-		List<MatchingMember> members = validateMatchAccessAndGetMembers(matchId, loginUser.getId());
+		List<MatchingMember> members = validateMatchAccessAndGetMembers(session, loginUser.getId());
 		MatchingMember me = members.stream()
 			.filter(m -> m.getUser().getId().equals(loginUser.getId())) // 리스트 중 내 ID와 일치하는 객체 찾기
 			.findFirst()
@@ -236,7 +269,7 @@ public class MatchService {
 
 		// 7. 이벤트 발행
 		List<Long> remainingUserIds = members.stream()
-			.filter(m -> !m.getUser().equals(loginUser.getId()))
+			.filter(m -> !m.getUser().getId().equals(loginUser.getId()))
 			.map(m -> m.getUser().getId())
 			.toList();
 
@@ -330,18 +363,10 @@ public class MatchService {
 			sessionId, me.getUser().getId(), restoredUserIds.size());
 	}
 
-	private List<MatchingMember> validateMatchAccessAndGetMembers(Long matchId, Long userId) {
-		// 1. 매칭 세션 존재 여부
-		MatchingSession session = matchingSessionRepository
-			.findByIdAndDeletedAtIsNull(matchId)
-			.orElseThrow(() -> new MatchAccessDeniedException(
-				HttpStatus.NOT_FOUND,
-				ErrorCodeConstants.MATCH_NOT_FOUND,
-				"존재하지 않는 매칭 세션입니다."
-			));
-		// 2. 해당 세션 매칭 멤버 전체 조회
+	private List<MatchingMember> validateMatchAccessAndGetMembers(MatchingSession session, Long userId) {
+		// 1. 해당 세션 매칭 멤버 전체 조회
 		List<MatchingMember> members = matchingMemberRepository
-			.findAllActiveBySessionIdWithFetch(matchId);
+			.findAllActiveBySessionIdWithFetch(session.getId());
 
 		// 3. 세션 접근 권한 확인
 		boolean isMember = members.stream()
@@ -367,7 +392,7 @@ public class MatchService {
 		}
 	}
 
-	private void completeMatching(Long matchId, List<MatchingMember> members) {
+	private void completeMatching(MatchingSession session, List<MatchingMember> members) {
 		// 1. Host 매칭 요청 정보 조회
 		MatchingMember hostMember = members.stream()
 			.filter(m -> m.getProjectRequest().isHostRequest())
@@ -402,15 +427,15 @@ public class MatchService {
 		members.forEach(mm -> mm.getProjectRequest().complete());
 
 		// 6. 매칭 세션 비활성화
-		hostMember.getMatchingSession().delete();
+		session.delete();
 
 		// 7. 매칭 완료 이벤트 발행
 		List<Long> memberUserIds = members.stream().map(m -> m.getUser().getId()).toList();
 		eventPublisher.publishEvent(
-			new MatchCompletedEvent(matchId, response.projectGroupId(), memberUserIds)
+			new MatchCompletedEvent(session.getId(), response.projectGroupId(), memberUserIds)
 		);
 
 		log.info("매칭 완료 및 프로젝트 그룹 생성: matchId={}, projectGroupId={}",
-			matchId, response.projectGroupId());
+			session.getId(), response.projectGroupId());
 	}
 }

@@ -18,6 +18,7 @@ import team.po.feature.match.dto.ProjectRequestDto;
 import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
 import team.po.feature.match.exception.ProjectRequestAlreadyExistsException;
+import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.repository.UserRepository;
@@ -31,6 +32,9 @@ class ProjectRequestServiceTest {
 	@Mock
 	private UserRepository userRepository;
 
+	@Mock
+	private MatchingMemberRepository matchingMemberRepository;
+
 	@InjectMocks
 	private ProjectRequestService projectRequestService;
 
@@ -43,7 +47,6 @@ class ProjectRequestServiceTest {
 	@Test
 	void createProjectRequest_success_asHost() {
 		Users user = createUser(1L);
-		// Valid Host DTO
 		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
 
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
@@ -57,7 +60,6 @@ class ProjectRequestServiceTest {
 	@Test
 	void createProjectRequest_success_asMember() {
 		Users user = createUser(1L);
-		// Valid Member DTO
 		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, null, null, null);
 
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));

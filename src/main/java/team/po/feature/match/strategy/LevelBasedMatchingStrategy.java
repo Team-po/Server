@@ -21,7 +21,7 @@ public class LevelBasedMatchingStrategy implements MatchingStrategy {
 	private final MatchingScorer matchingScorer;
 
 	@Override
-	public Optional<MatchingResult> findCandidates(MatchingContext context) {
+	public Optional<MatchingResult> findTeamCandidates(MatchingContext context) {
 		ProjectRequest host = context.host(); // host의 요청 정보
 		Map<Role, List<ProjectRequest>> pool = context.waitingPoolByRole();
 		Set<Long> blacklist = context.blacklistUserIds();
@@ -48,7 +48,7 @@ public class LevelBasedMatchingStrategy implements MatchingStrategy {
 				.filter(pr -> Math.abs(hostLevel - pr.getUser().getLevel()) <= MatchConstants.LEVEL_RANGE) // 레벨 필터
 				.sorted(
 					Comparator.comparingDouble((ProjectRequest pr) ->
-							matchingScorer.calculateScore(host, pr))
+							matchingScorer.calculateScore(host.getUser().getLevel(), pr))
 						.reversed()
 						.thenComparing(ProjectRequest::getCreatedAt)
 				)
@@ -67,4 +67,12 @@ public class LevelBasedMatchingStrategy implements MatchingStrategy {
 		return Optional.of(new MatchingResult(selected));
 	}
 
+	@Override
+	public Optional<ProjectRequest> findCandidateForRole(Role role, List<ProjectRequest> pool, int hostLevel,
+		Set<Long> blacklist) {
+		return pool.stream()
+			.filter(pr -> !blacklist.contains(pr.getUser().getId()))
+			.filter(pr -> Math.abs(hostLevel - pr.getUser().getLevel()) <= MatchConstants.LEVEL_RANGE)
+			.max(Comparator.comparingDouble(pr -> matchingScorer.calculateScore(hostLevel, pr)));
+	}
 }

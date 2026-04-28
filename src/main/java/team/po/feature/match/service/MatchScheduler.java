@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -73,7 +74,7 @@ public class MatchScheduler {
 				blacklist.add(host.getUser().getId());
 
 				MatchingContext context = new MatchingContext(host, waitingPool, blacklist);
-				matchingStrategy.findCandidates(context).ifPresent(result -> {
+				matchingStrategy.findTeamCandidates(context).ifPresent(result -> {
 					List<ProjectRequest> candidates = result.selectedCandidates();
 					matchService.createMatchingSession(host, candidates);
 
@@ -104,13 +105,14 @@ public class MatchScheduler {
 	}
 
 	private void fillSessionVacancy(MatchingSession session, Map<Role, List<ProjectRequest>> waitingPool) {
-		List<MatchingMember> currentMembers = matchingMemberRepository.findActiveValidMembersBySessionId(
+		List<MatchingMember> currentMembers = matchingMemberRepository.findAllActiveBySessionIdWithFetch(
 			session.getId());
 		if (currentMembers.size() >= MatchConstants.TEAM_SIZE)
 			return;
 
-		List<Long> prIds = currentMembers.stream().map(m -> m.getProjectRequest().getId()).toList();
-		List<ProjectRequest> allPrs = projectRequestRepository.findAllById(prIds);
+		List<ProjectRequest> allPrs = currentMembers.stream()
+			.map(MatchingMember::getProjectRequest)
+			.toList();
 
 		// Host Project Request 조회
 		ProjectRequest hostPr = allPrs.stream()
@@ -124,6 +126,7 @@ public class MatchScheduler {
 		}
 
 		// 현재 세션 구성 - 부족한 포지션 파악
+		int hostLevel = hostPr.getUser().getLevel();
 		Map<Role, Long> currentRoleCount = calculateCurrentRoleCounts(allPrs);
 		Map<Role, Integer> targetComposition = MatchConstants.REQUIRED_NON_HOST.get(hostPr.getRole());
 
@@ -134,24 +137,24 @@ public class MatchScheduler {
 		currentMembers.forEach(m -> blacklist.add(m.getUser().getId()));
 
 		// 부족한 포지션별로 scoring 적용
-		for (Role role : targetComposition.keySet()) {
-			int needed = targetComposition.get(role) - currentRoleCount.getOrDefault(role, 0L).intValue();
-			final Role finalRole = role;
+		for (Map.Entry<Role, Integer> entry : targetComposition.entrySet()) {
+			Role role = entry.getKey();
+			int needed = entry.getValue() - currentRoleCount.getOrDefault(role, 0L).intValue();
+			List<ProjectRequest> rolePool = waitingPool.getOrDefault(role, List.of());
 
 			for (int i = 0; i < needed; i++) {
-				MatchingContext context = new MatchingContext(hostPr, waitingPool, blacklist);
-				matchingStrategy.findCandidates(context).ifPresent(result -> {
-					// 해당 포지션의 최적 후보자 1명 선발
-					result.selectedCandidates().stream()
-						.filter(c -> c.getRole() == finalRole)
-						.findFirst()
-						.ifPresent(candidate -> {
-							matchService.fillVacancy(session, finalRole, candidate);
-							// 풀 및 블랙리스트 업데이트
-							blacklist.add(candidate.getUser().getId());
-							removeMatchedFromPool(waitingPool, Set.of(candidate.getUser().getId()));
-						});
-				});
+				Optional<ProjectRequest> candidate = matchingStrategy
+					.findCandidateForRole(role, rolePool, hostLevel, blacklist);
+
+				if (candidate.isEmpty())
+					break;
+
+				ProjectRequest selected = candidate.get();
+				matchService.fillVacancy(session, role, selected);
+
+				// 트랜잭션 완료 후 pool 및 blacklist 업데이트
+				blacklist.add(selected.getUser().getId());
+				removeMatchedFromPool(waitingPool, Set.of(selected.getUser().getId()));
 			}
 		}
 

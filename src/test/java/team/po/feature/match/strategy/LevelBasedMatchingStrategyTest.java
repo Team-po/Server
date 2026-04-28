@@ -47,12 +47,12 @@ class LevelBasedMatchingStrategyTest {
 			.projectMvp(mvp)
 			.build();
 		ReflectionTestUtils.setField(pr, "id", id);
-		ReflectionTestUtils.setField(pr, "createdAt", Instant.now()); // 추가
+		ReflectionTestUtils.setField(pr, "createdAt", Instant.now());
 		return pr;
 	}
 
 	@Test
-	void findCandidates_success() {
+	void findTeamCandidates_success() {
 		Users hostUser = createUser(1L, 5, 50);
 		ProjectRequest host = createRequest(1L, hostUser, Role.BACKEND, "팀포", "설명", "MVP");
 
@@ -71,14 +71,14 @@ class LevelBasedMatchingStrategyTest {
 		);
 
 		MatchingContext context = new MatchingContext(host, pool, Set.of(hostUser.getId()));
-		Optional<MatchingResult> result = strategy.findCandidates(context);
+		Optional<MatchingResult> result = strategy.findTeamCandidates(context);
 
 		assertThat(result).isPresent();
 		assertThat(result.get().selectedCandidates()).hasSize(3);
 	}
 
 	@Test
-	void findCandidates_empty_whenCandidatesInsufficient() {
+	void findTeamCandidates_empty_whenCandidatesInsufficient() {
 		Users hostUser = createUser(1L, 5, 50);
 		ProjectRequest host = createRequest(1L, hostUser, Role.BACKEND, "팀포", "설명", "MVP");
 
@@ -89,13 +89,13 @@ class LevelBasedMatchingStrategyTest {
 		);
 
 		MatchingContext context = new MatchingContext(host, pool, Set.of());
-		Optional<MatchingResult> result = strategy.findCandidates(context);
+		Optional<MatchingResult> result = strategy.findTeamCandidates(context);
 
 		assertThat(result).isEmpty();
 	}
 
 	@Test
-	void findCandidates_excludesBlacklist() {
+	void findTeamCandidates_excludesBlacklist() {
 		Users hostUser = createUser(1L, 5, 50);
 		ProjectRequest host = createRequest(1L, hostUser, Role.BACKEND, "팀포", "설명", "MVP");
 
@@ -109,17 +109,17 @@ class LevelBasedMatchingStrategyTest {
 		);
 
 		MatchingContext context = new MatchingContext(host, pool, Set.of(blacklistedUser.getId()));
-		Optional<MatchingResult> result = strategy.findCandidates(context);
+		Optional<MatchingResult> result = strategy.findTeamCandidates(context);
 
 		assertThat(result).isEmpty();
 	}
 
 	@Test
-	void findCandidates_excludesLevelOutOfRange() {
+	void findTeamCandidates_excludesLevelOutOfRange() {
 		Users hostUser = createUser(1L, 5, 50);
 		ProjectRequest host = createRequest(1L, hostUser, Role.BACKEND, "팀포", "설명", "MVP");
 
-		Users farLevelUser = createUser(2L, 10, 50); // 레벨 차이 5 — 범위 초과
+		Users farLevelUser = createUser(2L, 10, 50);
 		ProjectRequest farPr = createRequest(2L, farLevelUser, Role.BACKEND, null, null, null);
 
 		Map<Role, List<ProjectRequest>> pool = Map.of(
@@ -129,13 +129,13 @@ class LevelBasedMatchingStrategyTest {
 		);
 
 		MatchingContext context = new MatchingContext(host, pool, Set.of());
-		Optional<MatchingResult> result = strategy.findCandidates(context);
+		Optional<MatchingResult> result = strategy.findTeamCandidates(context);
 
 		assertThat(result).isEmpty();
 	}
 
 	@Test
-	void findCandidates_sortsHigherTemperatureFirst() {
+	void findTeamCandidates_sortsHigherTemperatureFirst() {
 		Users hostUser = createUser(1L, 5, 50);
 		ProjectRequest host = createRequest(1L, hostUser, Role.BACKEND, "팀포", "설명", "MVP");
 
@@ -157,13 +157,64 @@ class LevelBasedMatchingStrategyTest {
 		);
 
 		MatchingContext context = new MatchingContext(host, pool, Set.of(hostUser.getId()));
-		Optional<MatchingResult> result = strategy.findCandidates(context);
+		Optional<MatchingResult> result = strategy.findTeamCandidates(context);
 
 		assertThat(result).isPresent();
 		assertThat(result.get().selectedCandidates())
 			.filteredOn(pr -> pr.getRole() == Role.BACKEND)
 			.first()
 			.extracting(pr -> pr.getUser().getId())
-			.isEqualTo(3L); // highTemp 선택
+			.isEqualTo(3L);
+	}
+
+	// ===== findCandidateForRole =====
+
+	@Test
+	void findCandidateForRole_success_returnsHighestScore() {
+		Users lowTemp = createUser(1L, 5, 30);
+		Users highTemp = createUser(2L, 5, 80);
+
+		ProjectRequest lowPr = createRequest(1L, lowTemp, Role.FRONTEND, null, null, null);
+		ProjectRequest highPr = createRequest(2L, highTemp, Role.FRONTEND, null, null, null);
+
+		Optional<ProjectRequest> result = strategy.findCandidateForRole(
+			Role.FRONTEND, List.of(lowPr, highPr), 5, Set.of()
+		);
+
+		assertThat(result).isPresent();
+		assertThat(result.get().getUser().getId()).isEqualTo(2L); // highTemp 선택
+	}
+
+	@Test
+	void findCandidateForRole_empty_whenPoolEmpty() {
+		Optional<ProjectRequest> result = strategy.findCandidateForRole(
+			Role.FRONTEND, List.of(), 5, Set.of()
+		);
+
+		assertThat(result).isEmpty();
+	}
+
+	@Test
+	void findCandidateForRole_excludesBlacklist() {
+		Users user = createUser(1L, 5, 80);
+		ProjectRequest pr = createRequest(1L, user, Role.FRONTEND, null, null, null);
+
+		Optional<ProjectRequest> result = strategy.findCandidateForRole(
+			Role.FRONTEND, List.of(pr), 5, Set.of(user.getId())
+		);
+
+		assertThat(result).isEmpty();
+	}
+
+	@Test
+	void findCandidateForRole_excludesLevelOutOfRange() {
+		Users farLevelUser = createUser(1L, 10, 80);
+		ProjectRequest pr = createRequest(1L, farLevelUser, Role.FRONTEND, null, null, null);
+
+		Optional<ProjectRequest> result = strategy.findCandidateForRole(
+			Role.FRONTEND, List.of(pr), 5, Set.of() // hostLevel=5, 차이=5 → 범위 초과
+		);
+
+		assertThat(result).isEmpty();
 	}
 }

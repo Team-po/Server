@@ -16,9 +16,7 @@ public class DefaultMatchingScorer implements MatchingScorer {
 	 * - 레벨 근접도 * 2           : 팀장과 비슷한 레벨 선호
 	 */
 	@Override
-	public double calculateScore(ProjectRequest host, ProjectRequest candidate) {
-		int hostLevel = host.getUser().getLevel();
-
+	public double calculateScore(int hostLevel, ProjectRequest candidate) {
 		// 1. 온도 점수 (0-100 * 0.5)
 		double temperatureScore = candidate.getUser().getTemperature() * 0.5;
 
