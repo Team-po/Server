@@ -435,7 +435,7 @@ class MatchServiceTest {
 
 		when(projectRequestRepository.findByUserIdAndStatusIn(eq(2L), any()))
 			.thenReturn(Optional.of(myPr));
-		when(matchingMemberRepository.findActiveByUserId(2L))
+		when(matchingMemberRepository.findCurrentActiveByUserId(2L))
 			.thenReturn(Optional.of(myMember));
 		when(matchingMemberRepository.findActiveValidMembersBySessionId(42L))
 			.thenReturn(List.of(myMember));
@@ -467,7 +467,7 @@ class MatchServiceTest {
 
 		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
 			.thenReturn(Optional.of(hostPr));
-		when(matchingMemberRepository.findActiveByUserId(1L))
+		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
 			.thenReturn(Optional.of(hostMember));
 		when(matchingMemberRepository.findActiveValidMembersBySessionId(42L))
 			.thenReturn(List.of(hostMember, member));

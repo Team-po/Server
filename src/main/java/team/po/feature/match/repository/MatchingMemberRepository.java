@@ -48,7 +48,7 @@ public interface MatchingMemberRepository extends JpaRepository<MatchingMember, 
 		  AND mm.userId = :userId
 		  AND mm.deletedAt IS NULL
 		""")
-	Optional<MatchingMember> findActiveBySessionIdAndUserId(
+	Optional<MatchingMember> findActiveMemberBySessionIdAndUserId(
 		@Param("sessionId") Long sessionId,
 		@Param("userId") Long userId
 	);
@@ -67,5 +67,5 @@ public interface MatchingMemberRepository extends JpaRepository<MatchingMember, 
 		WHERE mm.userId = :userId
 		  AND mm.deletedAt IS NULL
 		""")
-	Optional<MatchingMember> findActiveByUserId(@Param("userId") Long userId);
+	Optional<MatchingMember> findCurrentActiveByUserId(@Param("userId") Long userId);
 }

@@ -80,6 +80,8 @@ public class MatchingMember {
 	public void reject() {
 		this.isAccepted = false;
 		this.respondedAt = Instant.now();
+		// 거절 시 soft delete
+		this.deletedAt = Instant.now();
 	}
 
 	// 사용자가 취소 요청한 경우 soft delete

@@ -326,7 +326,7 @@ public class MatchService {
 
 		// 3. MATCHING - 세션 조회
 		MatchingMember myMember = matchingMemberRepository
-			.findActiveByUserId(loginUser.getId())
+			.findCurrentActiveByUserId(loginUser.getId())
 			.orElseThrow(() -> new MatchDataIntegrityException(
 				HttpStatus.INTERNAL_SERVER_ERROR,
 				ErrorCodeConstants.MATCH_DATA_ERROR,
