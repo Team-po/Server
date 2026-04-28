@@ -29,8 +29,25 @@ public class RedisService {
 		return valueOperations.get(key);
 	}
 
+	public String getStringValue(String key) {
+		Object value = valueOperations.get(key);
+		if (value == null) {
+			return null;
+		}
+
+		return value.toString();
+	}
+
 	public Object getAndDeleteValue(String key) {
 		return valueOperations.getAndDelete(key);
+	}
+
+	public Long incrementValue(String key) {
+		return valueOperations.increment(key);
+	}
+
+	public void expire(String key, Duration timeout) {
+		redisTemplate.expire(key, timeout);
 	}
 
 	public void deleteValue(String key) {

@@ -14,7 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import team.po.common.redis.RedisService;
-import team.po.feature.user.exception.InvalidProfileImageKeyException;
+import team.po.exception.ApplicationException;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileImageRedisServiceTest {
@@ -78,7 +78,7 @@ class ProfileImageRedisServiceTest {
 			.thenReturn(null);
 
 		assertThatThrownBy(() -> profileImageRedisService.consumeProfileUpdateTicket(1L, "images/users/1/test.png"))
-			.isInstanceOf(InvalidProfileImageKeyException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("발급되지 않았거나 만료된 프로필 이미지 키입니다.");
 	}
 }

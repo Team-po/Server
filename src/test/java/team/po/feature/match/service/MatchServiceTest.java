@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import team.po.exception.ApplicationException;
 import team.po.feature.match.domain.MatchingMember;
 import team.po.feature.match.domain.MatchingSession;
 import team.po.feature.match.domain.ProjectRequest;
@@ -23,9 +24,6 @@ import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
 import team.po.feature.match.event.MatchAcceptedEvent;
 import team.po.feature.match.event.MatchRejectedEvent;
-import team.po.feature.match.exception.MatchAccessDeniedException;
-import team.po.feature.match.exception.MatchDataIntegrityException;
-import team.po.feature.match.exception.ProjectRequestNotFoundException;
 import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.MatchingSessionRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
@@ -122,7 +120,7 @@ class MatchServiceTest {
 		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> matchService.getMatchMembers(42L, loginUser))
-			.isInstanceOf(MatchAccessDeniedException.class);
+			.isInstanceOf(ApplicationException.class);
 	}
 
 	@Test
@@ -137,7 +135,7 @@ class MatchServiceTest {
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L)).thenReturn(List.of(hostMember));
 
 		assertThatThrownBy(() -> matchService.getMatchMembers(42L, loginUser))
-			.isInstanceOf(MatchAccessDeniedException.class);
+			.isInstanceOf(ApplicationException.class);
 	}
 
 	// ===== getMatchProject =====
@@ -165,7 +163,7 @@ class MatchServiceTest {
 		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> matchService.getMatchProject(42L, loginUser))
-			.isInstanceOf(MatchAccessDeniedException.class);
+			.isInstanceOf(ApplicationException.class);
 	}
 
 	@Test
@@ -180,7 +178,7 @@ class MatchServiceTest {
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L)).thenReturn(List.of(hostMember));
 
 		assertThatThrownBy(() -> matchService.getMatchProject(42L, loginUser))
-			.isInstanceOf(MatchAccessDeniedException.class);
+			.isInstanceOf(ApplicationException.class);
 	}
 
 	@Test
@@ -194,7 +192,7 @@ class MatchServiceTest {
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L)).thenReturn(List.of(memberMember));
 
 		assertThatThrownBy(() -> matchService.getMatchProject(42L, loginUser))
-			.isInstanceOf(MatchDataIntegrityException.class);
+			.isInstanceOf(ApplicationException.class);
 	}
 
 	@Test
@@ -209,7 +207,7 @@ class MatchServiceTest {
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L)).thenReturn(List.of(hostMember));
 
 		assertThatThrownBy(() -> matchService.getMatchProject(42L, loginUser))
-			.isInstanceOf(MatchDataIntegrityException.class);
+			.isInstanceOf(ApplicationException.class);
 	}
 
 	// ===== accept =====
@@ -275,7 +273,7 @@ class MatchServiceTest {
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L)).thenReturn(List.of(hostMember));
 
 		assertThatThrownBy(() -> matchService.accept(42L, loginUser))
-			.isInstanceOf(MatchAccessDeniedException.class);
+			.isInstanceOf(ApplicationException.class);
 	}
 
 	// ===== reject =====
@@ -318,7 +316,7 @@ class MatchServiceTest {
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L)).thenReturn(List.of(hostMember));
 
 		assertThatThrownBy(() -> matchService.reject(42L, loginUser))
-			.isInstanceOf(MatchAccessDeniedException.class);
+			.isInstanceOf(ApplicationException.class);
 	}
 
 	@Test
@@ -341,7 +339,7 @@ class MatchServiceTest {
 			.thenReturn(List.of(hostMember, myMember));
 
 		assertThatThrownBy(() -> matchService.reject(42L, loginUser))
-			.isInstanceOf(MatchAccessDeniedException.class);
+			.isInstanceOf(ApplicationException.class);
 	}
 
 	// ===== cancel =====
@@ -426,6 +424,6 @@ class MatchServiceTest {
 			.thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> matchService.cancel(loginUser))
-			.isInstanceOf(ProjectRequestNotFoundException.class);
+			.isInstanceOf(ApplicationException.class);
 	}
 }

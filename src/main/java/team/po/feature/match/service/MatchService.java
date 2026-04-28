@@ -4,13 +4,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import team.po.exception.ErrorCodeConstants;
+import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
 import team.po.feature.match.domain.MatchingMember;
 import team.po.feature.match.domain.MatchingSession;
 import team.po.feature.match.domain.ProjectRequest;
@@ -24,9 +24,6 @@ import team.po.feature.match.event.MatchCreatedEvent;
 import team.po.feature.match.event.MatchMemberCanceledEvent;
 import team.po.feature.match.event.MatchRejectedEvent;
 import team.po.feature.match.event.MatchSessionDisbandedEvent;
-import team.po.feature.match.exception.MatchAccessDeniedException;
-import team.po.feature.match.exception.MatchDataIntegrityException;
-import team.po.feature.match.exception.ProjectRequestNotFoundException;
 import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.MatchingSessionRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
@@ -105,11 +102,7 @@ public class MatchService {
 		// 0. 이미 완료된 매칭 세션인지 검증
 		MatchingSession session = matchingSessionRepository
 			.findByIdAndDeletedAtIsNull(matchId)
-			.orElseThrow(() -> new MatchAccessDeniedException(
-				HttpStatus.NOT_FOUND,
-				ErrorCodeConstants.MATCH_NOT_FOUND,
-				"이미 완료되었거나 존재하지 않는 매칭 세션입니다."
-			));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
 		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
 		List<MatchingMember> members = validateMatchAccessAndGetMembers(session, loginUser.getId());
@@ -137,11 +130,7 @@ public class MatchService {
 		// 0. 이미 완료된 매칭 세션인지 검증
 		MatchingSession session = matchingSessionRepository
 			.findByIdAndDeletedAtIsNull(matchId)
-			.orElseThrow(() -> new MatchAccessDeniedException(
-				HttpStatus.NOT_FOUND,
-				ErrorCodeConstants.MATCH_NOT_FOUND,
-				"이미 완료되었거나 존재하지 않는 매칭 세션입니다."
-			));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
 		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
 		List<MatchingMember> members = validateMatchAccessAndGetMembers(session, loginUser.getId());
@@ -153,21 +142,13 @@ public class MatchService {
 
 		if (hosts.size() != 1) {
 			log.error("매칭 호스트 데이터 부정합: matchId={}, hostCount={}", matchId, hosts.size());
-			throw new MatchDataIntegrityException(
-				HttpStatus.INTERNAL_SERVER_ERROR,
-				ErrorCodeConstants.MATCH_DATA_ERROR,
-				"해당 매칭 세션에 호스트 정보가 없거나 중복되었습니다."
-			);
+			throw new ApplicationException(ErrorCode.MATCH_DATA_ERROR);
 		}
 
 		MatchingMember hostMember = hosts.getFirst();
 		if (!Boolean.TRUE.equals(hostMember.getIsAccepted())) {
 			log.error("호스트 수락 상태 부정합: matchId={}, userId={}", matchId, hostMember.getUser().getId());
-			throw new MatchDataIntegrityException(
-				HttpStatus.INTERNAL_SERVER_ERROR,
-				ErrorCodeConstants.MATCH_DATA_ERROR,
-				"호스트의 매칭 수락 상태가 유효하지 않습니다."
-			);
+			throw new ApplicationException(ErrorCode.MATCH_DATA_ERROR);
 		}
 
 		// 3. Host 프로젝트 정보 추출 및 응답
@@ -185,22 +166,14 @@ public class MatchService {
 		// 0. 이미 완료된 매칭 세션인지 검증
 		MatchingSession session = matchingSessionRepository
 			.findByIdWithLock(matchId)
-			.orElseThrow(() -> new MatchAccessDeniedException(
-				HttpStatus.NOT_FOUND,
-				ErrorCodeConstants.MATCH_NOT_FOUND,
-				"이미 완료되었거나 존재하지 않는 매칭 세션입니다."
-			));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
 		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
 		List<MatchingMember> members = validateMatchAccessAndGetMembers(session, loginUser.getId());
 		MatchingMember me = members.stream()
 			.filter(m -> m.getUser().getId().equals(loginUser.getId())) // 리스트 중 내 ID와 일치하는 객체 찾기
 			.findFirst()
-			.orElseThrow(() -> new MatchDataIntegrityException(
-				HttpStatus.INTERNAL_SERVER_ERROR,
-				ErrorCodeConstants.MATCH_DATA_ERROR,
-				"매칭 세션 내에서 내 멤버 정보를 찾을 수 없습니다."
-			));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_DATA_ERROR));
 
 		// 2. 호스트 여부 확인 - 호스트는 수락할 수 없음
 		validateNotHost(me);
@@ -230,21 +203,14 @@ public class MatchService {
 		// 0. 이미 완료된 매칭 세션인지 검증
 		MatchingSession session = matchingSessionRepository
 			.findByIdWithLock(matchId)
-			.orElseThrow(() -> new MatchAccessDeniedException(
-				HttpStatus.NOT_FOUND,
-				ErrorCodeConstants.MATCH_NOT_FOUND,
-				"이미 완료되었거나 존재하지 않는 매칭 세션입니다."
-			));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
+
 		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
 		List<MatchingMember> members = validateMatchAccessAndGetMembers(session, loginUser.getId());
 		MatchingMember me = members.stream()
 			.filter(m -> m.getUser().getId().equals(loginUser.getId())) // 리스트 중 내 ID와 일치하는 객체 찾기
 			.findFirst()
-			.orElseThrow(() -> new MatchDataIntegrityException(
-				HttpStatus.INTERNAL_SERVER_ERROR,
-				ErrorCodeConstants.MATCH_DATA_ERROR,
-				"매칭 세션 내에서 내 멤버 정보를 찾을 수 없습니다."
-			));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED));
 
 		// 2. 호스트 여부 조회: 호스트는 거절 불가
 		validateNotHost(me);
@@ -253,11 +219,7 @@ public class MatchService {
 
 		// 4. 이미 수락한 경우 400
 		if (Boolean.TRUE.equals(me.getIsAccepted())) {
-			throw new MatchAccessDeniedException(
-				HttpStatus.BAD_REQUEST,
-				ErrorCodeConstants.MATCH_ACCESS_DENIED,
-				"이미 수락한 매칭 세션입니다."
-			);
+			throw new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED);
 		}
 
 		// 5. 거절 처리
@@ -281,11 +243,7 @@ public class MatchService {
 		// 1. 활성 매칭 요청 조회 (WAITING or MATCHING)
 		ProjectRequest myPr = projectRequestRepository
 			.findByUserIdAndStatusIn(loginUser.getId(), List.of(Status.WAITING, Status.MATCHING))
-			.orElseThrow(() -> new ProjectRequestNotFoundException(
-				HttpStatus.NOT_FOUND,
-				ErrorCodeConstants.PROJECT_REQUEST_NOT_FOUND,
-				"취소할 수 있는 매칭 요청이 없습니다."
-			));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_MEMBER_NOT_FOUND));
 
 		// 2. WAITING: 단순 취소
 		if (myPr.getStatus() == Status.WAITING) {
@@ -297,11 +255,7 @@ public class MatchService {
 		// 3. MATCHING - 세션 조회
 		MatchingMember me = matchingMemberRepository
 			.findCurrentActiveByUserId(loginUser.getId())
-			.orElseThrow(() -> new MatchDataIntegrityException(
-				HttpStatus.INTERNAL_SERVER_ERROR,
-				ErrorCodeConstants.MATCH_DATA_ERROR,
-				"매칭 멤버 데이터 조회 실패"
-			));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_DATA_ERROR));
 		List<MatchingMember> sessionMembers = matchingMemberRepository
 			.findAllActiveBySessionIdWithFetch(me.getMatchingSession().getId());
 
@@ -373,22 +327,14 @@ public class MatchService {
 			.anyMatch(m -> m.getUser().getId().equals(userId));
 		// 멤버가 아니라면 접근 불가
 		if (!isMember) {
-			throw new MatchAccessDeniedException(
-				HttpStatus.FORBIDDEN,
-				ErrorCodeConstants.MATCH_ACCESS_DENIED,
-				"해당 매칭 세션에 접근 권한이 없습니다."
-			);
+			throw new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED);
 		}
 		return members;
 	}
 
 	private void validateNotHost(MatchingMember member) {
 		if (member.getProjectRequest().isHostRequest()) {
-			throw new MatchAccessDeniedException(
-				HttpStatus.FORBIDDEN,
-				ErrorCodeConstants.MATCH_ACCESS_DENIED,
-				"호스트는 수락 또는 거절할 수 없습니다."
-			);
+			throw new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED);
 		}
 	}
 
@@ -397,11 +343,7 @@ public class MatchService {
 		MatchingMember hostMember = members.stream()
 			.filter(m -> m.getProjectRequest().isHostRequest())
 			.findFirst()
-			.orElseThrow(() -> new MatchDataIntegrityException(
-				HttpStatus.INTERNAL_SERVER_ERROR,
-				ErrorCodeConstants.MATCH_DATA_ERROR,
-				"호스트 데이터를 조회할 수 없습니다."
-			));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_DATA_ERROR));
 
 		// 2. 프로젝트 그룹 생성 요청 리스트
 		List<CreateProjectGroupMemberRequest> memberRequests = members.stream()

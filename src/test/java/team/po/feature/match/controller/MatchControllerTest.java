@@ -14,7 +14,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -24,19 +23,17 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import team.po.common.auth.LoginUserArgumentResolver;
 import team.po.common.jwt.UserPrincipal;
-import team.po.exception.CustomMatchExceptionHandler;
-import team.po.exception.ErrorCodeConstants;
+import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
 import team.po.feature.match.dto.MatchMemberResponse;
 import team.po.feature.match.dto.MatchProjectResponse;
 import team.po.feature.match.enums.Role;
-import team.po.feature.match.exception.MatchAccessDeniedException;
-import team.po.feature.match.exception.MatchDataIntegrityException;
 import team.po.feature.match.service.MatchService;
 import team.po.feature.user.domain.Users;
 
 @WebMvcTest(MatchController.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(CustomMatchExceptionHandler.class)
+@Import(ApplicationException.class)
 class MatchControllerTest {
 
 	@Autowired
@@ -96,29 +93,23 @@ class MatchControllerTest {
 
 	@Test
 	void getMatchMembers_returnsNotFound_whenSessionNotExists() throws Exception {
-		doThrow(new MatchAccessDeniedException(
-			HttpStatus.NOT_FOUND,
-			ErrorCodeConstants.MATCH_NOT_FOUND,
-			"존재하지 않는 매칭 세션입니다."
-		)).when(matchService).getMatchMembers(eq(42L), any(Users.class));
+		doThrow(new ApplicationException(ErrorCode.MATCH_NOT_FOUND))
+			.when(matchService).getMatchMembers(eq(42L), any(Users.class));
 
 		mockMvc.perform(get("/api/match/42/members"))
 			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.MATCH_NOT_FOUND))
+			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_NOT_FOUND))
 			.andExpect(jsonPath("$.message").value("존재하지 않는 매칭 세션입니다."));
 	}
 
 	@Test
 	void getMatchMembers_returnsForbidden_whenNotMember() throws Exception {
-		doThrow(new MatchAccessDeniedException(
-			HttpStatus.FORBIDDEN,
-			ErrorCodeConstants.MATCH_ACCESS_DENIED,
-			"해당 매칭 세션에 접근 권한이 없습니다."
-		)).when(matchService).getMatchMembers(eq(42L), any(Users.class));
+		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
+			.when(matchService).getMatchMembers(eq(42L), any(Users.class));
 
 		mockMvc.perform(get("/api/match/42/members"))
 			.andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.MATCH_ACCESS_DENIED))
+			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_ACCESS_DENIED))
 			.andExpect(jsonPath("$.message").value("해당 매칭 세션에 접근 권한이 없습니다."));
 	}
 
@@ -137,43 +128,34 @@ class MatchControllerTest {
 
 	@Test
 	void getMatchProject_returnsNotFound_whenSessionNotExists() throws Exception {
-		doThrow(new MatchAccessDeniedException(
-			HttpStatus.NOT_FOUND,
-			ErrorCodeConstants.MATCH_NOT_FOUND,
-			"존재하지 않는 매칭 세션입니다."
-		)).when(matchService).getMatchProject(eq(42L), any(Users.class));
+		doThrow(new ApplicationException(ErrorCode.MATCH_NOT_FOUND))
+			.when(matchService).getMatchProject(eq(42L), any(Users.class));
 
 		mockMvc.perform(get("/api/match/42/project"))
 			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.MATCH_NOT_FOUND))
+			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_NOT_FOUND))
 			.andExpect(jsonPath("$.message").value("존재하지 않는 매칭 세션입니다."));
 	}
 
 	@Test
 	void getMatchProject_returnsForbidden_whenNotMember() throws Exception {
-		doThrow(new MatchAccessDeniedException(
-			HttpStatus.FORBIDDEN,
-			ErrorCodeConstants.MATCH_ACCESS_DENIED,
-			"해당 매칭 세션에 접근 권한이 없습니다."
-		)).when(matchService).getMatchProject(eq(42L), any(Users.class));
+		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
+			.when(matchService).getMatchProject(eq(42L), any(Users.class));
 
 		mockMvc.perform(get("/api/match/42/project"))
 			.andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.MATCH_ACCESS_DENIED))
+			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_ACCESS_DENIED))
 			.andExpect(jsonPath("$.message").value("해당 매칭 세션에 접근 권한이 없습니다."));
 	}
 
 	@Test
 	void getMatchProject_returnsInternalServerError_whenDataIntegrity() throws Exception {
-		doThrow(new MatchDataIntegrityException(
-			HttpStatus.INTERNAL_SERVER_ERROR,
-			ErrorCodeConstants.MATCH_DATA_ERROR,
-			"해당 매칭 세션에 호스트 정보가 없거나 중복되었습니다."
-		)).when(matchService).getMatchProject(eq(42L), any(Users.class));
+		doThrow(new ApplicationException(ErrorCode.MATCH_DATA_ERROR))
+			.when(matchService).getMatchProject(eq(42L), any(Users.class));
 
 		mockMvc.perform(get("/api/match/42/project"))
 			.andExpect(status().isInternalServerError())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.MATCH_DATA_ERROR));
+			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_DATA_ERROR));
 	}
 
 	// ===== accept =====
@@ -188,41 +170,32 @@ class MatchControllerTest {
 
 	@Test
 	void accept_returnsNotFound_whenSessionNotExists() throws Exception {
-		doThrow(new MatchAccessDeniedException(
-			HttpStatus.NOT_FOUND,
-			ErrorCodeConstants.MATCH_NOT_FOUND,
-			"존재하지 않는 매칭 세션입니다."
-		)).when(matchService).accept(eq(42L), any(Users.class));
+		doThrow(new ApplicationException(ErrorCode.MATCH_NOT_FOUND))
+			.when(matchService).accept(eq(42L), any(Users.class));
 
 		mockMvc.perform(post("/api/match/42/accept"))
 			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.MATCH_NOT_FOUND));
+			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_NOT_FOUND));
 	}
 
 	@Test
 	void accept_returnsForbidden_whenHost() throws Exception {
-		doThrow(new MatchAccessDeniedException(
-			HttpStatus.FORBIDDEN,
-			ErrorCodeConstants.MATCH_ACCESS_DENIED,
-			"호스트는 수락 또는 거절할 수 없습니다."
-		)).when(matchService).accept(eq(42L), any(Users.class));
+		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
+			.when(matchService).accept(eq(42L), any(Users.class));
 
 		mockMvc.perform(post("/api/match/42/accept"))
 			.andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.MATCH_ACCESS_DENIED));
+			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_ACCESS_DENIED));
 	}
 
 	@Test
 	void accept_returnsBadRequest_whenAlreadyRejected() throws Exception {
-		doThrow(new MatchAccessDeniedException(
-			HttpStatus.BAD_REQUEST,
-			ErrorCodeConstants.MATCH_ACCESS_DENIED,
-			"이미 거절한 매칭 세션입니다."
-		)).when(matchService).accept(eq(42L), any(Users.class));
+		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
+			.when(matchService).accept(eq(42L), any(Users.class));
 
 		mockMvc.perform(post("/api/match/42/accept"))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.MATCH_ACCESS_DENIED));
+			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_ACCESS_DENIED));
 	}
 
 	// ===== reject =====
@@ -237,41 +210,32 @@ class MatchControllerTest {
 
 	@Test
 	void reject_returnsNotFound_whenSessionNotExists() throws Exception {
-		doThrow(new MatchAccessDeniedException(
-			HttpStatus.NOT_FOUND,
-			ErrorCodeConstants.MATCH_NOT_FOUND,
-			"존재하지 않는 매칭 세션입니다."
-		)).when(matchService).reject(eq(42L), any(Users.class));
+		doThrow(new ApplicationException(ErrorCode.MATCH_NOT_FOUND))
+			.when(matchService).reject(eq(42L), any(Users.class));
 
 		mockMvc.perform(post("/api/match/42/reject"))
 			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.MATCH_NOT_FOUND));
+			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_NOT_FOUND));
 	}
 
 	@Test
 	void reject_returnsForbidden_whenHost() throws Exception {
-		doThrow(new MatchAccessDeniedException(
-			HttpStatus.FORBIDDEN,
-			ErrorCodeConstants.MATCH_ACCESS_DENIED,
-			"호스트는 수락 또는 거절할 수 없습니다."
-		)).when(matchService).reject(eq(42L), any(Users.class));
+		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
+			.when(matchService).reject(eq(42L), any(Users.class));
 
 		mockMvc.perform(post("/api/match/42/reject"))
 			.andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.MATCH_ACCESS_DENIED));
+			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_ACCESS_DENIED));
 	}
 
 	@Test
 	void reject_returnsBadRequest_whenAlreadyAccepted() throws Exception {
-		doThrow(new MatchAccessDeniedException(
-			HttpStatus.BAD_REQUEST,
-			ErrorCodeConstants.MATCH_ACCESS_DENIED,
-			"이미 수락한 매칭 세션입니다."
-		)).when(matchService).reject(eq(42L), any(Users.class));
+		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
+			.when(matchService).reject(eq(42L), any(Users.class));
 
 		mockMvc.perform(post("/api/match/42/reject"))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.MATCH_ACCESS_DENIED));
+			.andExpect(jsonPath("$.code").value(ErrorCode.MATCH_ACCESS_DENIED));
 	}
 
 	// ===== cancel =====
@@ -286,14 +250,11 @@ class MatchControllerTest {
 
 	@Test
 	void cancel_returnsNotFound_whenNoActiveRequest() throws Exception {
-		doThrow(new MatchAccessDeniedException(
-			HttpStatus.NOT_FOUND,
-			ErrorCodeConstants.PROJECT_REQUEST_NOT_FOUND,
-			"취소할 수 있는 매칭 요청이 없습니다."
-		)).when(matchService).cancel(any(Users.class));
+		doThrow(new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND))
+			.when(matchService).cancel(any(Users.class));
 
 		mockMvc.perform(post("/api/match/cancel"))
 			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.PROJECT_REQUEST_NOT_FOUND));
+			.andExpect(jsonPath("$.code").value(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
 	}
 }

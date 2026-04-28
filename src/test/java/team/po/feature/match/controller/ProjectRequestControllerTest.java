@@ -23,17 +23,19 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
+import team.po.exception.ApplicationException;
 import team.po.common.auth.LoginUserArgumentResolver;
 import team.po.common.jwt.UserPrincipal;
-import team.po.exception.CustomProjectRequestExceptionHandler;
-import team.po.exception.ErrorCodeConstants;
-import team.po.feature.match.exception.ProjectRequestAlreadyExistsException;
+import team.po.exception.CustomExceptionHandler;
+import team.po.exception.ErrorCode;
+import team.po.feature.match.dto.ProjectRequestStatusResponse;
+import team.po.feature.match.enums.Status;
 import team.po.feature.match.service.ProjectRequestService;
 import team.po.feature.user.domain.Users;
 
 @WebMvcTest(ProjectRequestController.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(CustomProjectRequestExceptionHandler.class)
+@Import(CustomExceptionHandler.class)
 class ProjectRequestControllerTest {
 
 	@Autowired
@@ -99,24 +101,65 @@ class ProjectRequestControllerTest {
 					{"role": "BACKEND", "projectTitle": "title", "projectDescription": null, "projectMvp": "mvp"}
 					"""))
 			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value(ErrorCodeConstants.INVALID_INPUT_FIELD));
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()));
 	}
 
 	@Test
 	void createProjectRequest_returnsConflict_whenDuplicateRequest() throws Exception {
-		doThrow(new ProjectRequestAlreadyExistsException(
-			HttpStatus.CONFLICT,
-			ErrorCodeConstants.PROJECT_REQUEST_ALREADY_EXISTS,
-			"중복"
-		)).when(projectRequestService).createProjectRequest(any(), any());
+		doThrow(new ApplicationException(ErrorCode.PROJECT_REQUEST_ALREADY_EXISTS))
+			.when(projectRequestService).createProjectRequest(any(Users.class), any());
 
 		mockMvc.perform(post("/api/match/request")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 					{"role": "BACKEND", "projectTitle": "title", "projectDescription": "desc", "projectMvp": "mvp"}
 					"""))
-			.andExpect(status().isConflict());
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value(ErrorCode.PROJECT_REQUEST_ALREADY_EXISTS.getCode()))
+			.andExpect(jsonPath("$.message").value("이미 진행 중인 매칭 요청이 있습니다."));
 	}
 
-	// getProjectRequestStatus 테스트는 기존과 동일하게 유지
+	// ===== cancelProjectRequest =====
+
+	@Test
+	void cancelProjectRequest_returnsOk() throws Exception {
+		mockMvc.perform(patch("/api/match/cancel"))
+			.andExpect(status().isOk());
+
+		verify(projectRequestService).cancelProjectRequest(any(Users.class));
+	}
+
+	@Test
+	void cancelProjectRequest_returnsNotFound_whenNoActiveRequest() throws Exception {
+		doThrow(new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND, "취소할 수 있는 매칭 요청이 없습니다."))
+			.when(projectRequestService).cancelProjectRequest(any(Users.class));
+
+		mockMvc.perform(patch("/api/match/cancel"))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value(ErrorCode.PROJECT_REQUEST_NOT_FOUND.getCode()))
+			.andExpect(jsonPath("$.message").value("취소할 수 있는 매칭 요청이 없습니다."));
+	}
+
+	// ===== getProjectRequestStatus =====
+
+	@Test
+	void getProjectRequestStatus_returnsOk() throws Exception {
+		when(projectRequestService.getProjectRequestStatus(any(Users.class)))
+			.thenReturn(new ProjectRequestStatusResponse(Status.WAITING));
+
+		mockMvc.perform(get("/api/match/status"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("WAITING"));
+	}
+
+	@Test
+	void getProjectRequestStatus_returnsNotFound_whenNoActiveRequest() throws Exception {
+		doThrow(new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND, "진행 중인 매칭 요청이 없습니다."))
+			.when(projectRequestService).getProjectRequestStatus(any(Users.class));
+
+		mockMvc.perform(get("/api/match/status"))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value(ErrorCode.PROJECT_REQUEST_NOT_FOUND.getCode()))
+			.andExpect(jsonPath("$.message").value("진행 중인 매칭 요청이 없습니다."));
+	}
 }
