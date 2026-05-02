@@ -8,6 +8,7 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -23,6 +24,7 @@ import team.po.feature.match.dto.MatchProjectResponse;
 import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
 import team.po.feature.match.event.MatchAcceptedEvent;
+import team.po.feature.match.event.MatchOrphanSessionCleanedEvent;
 import team.po.feature.match.event.MatchRejectedEvent;
 import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.MatchingSessionRepository;
@@ -425,5 +427,71 @@ class MatchServiceTest {
 
 		assertThatThrownBy(() -> matchService.cancel(loginUser))
 			.isInstanceOf(ApplicationException.class);
+	}
+
+	// ===== abandonOrphanSession =====
+
+	@Test
+	void abandonOrphanSession_success_revertsAllMembersAndDisbandsSession() {
+		// Given: 호스트가 누락된 세션 (멤버 2명만 활성 상태)
+		Users memberUser1 = createUser(2L);
+		Users memberUser2 = createUser(3L);
+		MatchingSession session = createSession(42L);
+
+		ProjectRequest memberPr1 = createMemberRequest(memberUser1);
+		ReflectionTestUtils.setField(memberPr1, "id", 1L);
+		memberPr1.startMatching();
+
+		ProjectRequest memberPr2 = createMemberRequest(memberUser2);
+		ReflectionTestUtils.setField(memberPr2, "id", 2L);
+		memberPr2.startMatching();
+
+		MatchingMember member1 = createMemberMember(session, memberPr1);
+		MatchingMember member2 = createMemberMember(session, memberPr2);
+
+		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L))
+			.thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
+			.thenReturn(List.of(member1, member2));
+
+		// When
+		matchService.abandonOrphanSession(42L);
+
+		// Then
+		assertThat(memberPr1.getStatus()).isEqualTo(Status.WAITING);
+		assertThat(memberPr2.getStatus()).isEqualTo(Status.WAITING);
+		assertThat(member1.isDeleted()).isTrue();
+		assertThat(member2.isDeleted()).isTrue();
+		assertThat(session.isDeleted()).isTrue();
+
+		ArgumentCaptor<MatchOrphanSessionCleanedEvent> captor =
+			ArgumentCaptor.forClass(MatchOrphanSessionCleanedEvent.class);
+		verify(eventPublisher).publishEvent(captor.capture());
+
+		MatchOrphanSessionCleanedEvent event = captor.getValue();
+		assertThat(event.matchSessionId()).isEqualTo(42L);
+		assertThat(event.restoreMemberUserIds()).containsExactlyInAnyOrder(2L, 3L);
+	}
+
+	@Test
+	void abandonOrphanSession_success_whenNoMembers() {
+		// Given
+		MatchingSession session = createSession(42L);
+
+		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L))
+			.thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
+			.thenReturn(List.of());
+
+		// When
+		matchService.abandonOrphanSession(42L);
+
+		// Then
+		assertThat(session.isDeleted()).isTrue();
+
+		ArgumentCaptor<MatchOrphanSessionCleanedEvent> captor =
+			ArgumentCaptor.forClass(MatchOrphanSessionCleanedEvent.class);
+		verify(eventPublisher).publishEvent(captor.capture());
+		assertThat(captor.getValue().restoreMemberUserIds()).isEmpty();
 	}
 }

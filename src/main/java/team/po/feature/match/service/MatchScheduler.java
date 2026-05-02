@@ -121,7 +121,9 @@ public class MatchScheduler {
 			.orElse(null);
 
 		if (hostPr == null) {
-			log.error("호스트 매칭 요청 조회 실패: sessionId={}", session.getId());
+			log.error("호스트 매칭 요청 조회 실패 - 세션 정리 시작: sessionId={}, memberCount={}", session.getId(),
+				currentMembers.size());
+			matchService.abandonOrphanSession(session.getId());
 			return;
 		}
 

@@ -22,6 +22,7 @@ import team.po.feature.match.event.MatchAcceptedEvent;
 import team.po.feature.match.event.MatchCompletedEvent;
 import team.po.feature.match.event.MatchCreatedEvent;
 import team.po.feature.match.event.MatchMemberCanceledEvent;
+import team.po.feature.match.event.MatchOrphanSessionCleanedEvent;
 import team.po.feature.match.event.MatchRejectedEvent;
 import team.po.feature.match.event.MatchSessionDisbandedEvent;
 import team.po.feature.match.repository.MatchingMemberRepository;
@@ -379,5 +380,35 @@ public class MatchService {
 
 		log.info("매칭 완료 및 프로젝트 그룹 생성: matchId={}, projectGroupId={}",
 			session.getId(), response.projectGroupId());
+	}
+
+	@Transactional
+	public void abandonOrphanSession(Long sessionId) {
+		MatchingSession session = matchingSessionRepository
+			.findByIdAndDeletedAtIsNull(sessionId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
+
+		// 1. 활성 멤버 조회
+		List<MatchingMember> members = matchingMemberRepository
+			.findAllActiveBySessionIdWithFetch(sessionId);
+
+		// 2. 남은 멤버들의 ProjectRequest를 WAITING으로 복귀 + MatchingMember soft delete
+		List<Long> restoredUserIds = new ArrayList<>();
+		for (MatchingMember member : members) {
+			member.getProjectRequest().resetToWaiting();
+			member.cancel();
+			restoredUserIds.add(member.getUser().getId());
+		}
+
+		// 3. 세션 soft delete
+		session.delete();
+
+		// 4. 이벤트 발행 — 멤버들이 다시 매칭 풀로 돌아갔음을 알림
+		eventPublisher.publishEvent(
+			new MatchOrphanSessionCleanedEvent(sessionId, restoredUserIds)
+		);
+
+		log.warn("호스트 누락 세션 정리 완료: sessionId={}, restoredMembers={}",
+			sessionId, restoredUserIds.size());
 	}
 }
