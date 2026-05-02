@@ -152,7 +152,7 @@ public class MatchScheduler {
 					break;
 
 				ProjectRequest selected = candidate.get();
-				matchService.fillVacancy(session, role, selected);
+				matchService.fillVacancy(session.getId(), role, selected);
 
 				// 트랜잭션 완료 후 pool 및 blacklist 업데이트
 				blacklist.add(selected.getUser().getId());

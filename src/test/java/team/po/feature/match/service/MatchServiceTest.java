@@ -24,6 +24,7 @@ import team.po.feature.match.dto.MatchProjectResponse;
 import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
 import team.po.feature.match.event.MatchAcceptedEvent;
+import team.po.feature.match.event.MatchCreatedEvent;
 import team.po.feature.match.event.MatchOrphanSessionCleanedEvent;
 import team.po.feature.match.event.MatchRejectedEvent;
 import team.po.feature.match.repository.MatchingMemberRepository;
@@ -49,8 +50,6 @@ class MatchServiceTest {
 
 	@InjectMocks
 	private MatchService matchService;
-
-	// ===== 픽스처 =====
 
 	private Users createUser(Long id) {
 		Users user = Users.builder()
@@ -376,6 +375,8 @@ class MatchServiceTest {
 			.thenReturn(Optional.of(myPr));
 		when(matchingMemberRepository.findCurrentActiveByUserId(2L))
 			.thenReturn(Optional.of(myMember));
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.of(session));
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
 			.thenReturn(List.of(myMember));
 
@@ -406,6 +407,8 @@ class MatchServiceTest {
 			.thenReturn(Optional.of(hostPr));
 		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
 			.thenReturn(Optional.of(hostMember));
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.of(session));
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
 			.thenReturn(List.of(hostMember, memberMember));
 
@@ -449,7 +452,7 @@ class MatchServiceTest {
 		MatchingMember member1 = createMemberMember(session, memberPr1);
 		MatchingMember member2 = createMemberMember(session, memberPr2);
 
-		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L))
+		when(matchingSessionRepository.findByIdWithLock(42L))
 			.thenReturn(Optional.of(session));
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
 			.thenReturn(List.of(member1, member2));
@@ -478,7 +481,7 @@ class MatchServiceTest {
 		// Given
 		MatchingSession session = createSession(42L);
 
-		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L))
+		when(matchingSessionRepository.findByIdWithLock(42L))
 			.thenReturn(Optional.of(session));
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
 			.thenReturn(List.of());
@@ -493,5 +496,74 @@ class MatchServiceTest {
 			ArgumentCaptor.forClass(MatchOrphanSessionCleanedEvent.class);
 		verify(eventPublisher).publishEvent(captor.capture());
 		assertThat(captor.getValue().restoreMemberUserIds()).isEmpty();
+	}
+
+	// ===== fillVacancy =====
+
+	@Test
+	void fillVacancy_success_addsNewMemberToSession() {
+		// Given: WAITING 상태의 후보가 빈자리에 충원됨
+		Users candidateUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+
+		ProjectRequest candidatePr = createMemberRequest(candidateUser);
+		ReflectionTestUtils.setField(candidatePr, "id", 2L);
+		// candidatePr은 WAITING 상태 (생성 시 기본값)
+
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.of(session));
+
+		// When
+		matchService.fillVacancy(42L, Role.FRONTEND, candidatePr);
+
+		// Then: 후보가 MATCHING 상태로 전환되고 이벤트 발행됨
+		assertThat(candidatePr.getStatus()).isEqualTo(Status.MATCHING);
+		verify(matchingMemberRepository).save(any(MatchingMember.class));
+
+		ArgumentCaptor<MatchCreatedEvent> captor = ArgumentCaptor.forClass(MatchCreatedEvent.class);
+		verify(eventPublisher).publishEvent(captor.capture());
+		assertThat(captor.getValue().matchingSessionId()).isEqualTo(42L);
+		assertThat(captor.getValue().memberUserIds()).containsExactly(2L);
+	}
+
+	@Test
+	void fillVacancy_skip_whenCandidateNotWaiting() {
+		// Given: 락 잡는 사이 후보가 cancel하여 CANCELED 상태로 변경됨
+		Users candidateUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+
+		ProjectRequest candidatePr = createMemberRequest(candidateUser);
+		ReflectionTestUtils.setField(candidatePr, "id", 2L);
+		candidatePr.startMatching();
+		candidatePr.cancel();  // WAITING → MATCHING → CANCELED
+
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.of(session));
+
+		// When
+		matchService.fillVacancy(42L, Role.FRONTEND, candidatePr);
+
+		// Then: 멤버 INSERT도, 이벤트 발행도 일어나지 않음
+		verify(matchingMemberRepository, never()).save(any(MatchingMember.class));
+		verify(eventPublisher, never()).publishEvent(any());
+		assertThat(candidatePr.getStatus()).isEqualTo(Status.CANCELED);  // 상태 그대로
+	}
+
+	@Test
+	void fillVacancy_throwsNotFound_whenSessionDeleted() {
+		// Given: 락 잡으려 했으나 세션이 이미 해산됨 (예: 호스트가 cancel)
+		Users candidateUser = createUser(2L);
+		ProjectRequest candidatePr = createMemberRequest(candidateUser);
+		ReflectionTestUtils.setField(candidatePr, "id", 2L);
+
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.empty());
+
+		// When & Then
+		assertThatThrownBy(() -> matchService.fillVacancy(42L, Role.FRONTEND, candidatePr))
+			.isInstanceOf(ApplicationException.class);
+
+		verify(matchingMemberRepository, never()).save(any(MatchingMember.class));
+		verify(eventPublisher, never()).publishEvent(any());
 	}
 }

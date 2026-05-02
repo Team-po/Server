@@ -81,7 +81,18 @@ public class MatchService {
 
 	// 기존 매칭 세션의 빈자리 채우기
 	@Transactional
-	public void fillVacancy(MatchingSession session, Role role, ProjectRequest candidate) {
+	public void fillVacancy(Long sessionId, Role role, ProjectRequest candidate) {
+		// Session: PESSIMISTIC_LOCK
+		MatchingSession session = matchingSessionRepository
+			.findByIdWithLock(sessionId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
+
+		if (candidate.getStatus() != Status.WAITING) {
+			log.debug("후보 상태 변경됨 - 빈자리 충원 스킵: sessionId={}, candidateUserId={}",
+				sessionId, candidate.getUser().getId());
+			return;
+		}
+
 		// 1. 새로운 멤버 등록 (MatchingMember 생성)
 		matchingMemberRepository.save(
 			MatchingMember.createForMember(session, candidate)
@@ -257,8 +268,14 @@ public class MatchService {
 		MatchingMember me = matchingMemberRepository
 			.findCurrentActiveByUserId(loginUser.getId())
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_DATA_ERROR));
+
+		// Session: PESSIMISTIC_LOCK
+		MatchingSession session = matchingSessionRepository
+			.findByIdWithLock(me.getMatchingSession().getId())
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
+
 		List<MatchingMember> sessionMembers = matchingMemberRepository
-			.findAllActiveBySessionIdWithFetch(me.getMatchingSession().getId());
+			.findAllActiveBySessionIdWithFetch(session.getId());
 
 		// 4. host 여부 확인 후 매칭 취소
 		if (myPr.isHostRequest()) {
@@ -385,7 +402,7 @@ public class MatchService {
 	@Transactional
 	public void abandonOrphanSession(Long sessionId) {
 		MatchingSession session = matchingSessionRepository
-			.findByIdAndDeletedAtIsNull(sessionId)
+			.findByIdWithLock(sessionId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
 		// 1. 활성 멤버 조회
