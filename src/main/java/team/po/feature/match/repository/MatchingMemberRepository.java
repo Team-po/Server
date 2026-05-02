@@ -25,18 +25,8 @@ public interface MatchingMemberRepository extends JpaRepository<MatchingMember, 
 		SELECT mm.projectRequest.user.id FROM MatchingMember mm
 		WHERE mm.matchingSession.id = :sessionId
 		  AND mm.isAccepted = false
-		  AND mm.deletedAt IS NULL
 		""")
 	List<Long> findRejectedUserIdsBySessionId(@Param("sessionId") Long sessionId);
-
-	// 특정 세션의 유효 멤버 리스트 조회 (빈 포지션 확인)
-	@Query("""
-		SELECT mm FROM MatchingMember mm
-		WHERE mm.matchingSession.id = :sessionId
-		  AND mm.deletedAt IS NULL
-		  AND (mm.isAccepted IS NULL OR mm.isAccepted = true)
-		""")
-	List<MatchingMember> findActiveValidMembersBySessionId(@Param("sessionId") Long sessionId);
 
 	// 전원 수락 여부 확인
 	@Query("""
