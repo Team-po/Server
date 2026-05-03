@@ -71,7 +71,8 @@ public class SecurityConfig {
 		configuration.setAllowedOrigins(List.of(
 			"http://localhost:5173",
 			"http://localhost:3000",
-			"https://team-po.cloud"
+			"https://team-po.cloud",
+			"https://www.team-po.cloud"
 		));
 		configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 		configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
