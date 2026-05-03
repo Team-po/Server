@@ -14,6 +14,7 @@ import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.dto.ProjectRequestDto;
 import team.po.feature.match.dto.ProjectRequestStatusResponse;
 import team.po.feature.match.enums.Status;
+import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.repository.UserRepository;
@@ -24,6 +25,7 @@ import team.po.feature.user.repository.UserRepository;
 public class ProjectRequestService {
 	private final ProjectRequestRepository projectRequestRepository;
 	private final UserRepository userRepository;
+	private final MatchingMemberRepository matchingMemberRepository;
 
 	@Transactional
 	public void createProjectRequest(Users loginUser, ProjectRequestDto request) {
@@ -80,6 +82,17 @@ public class ProjectRequestService {
 			List.of(Status.WAITING, Status.MATCHING)
 		).orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND, "진행 중인 매칭 요청이 없습니다."));
 
-		return new ProjectRequestStatusResponse(projectRequest.getStatus());
+		Long matchId = null;
+		// MATCHING: matchId 반환
+		if (projectRequest.getStatus() == Status.MATCHING) {
+			matchId = matchingMemberRepository
+				.findCurrentActiveByUserId(user.getId())
+				.map(m -> m.getMatchingSession().getId())
+				.orElseThrow(() -> {
+					log.error("활성 매칭 멤버 데이터 부정합: userId={}", user.getId());
+					return new ApplicationException(ErrorCode.MATCH_DATA_ERROR);
+				});
+		}
+		return new ProjectRequestStatusResponse(projectRequest.getStatus(), matchId);
 	}
 }
