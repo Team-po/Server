@@ -13,6 +13,18 @@ spring:
   flyway:
     enabled: false
 
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: test-github-client-id
+            client-secret: test-github-client-secret
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope:
+              - read:user
+              - user:email
+
 cloud:
   aws:
     s3:

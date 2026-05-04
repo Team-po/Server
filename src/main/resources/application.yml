@@ -2,6 +2,7 @@ spring:
   config:
     import:
       - optional:file:./config/email-secret.yml
+      - optional:file:./config/github-app-secret.yml
 
   jackson:
     # API 에서 내려가는 시간 직렬화 기준을 UTC 로 통일한다.
@@ -41,6 +42,18 @@ spring:
     auth-code-ttl: ${MAIL_AUTH_CODE_TTL:${email.auth-code-ttl:PT5M}}
     verified-ttl: ${MAIL_VERIFIED_TTL:${email.verified-ttl:PT10M}}
     auth-code-subject: ${MAIL_AUTH_CODE_SUBJECT:${email.auth-code-subject:TeamPo 이메일 인증번호}}
+
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: ${GITHUB_CLIENT_ID:${github.client-id}}
+            client-secret: ${GITHUB_CLIENT_SECRET:${github.client-secret}}
+            redirect-uri: ${GITHUB_REDIRECT_URI:${github.redirect-uri}}
+            scope:
+              - read:user
+              - user:email
 
 cloud:
   aws:
