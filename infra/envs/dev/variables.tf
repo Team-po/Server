@@ -39,7 +39,7 @@ variable "log_retention_days" {
 }
 
 variable "app_port" {
-  description = "EC2에서 외부에 열어둘 HTTP 포트. API 컨테이너는 host 80 -> container 8080으로 매핑한다."
+  description = "EC2에서 외부에 열어둘 HTTP 포트. 현재는 Nginx reverse proxy가 외부 80/443을 점유하고 API는 localhost:8080 및 Docker teampo 네트워크에만 노출한다."
   type        = number
   default     = 80
 }
@@ -59,6 +59,12 @@ variable "ssh_ingress_cidr_blocks" {
 variable "app_key_name" {
   description = "EC2 SSH 접속에 사용할 AWS key pair 이름. null이면 key pair를 연결하지 않는다."
   type        = string
+}
+
+variable "app_ami_id" {
+  description = "API EC2 최초 생성 시 사용할 AMI ID. null이면 현재 리전의 최신 Amazon Linux 2023 AMI를 조회한다. 생성 이후 AMI 변경은 우발적인 EC2 교체를 막기 위해 무시한다."
+  type        = string
+  default     = null
 }
 
 variable "app_instance_type" {
