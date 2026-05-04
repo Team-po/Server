@@ -48,4 +48,8 @@ resource "aws_instance" "app" {
   tags = {
     Name = "${local.name_prefix}-api"
   }
+
+  lifecycle {
+    ignore_changes = [ami]
+  }
 }

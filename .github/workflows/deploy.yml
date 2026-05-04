@@ -103,10 +103,10 @@ jobs:
               fi
 
               sudo docker network connect teampo "$NGINX_CONTAINER_NAME" 2>/dev/null || true
-              sudo test -r "$NGINX_CONF_PATH"
-              sudo sed -i.bak -E "s#proxy_pass http://[^;]+;#proxy_pass http://teampo-api:${API_CONTAINER_PORT};#" "$NGINX_CONF_PATH"
-              sudo docker exec "$NGINX_CONTAINER_NAME" nginx -t
-              sudo docker exec "$NGINX_CONTAINER_NAME" nginx -s reload
+              sudo test -r "$NGINX_CONF_PATH" || return 1
+              sudo sed -i.bak -E "s#proxy_pass http://[^;]+;#proxy_pass http://teampo-api:${API_CONTAINER_PORT};#" "$NGINX_CONF_PATH" || return 1
+              sudo docker exec "$NGINX_CONTAINER_NAME" nginx -t || return 1
+              sudo docker exec "$NGINX_CONTAINER_NAME" nginx -s reload || return 1
             }
 
             rollback_api() {

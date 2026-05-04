@@ -62,9 +62,9 @@ variable "app_key_name" {
 }
 
 variable "app_ami_id" {
-  description = "API EC2에 사용할 AMI ID. null이면 최신 Amazon Linux 2023 AMI를 사용하므로 기존 인스턴스 교체가 발생할 수 있다."
+  description = "API EC2 최초 생성 시 사용할 AMI ID. null이면 현재 리전의 최신 Amazon Linux 2023 AMI를 조회한다. 생성 이후 AMI 변경은 우발적인 EC2 교체를 막기 위해 무시한다."
   type        = string
-  default     = "ami-0c003e98ceffee43e"
+  default     = null
 }
 
 variable "app_instance_type" {
