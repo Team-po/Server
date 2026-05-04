@@ -61,6 +61,14 @@ jobs:
             AWS_REGION="${{ secrets.AWS_REGION }}"
             CLOUDWATCH_LOG_GROUP_NAME="/aws/teampo/dev/api"
             ECR_REGISTRY="${ECR_REPOSITORY_URL%/*}"
+            API_ENV_FILE="/opt/teampo/api.env"
+            API_HOST_PORT="8080"
+            API_CONTAINER_PORT="8080"
+            API_HEALTH_URL="http://127.0.0.1:${API_HOST_PORT}/swagger-ui/index.html"
+            CANDIDATE_HOST_PORT="18080"
+            CANDIDATE_HEALTH_URL="http://127.0.0.1:${CANDIDATE_HOST_PORT}/swagger-ui/index.html"
+            NGINX_CONTAINER_NAME="team-po-nginx"
+            NGINX_CONF_PATH="/home/ec2-user/proxy-stack/nginx/conf.d/default.conf"
 
             wait_for_http() {
               url="$1"
@@ -79,24 +87,37 @@ jobs:
                 --name teampo-api \
                 --restart unless-stopped \
                 --network teampo \
-                --env-file /opt/teampo/api.env \
+                --env-file "$API_ENV_FILE" \
                 --log-driver=awslogs \
                 --log-opt awslogs-region="$AWS_REGION" \
                 --log-opt awslogs-group="$CLOUDWATCH_LOG_GROUP_NAME" \
                 --log-opt awslogs-stream=api \
-                -p 80:8080 \
+                -p "127.0.0.1:${API_HOST_PORT}:${API_CONTAINER_PORT}" \
                 "$image"
+            }
+
+            ensure_nginx_proxy() {
+              if ! sudo docker inspect "$NGINX_CONTAINER_NAME" >/dev/null 2>&1; then
+                echo "Nginx container '$NGINX_CONTAINER_NAME' is not running or does not exist."
+                return 1
+              fi
+
+              sudo docker network connect teampo "$NGINX_CONTAINER_NAME" 2>/dev/null || true
+              sudo test -r "$NGINX_CONF_PATH"
+              sudo sed -i.bak -E "s#proxy_pass http://[^;]+;#proxy_pass http://teampo-api:${API_CONTAINER_PORT};#" "$NGINX_CONF_PATH"
+              sudo docker exec "$NGINX_CONTAINER_NAME" nginx -t
+              sudo docker exec "$NGINX_CONTAINER_NAME" nginx -s reload
             }
 
             rollback_api() {
               if [ -n "$PREVIOUS_IMAGE_ID" ]; then
                 sudo docker rm -f teampo-api 2>/dev/null || true
                 run_api_container "$PREVIOUS_IMAGE_ID"
-                wait_for_http http://localhost/swagger-ui/index.html
+                wait_for_http "$API_HEALTH_URL"
               fi
             }
 
-            sudo test -r /opt/teampo/api.env
+            sudo test -r "$API_ENV_FILE"
             sudo docker network create teampo 2>/dev/null || true
 
             aws ecr get-login-password --region "$AWS_REGION" \
@@ -111,15 +132,15 @@ jobs:
               --name teampo-api-candidate \
               --restart no \
               --network teampo \
-              --env-file /opt/teampo/api.env \
+              --env-file "$API_ENV_FILE" \
               --log-driver=awslogs \
               --log-opt awslogs-region="$AWS_REGION" \
               --log-opt awslogs-group="$CLOUDWATCH_LOG_GROUP_NAME" \
               --log-opt awslogs-stream=api-candidate \
-              -p 127.0.0.1:18080:8080 \
+              -p "127.0.0.1:${CANDIDATE_HOST_PORT}:${API_CONTAINER_PORT}" \
               "${ECR_REPOSITORY_URL}:latest"
 
-            if ! wait_for_http http://127.0.0.1:18080/swagger-ui/index.html; then
+            if ! wait_for_http "$CANDIDATE_HEALTH_URL"; then
               sudo docker ps -a --filter name=teampo-api-candidate
               sudo docker rm -f teampo-api-candidate 2>/dev/null || true
               exit 1
@@ -133,7 +154,18 @@ jobs:
               exit 1
             fi
 
-            if ! wait_for_http http://localhost/swagger-ui/index.html; then
+            if ! wait_for_http "$API_HEALTH_URL"; then
+              sudo docker ps -a --filter name=teampo-api
+              rollback_api
+              exit 1
+            fi
+
+            if ! ensure_nginx_proxy; then
+              rollback_api
+              exit 1
+            fi
+
+            if ! wait_for_http https://api.team-po.cloud/swagger-ui/index.html; then
               sudo docker ps -a --filter name=teampo-api
               rollback_api
               exit 1

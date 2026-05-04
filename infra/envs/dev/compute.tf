@@ -19,7 +19,7 @@ data "aws_ami" "amazon_linux_2023" {
 }
 
 resource "aws_instance" "app" {
-  ami                         = data.aws_ami.amazon_linux_2023.id
+  ami                         = coalesce(var.app_ami_id, data.aws_ami.amazon_linux_2023.id)
   instance_type               = var.app_instance_type
   subnet_id                   = local.app_subnet_id
   vpc_security_group_ids      = [aws_security_group.app.id]

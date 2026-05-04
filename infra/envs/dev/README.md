@@ -47,5 +47,5 @@ AWS_PROFILE=teampo-terraform terraform apply -var 'db_password=<secure-password>
 - `app_ingress_cidr_blocks` 기본값은 dev 편의를 위해 전체 공개입니다. 운영 전에는 필요한 CIDR로 제한하세요.
 - `ssh_ingress_cidr_blocks` 기본값도 전체 공개입니다. 실제 적용 전에는 본인 IP `/32`로 제한하는 것을 권장합니다.
 - S3 프로필 이미지 버킷은 객체 조회(`s3:GetObject`)를 public으로 허용합니다. 업로드/삭제 권한은 public으로 열지 않습니다.
-- EC2 security group은 외부 HTTP 포트 `80`과 HTTPS 포트 `443`을 엽니다. API 컨테이너는 배포 시 `-p 80:8080`으로 실행하고, HTTPS는 EC2 내부 reverse proxy가 인증서를 처리한 뒤 API로 프록시하도록 구성하세요.
+- EC2 security group은 외부 HTTP 포트 `80`과 HTTPS 포트 `443`을 엽니다. Nginx reverse proxy가 외부 포트를 점유하고, API 컨테이너는 host `127.0.0.1:8080`과 Docker `teampo` 네트워크에만 노출한 뒤 Nginx가 `teampo-api:8080`으로 프록시하도록 구성하세요.
 - RDS master password는 `db_password` 변수로 주입합니다. `terraform.tfvars`는 Git에 커밋하지 마세요.
