@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -36,4 +37,15 @@ public class GithubAccount {
 	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
 	private Instant createdAt;
 
+	@Builder
+	public GithubAccount(Users user, Long githubUserId, String githubUsername) {
+		this.user = user;
+		this.githubUserId = githubUserId;
+		this.githubUsername = githubUsername;
+	}
+
+	public void reconnectUser(Users user, String githubUsername) {
+		this.user = user;
+		this.githubUsername = githubUsername;
+	}
 }

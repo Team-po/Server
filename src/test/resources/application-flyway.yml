@@ -37,3 +37,8 @@ jwt:
   secret: YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
   access-token-expiration: 30m
   refresh-token-expiration: 14d
+
+github:
+  oauth:
+    success-redirect-uri: http://localhost:5173/oauth/github/callback
+    authorization-code-ttl: PT3M
