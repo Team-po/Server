@@ -19,6 +19,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -188,6 +189,25 @@ class GithubOAuthServiceTest {
 		assertThat(savedGithubAccount.getUser()).isSameAs(savedUser);
 		assertThat(savedGithubAccount.getGithubUserId()).isEqualTo(123L);
 		assertThat(savedGithubAccount.getGithubUsername()).isEqualTo("octocat");
+	}
+
+	@Test
+	void exchangeAuthorizationCode_throwsEmailAlreadyExistsWhenUserSaveConflicts() {
+		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", 4);
+		when(redisService.getAndDeleteStringValue(AUTHORIZATION_CODE_KEY))
+			.thenReturn(signUpPayload(123L, "octocat", "test@email.com"));
+		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.empty());
+		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
+		when(userRepository.save(any(Users.class)))
+			.thenThrow(new DataIntegrityViolationException("Duplicate entry for uq_users_email"));
+
+		assertThatThrownBy(() -> githubOAuthService.exchangeAuthorizationCode(request))
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("이미 가입된 이메일입니다.")
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.EMAIL_ALREADY_EXISTS);
+		verify(githubAccountRepository, never()).save(any());
+		verify(jwtTokenProvider, never()).generateToken(anyLong(), anyString());
 	}
 
 	@Test

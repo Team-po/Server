@@ -130,7 +130,11 @@ public class GithubOAuthService {
 			.temperature(50)
 			.build();
 
-		return userRepository.save(user);
+		try {
+			return userRepository.save(user);
+		} catch (DataIntegrityViolationException exception) {
+			throw new ApplicationException(ErrorCode.EMAIL_ALREADY_EXISTS, "이미 가입된 이메일입니다.", exception);
+		}
 	}
 
 	private String getGithubEmail(OAuth2User oAuth2User, String githubAccessToken) {
