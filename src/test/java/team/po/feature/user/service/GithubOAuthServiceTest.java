@@ -72,7 +72,7 @@ class GithubOAuthServiceTest {
 		Users user = githubUser(1L, "test@email.com", "octocat", 3);
 		GithubAccount githubAccount = githubAccount(user, 123L, "octocat");
 		OAuth2User oAuth2User = githubOAuth2User(123L, "octocat", " Test@Email.com ");
-		when(githubAccountRepository.findByGithubUserId(123L)).thenReturn(Optional.of(githubAccount));
+		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.of(githubAccount));
 
 		GithubAuthorizationCode authorizationCode =
 			githubOAuthService.createAuthorizationCode(oAuth2User, "github-access-token");
@@ -90,7 +90,7 @@ class GithubOAuthServiceTest {
 	@Test
 	void createAuthorizationCode_returnsSignUpCodeWhenGithubAccountDoesNotExist() {
 		OAuth2User oAuth2User = githubOAuth2User(123L, "octocat", " Test@Email.com ");
-		when(githubAccountRepository.findByGithubUserId(123L)).thenReturn(Optional.empty());
+		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.empty());
 
 		GithubAuthorizationCode authorizationCode =
 			githubOAuthService.createAuthorizationCode(oAuth2User, "github-access-token");
@@ -157,7 +157,7 @@ class GithubOAuthServiceTest {
 		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", 4);
 		when(redisService.getAndDeleteStringValue(AUTHORIZATION_CODE_KEY))
 			.thenReturn(signUpPayload(123L, "octocat", "test@email.com"));
-		when(githubAccountRepository.findByGithubUserId(123L)).thenReturn(Optional.empty());
+		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.empty());
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
 		when(userRepository.save(any(Users.class))).thenAnswer(invocation -> {
 			Users savedUser = invocation.getArgument(0);
@@ -191,14 +191,15 @@ class GithubOAuthServiceTest {
 	}
 
 	@Test
-	void exchangeAuthorizationCode_reconnectsGithubAccountWhenPreviousUserWasDeleted() {
+	void exchangeAuthorizationCode_createsNewGithubAccountWhenPreviousGithubAccountWasSoftDeleted() {
 		Users deletedUser = githubUser(1L, "deleted-test@email.com", "old-octocat", 2);
 		deletedUser.softDelete(Instant.parse("2026-05-06T09:00:00Z"), "deleted-test@email.com");
 		GithubAccount githubAccount = githubAccount(deletedUser, 123L, "old-octocat");
+		githubAccount.softDelete(Instant.parse("2026-05-06T09:00:00Z"));
 		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", 5);
 		when(redisService.getAndDeleteStringValue(AUTHORIZATION_CODE_KEY))
 			.thenReturn(signUpPayload(123L, "octocat", "test@email.com"));
-		when(githubAccountRepository.findByGithubUserId(123L)).thenReturn(Optional.of(githubAccount));
+		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.empty());
 		when(userRepository.save(any(Users.class))).thenAnswer(invocation -> {
 			Users savedUser = invocation.getArgument(0);
 			ReflectionTestUtils.setField(savedUser, "id", 2L);
@@ -210,12 +211,15 @@ class GithubOAuthServiceTest {
 		SignInResponse response = githubOAuthService.exchangeAuthorizationCode(request);
 
 		assertThat(response.accessToken()).isEqualTo("access-token");
-		assertThat(githubAccount.getUser().getId()).isEqualTo(2L);
-		assertThat(githubAccount.getUser().getEmail()).isEqualTo("test@email.com");
-		assertThat(githubAccount.getUser().getLevel()).isEqualTo(5);
-		assertThat(githubAccount.getGithubUsername()).isEqualTo("octocat");
-		verify(githubAccountRepository, never()).save(any());
-		verify(userRepository, never()).existsByEmail(anyString());
+		assertThat(githubAccount.getUser()).isSameAs(deletedUser);
+		assertThat(githubAccount.getDeletedAt()).isNotNull();
+
+		ArgumentCaptor<GithubAccount> githubAccountCaptor = ArgumentCaptor.forClass(GithubAccount.class);
+		verify(githubAccountRepository).save(githubAccountCaptor.capture());
+		GithubAccount savedGithubAccount = githubAccountCaptor.getValue();
+		assertThat(savedGithubAccount.getUser().getId()).isEqualTo(2L);
+		assertThat(savedGithubAccount.getGithubUserId()).isEqualTo(123L);
+		assertThat(savedGithubAccount.getGithubUsername()).isEqualTo("octocat");
 	}
 
 	@Test
@@ -225,7 +229,7 @@ class GithubOAuthServiceTest {
 		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", 5);
 		when(redisService.getAndDeleteStringValue(AUTHORIZATION_CODE_KEY))
 			.thenReturn(signUpPayload(123L, "octocat", "test@email.com"));
-		when(githubAccountRepository.findByGithubUserId(123L)).thenReturn(Optional.of(githubAccount));
+		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.of(githubAccount));
 		when(jwtTokenProvider.generateToken(1L, "test@email.com"))
 			.thenReturn(jwtToken());
 

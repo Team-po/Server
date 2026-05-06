@@ -37,6 +37,9 @@ public class GithubAccount {
 	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
 	private Instant createdAt;
 
+	@Column(name = "deleted_at")
+	private Instant deletedAt;
+
 	@Builder
 	public GithubAccount(Users user, Long githubUserId, String githubUsername) {
 		this.user = user;
@@ -44,8 +47,7 @@ public class GithubAccount {
 		this.githubUsername = githubUsername;
 	}
 
-	public void reconnectUser(Users user, String githubUsername) {
-		this.user = user;
-		this.githubUsername = githubUsername;
+	public void softDelete(Instant deletedAt) {
+		this.deletedAt = deletedAt;
 	}
 }

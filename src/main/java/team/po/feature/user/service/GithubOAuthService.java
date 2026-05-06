@@ -71,7 +71,7 @@ public class GithubOAuthService {
 		GithubAuthorizationPayload payload = GithubAuthorizationPayload.deserialize(payloadValue);
 		Users user = switch (payload.type()) {
 			case LOGIN -> getLoginUser(payload);
-			case SIGN_UP -> signUpOrReSignUpGithubUser(payload, request.level());
+			case SIGN_UP -> signUpGithubUser(payload, request.level());
 		};
 
 		JwtToken jwtToken = jwtTokenProvider.generateToken(user.getId(), user.getEmail());
@@ -79,8 +79,7 @@ public class GithubOAuthService {
 	}
 
 	private GithubAuthorizationPayload createAuthorizationPayload(Long githubUserId, String githubUsername, String email) {
-		return githubAccountRepository.findByGithubUserId(githubUserId)
-			.filter(githubAccount -> githubAccount.getUser().getDeletedAt() == null)
+		return githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(githubUserId)
 			.map(githubAccount -> GithubAuthorizationPayload.login(githubAccount.getUser().getId()))
 			.orElseGet(() -> GithubAuthorizationPayload.signUp(githubUserId, githubUsername, email));
 	}
@@ -90,31 +89,14 @@ public class GithubOAuthService {
 			.orElseThrow(() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
 	}
 
-	private Users signUpOrReSignUpGithubUser(GithubAuthorizationPayload payload, Integer level) {
-		validateRequiredLevel(level);
-		return githubAccountRepository.findByGithubUserId(payload.githubUserId())
-			.map(githubAccount -> getOrReSignUpGithubUser(githubAccount, payload, level))
-			.orElseGet(() -> signUpGithubUser(payload, level));
-	}
-
-	private void validateRequiredLevel(Integer level) {
-		if (level == null) {
-			throw new ApplicationException(ErrorCode.INVALID_INPUT_FIELD, "레벨 선택은 필수입니다.");
-		}
-	}
-
-	private Users getOrReSignUpGithubUser(GithubAccount githubAccount, GithubAuthorizationPayload payload, Integer level) {
-		Users user = githubAccount.getUser();
-		if (user.getDeletedAt() == null) {
-			return user;
-		}
-
-		Users reSignedUpUser = createGithubUser(payload, level);
-		githubAccount.reconnectUser(reSignedUpUser, payload.githubUsername());
-		return reSignedUpUser;
-	}
-
 	private Users signUpGithubUser(GithubAuthorizationPayload payload, Integer level) {
+		validateRequiredLevel(level);
+		return githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(payload.githubUserId())
+			.map(GithubAccount::getUser)
+			.orElseGet(() -> createGithubUserAndAccount(payload, level));
+	}
+
+	private Users createGithubUserAndAccount(GithubAuthorizationPayload payload, Integer level) {
 		if (userRepository.existsByEmail(payload.email())) {
 			throw new ApplicationException(ErrorCode.EMAIL_ALREADY_EXISTS, "이미 가입된 이메일입니다.");
 		}
@@ -132,6 +114,12 @@ public class GithubOAuthService {
 		}
 
 		return savedUser;
+	}
+
+	private void validateRequiredLevel(Integer level) {
+		if (level == null) {
+			throw new ApplicationException(ErrorCode.INVALID_INPUT_FIELD, "레벨 선택은 필수입니다.");
+		}
 	}
 
 	private Users createGithubUser(GithubAuthorizationPayload payload, Integer level) {
