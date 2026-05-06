@@ -32,6 +32,7 @@ import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.dto.GithubAuthorizationCode;
 import team.po.feature.user.dto.OAuthAuthorizationCodeRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.repository.GithubAccountRepository;
@@ -73,7 +74,7 @@ class GithubOAuthServiceTest {
 		OAuth2User oAuth2User = githubOAuth2User(123L, "octocat", " Test@Email.com ");
 		when(githubAccountRepository.findByGithubUserId(123L)).thenReturn(Optional.of(githubAccount));
 
-		GithubOAuthService.GithubAuthorizationCode authorizationCode =
+		GithubAuthorizationCode authorizationCode =
 			githubOAuthService.createAuthorizationCode(oAuth2User, "github-access-token");
 
 		assertThat(authorizationCode.code()).isNotBlank();
@@ -91,7 +92,7 @@ class GithubOAuthServiceTest {
 		OAuth2User oAuth2User = githubOAuth2User(123L, "octocat", " Test@Email.com ");
 		when(githubAccountRepository.findByGithubUserId(123L)).thenReturn(Optional.empty());
 
-		GithubOAuthService.GithubAuthorizationCode authorizationCode =
+		GithubAuthorizationCode authorizationCode =
 			githubOAuthService.createAuthorizationCode(oAuth2User, "github-access-token");
 
 		assertThat(authorizationCode.code()).isNotBlank();

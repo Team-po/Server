@@ -16,8 +16,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import team.po.feature.user.dto.GithubAuthorizationCode;
 import team.po.feature.user.service.GithubOAuthService;
-import team.po.feature.user.service.GithubOAuthService.GithubAuthorizationCode;
 
 @Component
 @RequiredArgsConstructor

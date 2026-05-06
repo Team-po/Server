@@ -25,6 +25,7 @@ import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.dto.GithubAuthorizationCode;
 import team.po.feature.user.dto.OAuthAuthorizationCodeRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.repository.GithubAccountRepository;
@@ -197,9 +198,6 @@ public class GithubOAuthService {
 
 	private String createAuthorizationCodeKey(String authorizationCode) {
 		return AUTHORIZATION_CODE_PREFIX + authorizationCode;
-	}
-
-	public record GithubAuthorizationCode(String code, boolean onboardingRequired) {
 	}
 
 	private record GithubEmail(
