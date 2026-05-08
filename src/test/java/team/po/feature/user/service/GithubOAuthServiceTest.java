@@ -78,10 +78,10 @@ class GithubOAuthServiceTest {
 		GithubAuthorizationCode authorizationCode =
 			githubOAuthService.createAuthorizationCode(oAuth2User, "github-access-token");
 
-		assertThat(authorizationCode.code()).isNotBlank();
+		assertThat(authorizationCode.authorizationCode()).isNotBlank();
 		assertThat(authorizationCode.onboardingRequired()).isFalse();
 		verify(redisService).setValue(
-			eq("github-oauth-code:" + authorizationCode.code()),
+			eq("github-oauth-code:" + authorizationCode.authorizationCode()),
 			eq("LOGIN.1"),
 			eq(AUTHORIZATION_CODE_TTL)
 		);
@@ -96,12 +96,12 @@ class GithubOAuthServiceTest {
 		GithubAuthorizationCode authorizationCode =
 			githubOAuthService.createAuthorizationCode(oAuth2User, "github-access-token");
 
-		assertThat(authorizationCode.code()).isNotBlank();
+		assertThat(authorizationCode.authorizationCode()).isNotBlank();
 		assertThat(authorizationCode.onboardingRequired()).isTrue();
 
 		ArgumentCaptor<Object> payloadCaptor = ArgumentCaptor.forClass(Object.class);
 		verify(redisService).setValue(
-			eq("github-oauth-code:" + authorizationCode.code()),
+			eq("github-oauth-code:" + authorizationCode.authorizationCode()),
 			payloadCaptor.capture(),
 			eq(AUTHORIZATION_CODE_TTL)
 		);

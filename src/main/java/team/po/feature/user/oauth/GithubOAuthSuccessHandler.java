@@ -46,7 +46,7 @@ public class GithubOAuthSuccessHandler implements AuthenticationSuccessHandler {
 			accessToken
 		);
 		String redirectUri = UriComponentsBuilder.fromUriString(successRedirectUri)
-			.queryParam("code", authorizationCode.code())
+			.queryParam("code", authorizationCode.authorizationCode())
 			.queryParam("onboardingRequired", authorizationCode.onboardingRequired())
 			.build()
 			.toUriString();
