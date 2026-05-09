@@ -24,6 +24,8 @@ public enum ErrorCode {
 	EMAIL_SEND_FAILED(HttpStatus.BAD_GATEWAY, "EMAIL_SEND_FAILED", "인증번호 이메일 발송에 실패했습니다."),
 	INVALID_GITHUB_OAUTH_USER(HttpStatus.BAD_REQUEST, "INVALID_GITHUB_OAUTH_USER", "GitHub 사용자 정보를 확인할 수 없습니다."),
 	GITHUB_EMAIL_NOT_FOUND(HttpStatus.BAD_REQUEST, "GITHUB_EMAIL_NOT_FOUND", "인증된 GitHub 이메일을 찾을 수 없습니다."),
+	GITHUB_LOGIN_USER_NOT_FOUND(HttpStatus.INTERNAL_SERVER_ERROR, "GITHUB_LOGIN_USER_NOT_FOUND",
+		"GitHub 로그인 사용자 정보를 찾을 수 없습니다."),
 	INVALID_OAUTH_AUTHORIZATION_CODE(HttpStatus.UNAUTHORIZED, "INVALID_OAUTH_AUTHORIZATION_CODE",
 		"OAuth 인가 코드가 만료되었거나 올바르지 않습니다."),
 	INVALID_PROJECT_GROUP_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_PROJECT_GROUP_REQUEST", "팀 스페이스 생성 요청이 올바르지 않습니다."),

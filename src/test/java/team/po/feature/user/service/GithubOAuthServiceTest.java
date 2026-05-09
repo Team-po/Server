@@ -128,6 +128,18 @@ class GithubOAuthServiceTest {
 	}
 
 	@Test
+	void exchangeAuthorizationCode_throwsServerErrorWhenLoginUserDoesNotExist() {
+		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", null);
+		when(redisService.getAndDeleteStringValue(AUTHORIZATION_CODE_KEY)).thenReturn("LOGIN.1");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> githubOAuthService.exchangeAuthorizationCode(request))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.GITHUB_LOGIN_USER_NOT_FOUND);
+	}
+
+	@Test
 	void exchangeAuthorizationCode_throwsWhenAuthorizationCodeIsExpiredOrInvalid() {
 		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", null);
 		when(redisService.getAndDeleteStringValue(AUTHORIZATION_CODE_KEY)).thenReturn(null);

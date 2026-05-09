@@ -86,7 +86,7 @@ public class GithubOAuthService {
 
 	private Users getLoginUser(GithubAuthorizationPayload payload) {
 		return userRepository.findByIdAndDeletedAtIsNull(payload.userId())
-			.orElseThrow(() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.GITHUB_LOGIN_USER_NOT_FOUND));
 	}
 
 	private Users signUpGithubUser(GithubAuthorizationPayload payload, Integer level) {
