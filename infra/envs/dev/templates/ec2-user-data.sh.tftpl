@@ -1,0 +1,23 @@
+#!/bin/bash
+set -euxo pipefail
+
+dnf update -y
+dnf install -y docker amazon-cloudwatch-agent
+
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+docker network create teampo || true
+docker volume create teampo-redis-data || true
+
+docker rm -f teampo-redis || true
+docker run -d \
+  --name teampo-redis \
+  --restart unless-stopped \
+  --network teampo \
+  --log-driver=awslogs \
+  --log-opt awslogs-region=${aws_region} \
+  --log-opt awslogs-group=${log_group_name} \
+  --log-opt awslogs-stream=redis \
+  -v teampo-redis-data:/data \
+  redis:7-alpine redis-server --appendonly yes

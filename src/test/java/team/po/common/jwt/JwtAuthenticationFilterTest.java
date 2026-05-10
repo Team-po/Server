@@ -5,6 +5,8 @@ import static org.mockito.Mockito.*;
 
 import java.io.IOException;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,7 +51,7 @@ class JwtAuthenticationFilterTest {
 
 	@Test
 	void doFilter_returnsUnauthorizedWhenAccessTokenIsInvalid() throws ServletException, IOException {
-		JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtTokenProvider);
+		JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtTokenProvider, new ObjectMapper());
 		MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/protected");
 		MockHttpServletResponse response = new MockHttpServletResponse();
 		request.addHeader("Authorization", "Bearer expired-access-token");
@@ -60,7 +62,9 @@ class JwtAuthenticationFilterTest {
 		verify(jwtTokenProvider).validateAccessToken("expired-access-token");
 		verify(filterChain, never()).doFilter(request, response);
 		assertThat(response.getStatus()).isEqualTo(401);
-		assertThat(response.getContentAsString()).isEqualTo("{\"message\":\"Invalid or expired access token.\"}");
+		assertThat(response.getContentAsString())
+			.contains("\"code\":\"INVALID_TOKEN\"")
+			.contains("유효하지 않거나 만료된 액세스 토큰입니다.");
 	}
 
 	@Test

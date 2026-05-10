@@ -1,0 +1,174 @@
+name: Deploy API
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      ECR_REPOSITORY_URL: ${{ secrets.ECR_REPOSITORY_URL }}
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        run: |
+          ECR_REGISTRY="${ECR_REPOSITORY_URL%/*}"
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+      - name: Build and push Docker image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --tag "${ECR_REPOSITORY_URL}:latest" \
+            --tag "${ECR_REPOSITORY_URL}:${GITHUB_SHA}" \
+            --push \
+            .
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            set -eu
+
+            ECR_REPOSITORY_URL="${{ secrets.ECR_REPOSITORY_URL }}"
+            AWS_REGION="${{ secrets.AWS_REGION }}"
+            CLOUDWATCH_LOG_GROUP_NAME="/aws/teampo/dev/api"
+            ECR_REGISTRY="${ECR_REPOSITORY_URL%/*}"
+            API_ENV_FILE="/opt/teampo/api.env"
+            API_HOST_PORT="8080"
+            API_CONTAINER_PORT="8080"
+            API_HEALTH_URL="http://127.0.0.1:${API_HOST_PORT}/swagger-ui/index.html"
+            CANDIDATE_HOST_PORT="18080"
+            CANDIDATE_HEALTH_URL="http://127.0.0.1:${CANDIDATE_HOST_PORT}/swagger-ui/index.html"
+            NGINX_CONTAINER_NAME="team-po-nginx"
+            NGINX_CONF_PATH="/home/ec2-user/proxy-stack/nginx/conf.d/default.conf"
+
+            wait_for_http() {
+              url="$1"
+              for _ in $(seq 1 30); do
+                if curl -fsS "$url" >/dev/null; then
+                  return 0
+                fi
+                sleep 2
+              done
+              return 1
+            }
+
+            run_api_container() {
+              image="$1"
+              sudo docker run -d \
+                --name teampo-api \
+                --restart unless-stopped \
+                --network teampo \
+                --env-file "$API_ENV_FILE" \
+                --log-driver=awslogs \
+                --log-opt awslogs-region="$AWS_REGION" \
+                --log-opt awslogs-group="$CLOUDWATCH_LOG_GROUP_NAME" \
+                --log-opt awslogs-stream=api \
+                -p "127.0.0.1:${API_HOST_PORT}:${API_CONTAINER_PORT}" \
+                "$image"
+            }
+
+            ensure_nginx_proxy() {
+              if ! sudo docker inspect "$NGINX_CONTAINER_NAME" >/dev/null 2>&1; then
+                echo "Nginx container '$NGINX_CONTAINER_NAME' is not running or does not exist."
+                return 1
+              fi
+
+              sudo docker network connect teampo "$NGINX_CONTAINER_NAME" 2>/dev/null || true
+              sudo test -r "$NGINX_CONF_PATH" || return 1
+              sudo sed -i.bak -E "s#proxy_pass http://[^;]+;#proxy_pass http://teampo-api:${API_CONTAINER_PORT};#" "$NGINX_CONF_PATH" || return 1
+              sudo docker exec "$NGINX_CONTAINER_NAME" nginx -t || return 1
+              sudo docker exec "$NGINX_CONTAINER_NAME" nginx -s reload || return 1
+            }
+
+            rollback_api() {
+              if [ -n "$PREVIOUS_IMAGE_ID" ]; then
+                sudo docker rm -f teampo-api 2>/dev/null || true
+                run_api_container "$PREVIOUS_IMAGE_ID"
+                wait_for_http "$API_HEALTH_URL"
+              fi
+            }
+
+            sudo test -r "$API_ENV_FILE"
+            sudo docker network create teampo 2>/dev/null || true
+
+            aws ecr get-login-password --region "$AWS_REGION" \
+              | sudo docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+            PREVIOUS_IMAGE_ID="$(sudo docker inspect -f '{{.Image}}' teampo-api 2>/dev/null || true)"
+
+            sudo docker pull "${ECR_REPOSITORY_URL}:latest"
+
+            sudo docker rm -f teampo-api-candidate 2>/dev/null || true
+            sudo docker run -d \
+              --name teampo-api-candidate \
+              --restart no \
+              --network teampo \
+              --env-file "$API_ENV_FILE" \
+              --log-driver=awslogs \
+              --log-opt awslogs-region="$AWS_REGION" \
+              --log-opt awslogs-group="$CLOUDWATCH_LOG_GROUP_NAME" \
+              --log-opt awslogs-stream=api-candidate \
+              -p "127.0.0.1:${CANDIDATE_HOST_PORT}:${API_CONTAINER_PORT}" \
+              "${ECR_REPOSITORY_URL}:latest"
+
+            if ! wait_for_http "$CANDIDATE_HEALTH_URL"; then
+              sudo docker ps -a --filter name=teampo-api-candidate
+              sudo docker rm -f teampo-api-candidate 2>/dev/null || true
+              exit 1
+            fi
+
+            sudo docker rm -f teampo-api-candidate
+            sudo docker rm -f teampo-api 2>/dev/null || true
+
+            if ! run_api_container "${ECR_REPOSITORY_URL}:latest"; then
+              rollback_api
+              exit 1
+            fi
+
+            if ! wait_for_http "$API_HEALTH_URL"; then
+              sudo docker ps -a --filter name=teampo-api
+              rollback_api
+              exit 1
+            fi
+
+            if ! ensure_nginx_proxy; then
+              rollback_api
+              exit 1
+            fi
+
+            if ! wait_for_http https://api.team-po.cloud/swagger-ui/index.html; then
+              sudo docker ps -a --filter name=teampo-api
+              rollback_api
+              exit 1
+            fi
+
+            sudo docker ps --filter name=teampo-api
