@@ -21,6 +21,7 @@ import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 import team.po.feature.projectgroup.dto.CreateProjectGroupMemberRequest;
 import team.po.feature.projectgroup.dto.CreateProjectGroupRequest;
 import team.po.feature.projectgroup.dto.CreateProjectGroupResponse;
+import team.po.feature.projectgroup.dto.GetMyProjectGroupResponse;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.user.domain.Users;
@@ -37,11 +38,6 @@ public class ProjectGroupService {
 
 	@Transactional
 	public CreateProjectGroupResponse createProjectGroup(CreateProjectGroupRequest request) {
-		return this.createFromMatch(request);
-	}
-
-	@Transactional
-	public CreateProjectGroupResponse createFromMatch(CreateProjectGroupRequest request) {
 		this.validateCreateRequest(request);
 
 		List<CreateProjectGroupMemberRequest> requestMembers = request.members();
@@ -97,6 +93,36 @@ public class ProjectGroupService {
 			projectGroup.getProjectTitle(),
 			projectGroup.getStatus().name(),
 			members.size()
+		);
+	}
+
+	@Transactional(readOnly = true)
+	public GetMyProjectGroupResponse getMyProjectGroup(Users requester) {
+		ProjectGroupMember myMember = projectGroupMemberRepository
+			.findByUser_IdAndProjectGroup_Status(requester.getId(), ProjectGroupStatus.ACTIVE)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
+
+		ProjectGroup projectGroup = myMember.getProjectGroup();
+		List<GetMyProjectGroupResponse.MemberInfo> members = projectGroupMemberRepository
+			.findAllByProjectGroup_IdOrderByIdAsc(projectGroup.getId())
+			.stream()
+			.map(member -> new GetMyProjectGroupResponse.MemberInfo(
+				member.getUser().getId(),
+				member.getUser().getNickname(),
+				member.getMemberRole().name(),
+				member.getGroupRole().name(),
+				member.isAdmin()
+			))
+			.toList();
+
+		return new GetMyProjectGroupResponse(
+			projectGroup.getId(),
+			projectGroup.getProjectName(),
+			projectGroup.getProjectTitle(),
+			projectGroup.getProjectDescription(),
+			projectGroup.getProjectMvp(),
+			projectGroup.getStatus().name(),
+			members
 		);
 	}
 

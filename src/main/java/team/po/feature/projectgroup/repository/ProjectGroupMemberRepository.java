@@ -16,5 +16,7 @@ public interface ProjectGroupMemberRepository extends JpaRepository<ProjectGroup
 
 	Optional<ProjectGroupMember> findByProjectGroup_IdAndUser_Id(Long projectGroupId, Long userId);
 
-	List<ProjectGroupMember> findAllByProjectGroup_Id(Long projectGroupId);
+	List<ProjectGroupMember> findAllByProjectGroup_IdOrderByIdAsc(Long projectGroupId);
+
+	Optional<ProjectGroupMember> findByUser_IdAndProjectGroup_Status(Long userId, ProjectGroupStatus status);
 }
