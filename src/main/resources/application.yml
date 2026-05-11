@@ -78,6 +78,9 @@ github:
   oauth:
     success-redirect-uri: ${GITHUB_OAUTH_SUCCESS_REDIRECT_URI}
     authorization-code-ttl: ${GITHUB_OAUTH_AUTHORIZATION_CODE_TTL:PT3M}
+    rest-client:
+      connect-timeout: ${GITHUB_OAUTH_REST_CLIENT_CONNECT_TIMEOUT:PT3S}
+      read-timeout: ${GITHUB_OAUTH_REST_CLIENT_READ_TIMEOUT:PT5S}
 
 logging:
   level:
