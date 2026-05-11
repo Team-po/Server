@@ -121,6 +121,23 @@ class EmailServiceTest {
 	}
 
 	@Test
+	void sendDeleteUserEmail_sendsAuthCodeWithoutEmailDuplicationCheck() {
+		emailService.sendDeleteUserEmail(" Test@Email.com ");
+
+		ArgumentCaptor<String> authCodeCaptor = ArgumentCaptor.forClass(String.class);
+		verify(redisService).setValue(
+			eq(deleteUserEmailAuthCodeKey("test@email.com")),
+			authCodeCaptor.capture(),
+			eq(AUTH_CODE_TTL)
+		);
+		verify(redisService).deleteValue(deleteUserEmailAuthFailCountKey("test@email.com"));
+		verify(redisService).deleteValue(deleteUserEmailVerifiedKey("test@email.com"));
+		verify(userRepository, never()).existsByEmail(any());
+		verify(javaMailSender).send(mimeMessage);
+		assertThat(authCodeCaptor.getValue()).matches("\\d{6}");
+	}
+
+	@Test
 	void validateAuthNumber_consumesAuthCodeWhenMatched() {
 		when(redisService.getStringValue(emailAuthCodeKey("test@email.com"))).thenReturn("123456");
 
@@ -130,6 +147,18 @@ class EmailServiceTest {
 		verify(redisService).setValue(emailVerifiedKey("test@email.com"), "true", VERIFIED_TTL);
 		verify(redisService).deleteValue(emailAuthCodeKey("test@email.com"));
 		verify(redisService).deleteValue(emailAuthFailCountKey("test@email.com"));
+	}
+
+	@Test
+	void validateDeleteUserAuthNumber_consumesAuthCodeWhenMatched() {
+		when(redisService.getStringValue(deleteUserEmailAuthCodeKey("test@email.com"))).thenReturn("123456");
+
+		emailService.validateDeleteUserAuthNumber(" Test@Email.com ", 123456);
+
+		verify(redisService).getStringValue(deleteUserEmailAuthCodeKey("test@email.com"));
+		verify(redisService).setValue(deleteUserEmailVerifiedKey("test@email.com"), "true", VERIFIED_TTL);
+		verify(redisService).deleteValue(deleteUserEmailAuthCodeKey("test@email.com"));
+		verify(redisService).deleteValue(deleteUserEmailAuthFailCountKey("test@email.com"));
 	}
 
 	@Test
@@ -201,6 +230,15 @@ class EmailServiceTest {
 	}
 
 	@Test
+	void consumeVerifiedDeleteUserEmail_deletesAndPassesWhenVerifiedFlagExists() {
+		when(redisService.getAndDeleteValue(deleteUserEmailVerifiedKey("test@email.com"))).thenReturn("true");
+
+		emailService.consumeVerifiedDeleteUserEmail(" Test@Email.com ");
+
+		verify(redisService).getAndDeleteValue(deleteUserEmailVerifiedKey("test@email.com"));
+	}
+
+	@Test
 	void consumeVerifiedSignUpEmail_throwsWhenVerifiedFlagDoesNotExist() {
 		when(redisService.getAndDeleteValue(emailVerifiedKey("test@email.com"))).thenReturn(null);
 
@@ -213,12 +251,24 @@ class EmailServiceTest {
 		return "email-auth-code:signup:" + hashEmail(email);
 	}
 
+	private String deleteUserEmailAuthCodeKey(String email) {
+		return "email-auth-code:delete-user:" + hashEmail(email);
+	}
+
 	private String emailAuthFailCountKey(String email) {
 		return "email-auth-fail-count:signup:" + hashEmail(email);
 	}
 
+	private String deleteUserEmailAuthFailCountKey(String email) {
+		return "email-auth-fail-count:delete-user:" + hashEmail(email);
+	}
+
 	private String emailVerifiedKey(String email) {
 		return "email-auth-verified:signup:" + hashEmail(email);
+	}
+
+	private String deleteUserEmailVerifiedKey(String email) {
+		return "email-auth-verified:delete-user:" + hashEmail(email);
 	}
 
 	private String hashEmail(String email) {

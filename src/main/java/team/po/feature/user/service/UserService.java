@@ -24,7 +24,6 @@ import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.user.domain.Users;
-import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
@@ -33,6 +32,7 @@ import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
+import team.po.feature.user.dto.ValidateDeleteUserEmailRequest;
 import team.po.feature.user.repository.GithubAccountRepository;
 import team.po.feature.user.repository.UserRepository;
 
@@ -166,12 +166,25 @@ public class UserService {
 		jwtTokenProvider.deleteRefreshToken(user.getEmail());
 	}
 
-	@Transactional
-	public void deleteUser(Users loginUser, DeleteUserRequest request) {
+	public void sendDeleteUserEmail(Users loginUser) {
 		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
 			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
-		if (!passwordEncoder.matches(request.password(), user.getPassword()))
-			throw new ApplicationException(ErrorCode.UNMATCHED_PASSWORD);
+
+		emailService.sendDeleteUserEmail(user.getEmail());
+	}
+
+	public void validateDeleteUserEmail(Users loginUser, ValidateDeleteUserEmailRequest request) {
+		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
+			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
+
+		emailService.validateDeleteUserAuthNumber(user.getEmail(), request.authNumber());
+	}
+
+	@Transactional
+	public void deleteUser(Users loginUser) {
+		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
+			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
+		emailService.consumeVerifiedDeleteUserEmail(user.getEmail());
 
 		Instant deletedAt = Instant.now();
 		String email = user.getEmail();

@@ -32,9 +32,9 @@ import team.po.feature.user.repository.UserRepository;
 @Service
 @RequiredArgsConstructor
 public class EmailService {
-	private static final String EMAIL_AUTH_CODE_KEY_PREFIX = "email-auth-code:signup:";
-	private static final String EMAIL_AUTH_FAIL_COUNT_KEY_PREFIX = "email-auth-fail-count:signup:";
-	private static final String VERIFIED_EMAIL_KEY_PREFIX = "email-auth-verified:signup:";
+	private static final String EMAIL_AUTH_CODE_KEY_PREFIX = "email-auth-code:";
+	private static final String EMAIL_AUTH_FAIL_COUNT_KEY_PREFIX = "email-auth-fail-count:";
+	private static final String VERIFIED_EMAIL_KEY_PREFIX = "email-auth-verified:";
 	private static final String VERIFIED_VALUE = "true";
 	private static final String EMAIL_VERIFICATION_TEMPLATE_PATH = "templates/email-verification.html";
 	private static final String VERIFICATION_CODE_PLACEHOLDER = "__VERIFICATION_CODE__";
@@ -52,11 +52,19 @@ public class EmailService {
 		String email = normalizeEmail(request.email());
 		checkEmailDuplication(email);
 
+		sendAuthCodeEmail(email, EmailAuthPurpose.SIGN_UP);
+	}
+
+	public void sendDeleteUserEmail(String email) {
+		sendAuthCodeEmail(normalizeEmail(email), EmailAuthPurpose.DELETE_USER);
+	}
+
+	private void sendAuthCodeEmail(String email, EmailAuthPurpose purpose) {
 		String authCode = createAuthCode();
-		String authCodeKey = createEmailAuthCodeKey(email);
+		String authCodeKey = createEmailAuthCodeKey(email, purpose);
 		redisService.setValue(authCodeKey, authCode, emailAuthProperties.authCodeTtl());
-		redisService.deleteValue(createAuthFailCountKey(email));
-		redisService.deleteValue(createVerifiedEmailKey(email));
+		redisService.deleteValue(createAuthFailCountKey(email, purpose));
+		redisService.deleteValue(createVerifiedEmailKey(email, purpose));
 
 		try {
 			javaMailSender.send(createAuthCodeMessage(email, authCode));
@@ -72,23 +80,39 @@ public class EmailService {
 
 	public void validateAuthNumber(ValidateAuthNumberRequest request) {
 		String email = normalizeEmail(request.email());
-		String authCodeKey = createEmailAuthCodeKey(email);
-		String failCountKey = createAuthFailCountKey(email);
+		validateAuthNumber(email, request.authNumber(), EmailAuthPurpose.SIGN_UP);
+	}
+
+	public void validateDeleteUserAuthNumber(String email, Integer authNumber) {
+		validateAuthNumber(normalizeEmail(email), authNumber, EmailAuthPurpose.DELETE_USER);
+	}
+
+	private void validateAuthNumber(String email, Integer authNumber, EmailAuthPurpose purpose) {
+		String authCodeKey = createEmailAuthCodeKey(email, purpose);
+		String failCountKey = createAuthFailCountKey(email, purpose);
 		String savedAuthCode = redisService.getStringValue(authCodeKey);
 
-		if (!String.valueOf(request.authNumber()).equals(savedAuthCode)) {
-			recordAuthCodeFailure(email, authCodeKey, failCountKey);
+		if (!String.valueOf(authNumber).equals(savedAuthCode)) {
+			recordAuthCodeFailure(authCodeKey, failCountKey);
 			throw new ApplicationException(ErrorCode.INVALID_EMAIL_AUTH_CODE);
 		}
 
-		redisService.setValue(createVerifiedEmailKey(email), VERIFIED_VALUE, emailAuthProperties.verifiedTtl());
+		redisService.setValue(createVerifiedEmailKey(email, purpose), VERIFIED_VALUE, emailAuthProperties.verifiedTtl());
 		redisService.deleteValue(authCodeKey);
 		redisService.deleteValue(failCountKey);
 	}
 
 	public void consumeVerifiedSignUpEmail(String email) {
+		consumeVerifiedEmail(email, EmailAuthPurpose.SIGN_UP);
+	}
+
+	public void consumeVerifiedDeleteUserEmail(String email) {
+		consumeVerifiedEmail(email, EmailAuthPurpose.DELETE_USER);
+	}
+
+	private void consumeVerifiedEmail(String email, EmailAuthPurpose purpose) {
 		String normalizedEmail = normalizeEmail(email);
-		Object verified = redisService.getAndDeleteValue(createVerifiedEmailKey(normalizedEmail));
+		Object verified = redisService.getAndDeleteValue(createVerifiedEmailKey(normalizedEmail, purpose));
 
 		if (!VERIFIED_VALUE.equals(verified)) {
 			throw new ApplicationException(ErrorCode.EMAIL_NOT_VERIFIED);
@@ -101,7 +125,7 @@ public class EmailService {
 		}
 	}
 
-	private void recordAuthCodeFailure(String email, String authCodeKey, String failCountKey) {
+	private void recordAuthCodeFailure(String authCodeKey, String failCountKey) {
 		Long failCount = redisService.incrementValue(failCountKey);
 		if (Long.valueOf(1L).equals(failCount)) {
 			redisService.expire(failCountKey, emailAuthProperties.authCodeTtl());
@@ -139,16 +163,16 @@ public class EmailService {
 		return html.replace(VERIFICATION_CODE_PLACEHOLDER, authCode);
 	}
 
-	private String createEmailAuthCodeKey(String email) {
-		return EMAIL_AUTH_CODE_KEY_PREFIX + hashEmail(email);
+	private String createEmailAuthCodeKey(String email, EmailAuthPurpose purpose) {
+		return EMAIL_AUTH_CODE_KEY_PREFIX + purpose.key + ":" + hashEmail(email);
 	}
 
-	private String createAuthFailCountKey(String email) {
-		return EMAIL_AUTH_FAIL_COUNT_KEY_PREFIX + hashEmail(email);
+	private String createAuthFailCountKey(String email, EmailAuthPurpose purpose) {
+		return EMAIL_AUTH_FAIL_COUNT_KEY_PREFIX + purpose.key + ":" + hashEmail(email);
 	}
 
-	private String createVerifiedEmailKey(String email) {
-		return VERIFIED_EMAIL_KEY_PREFIX + hashEmail(email);
+	private String createVerifiedEmailKey(String email, EmailAuthPurpose purpose) {
+		return VERIFIED_EMAIL_KEY_PREFIX + purpose.key + ":" + hashEmail(email);
 	}
 
 	private String normalizeEmail(String email) {
@@ -162,6 +186,17 @@ public class EmailService {
 			return HexFormat.of().formatHex(hash);
 		} catch (NoSuchAlgorithmException exception) {
 			throw new IllegalStateException("SHA-256 algorithm is unavailable.", exception);
+		}
+	}
+
+	private enum EmailAuthPurpose {
+		SIGN_UP("signup"),
+		DELETE_USER("delete-user");
+
+		private final String key;
+
+		EmailAuthPurpose(String key) {
+			this.key = key;
 		}
 	}
 }
