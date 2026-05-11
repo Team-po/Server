@@ -33,6 +33,7 @@ import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
+import team.po.feature.user.repository.GithubAccountRepository;
 import team.po.feature.user.repository.UserRepository;
 
 @Slf4j
@@ -40,6 +41,7 @@ import team.po.feature.user.repository.UserRepository;
 @RequiredArgsConstructor
 public class UserService {
 	private final UserRepository userRepository;
+	private final GithubAccountRepository githubAccountRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final AuthenticationManager authenticationManager;
 	private final JwtTokenProvider jwtTokenProvider;
@@ -176,6 +178,8 @@ public class UserService {
 		String deletedEmail = createDeletedEmail(user.getId(), email, deletedAt);
 
 		user.softDelete(deletedAt, deletedEmail);
+		githubAccountRepository.findByUserIdAndDeletedAtIsNull(user.getId())
+			.ifPresent(githubAccount -> githubAccount.softDelete(deletedAt));
 		jwtTokenProvider.deleteRefreshToken(email);
 	}
 

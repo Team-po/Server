@@ -24,6 +24,7 @@ import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ApplicationException;
+import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
@@ -34,6 +35,7 @@ import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
+import team.po.feature.user.repository.GithubAccountRepository;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +43,9 @@ class UserServiceTest {
 
 	@Mock
 	private UserRepository userRepository;
+
+	@Mock
+	private GithubAccountRepository githubAccountRepository;
 
 	@Mock
 	private PasswordEncoder passwordEncoder;
@@ -368,9 +373,15 @@ class UserServiceTest {
 	void deleteUser_softDeletesManagedUserAndDeletesRefreshToken() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		Users managedUser = authenticatedUser(1L, "test@email.com");
+		GithubAccount githubAccount = GithubAccount.builder()
+			.user(managedUser)
+			.githubUserId(123L)
+			.githubUsername("octocat")
+			.build();
 		DeleteUserRequest request = new DeleteUserRequest("current-password");
 		managedUser.editPassword("encoded-current-password");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(githubAccount));
 		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
 
 		userService.deleteUser(loginUser, request);
@@ -379,7 +390,9 @@ class UserServiceTest {
 		assertThat(managedUser.getEmail()).startsWith("deleted__1__");
 		assertThat(managedUser.getEmail()).doesNotContain("test@email.com");
 		assertThat(managedUser.getEmail().length()).isLessThanOrEqualTo(255);
+		assertThat(githubAccount.getDeletedAt()).isEqualTo(managedUser.getDeletedAt());
 		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
+		verify(githubAccountRepository).findByUserIdAndDeletedAtIsNull(1L);
 		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
 	}
 
