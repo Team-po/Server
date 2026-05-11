@@ -109,6 +109,9 @@ public class ProjectGroupService {
 			.map(member -> new GetMyProjectGroupResponse.MemberInfo(
 				member.getUser().getId(),
 				member.getUser().getNickname(),
+				member.getUser().getProfileImage(),
+				member.getUser().getLevel(),
+				member.getUser().getTemperature(),
 				member.getMemberRole().name(),
 				member.getGroupRole().name(),
 				member.isAdmin()
@@ -116,12 +119,12 @@ public class ProjectGroupService {
 			.toList();
 
 		return new GetMyProjectGroupResponse(
+			requester.getId(),
 			projectGroup.getId(),
 			projectGroup.getProjectName(),
 			projectGroup.getProjectTitle(),
 			projectGroup.getProjectDescription(),
 			projectGroup.getProjectMvp(),
-			projectGroup.getStatus().name(),
 			members
 		);
 	}
