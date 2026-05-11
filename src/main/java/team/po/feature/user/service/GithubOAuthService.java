@@ -49,16 +49,13 @@ public class GithubOAuthService {
 	public GithubAuthorizationCode createAuthorizationCode(OAuth2User oAuth2User, String githubAccessToken) {
 		Long githubUserId = getGithubUserId(oAuth2User);
 		String githubUsername = getGithubNickname(oAuth2User);
-		String email = getGithubEmail(oAuth2User, githubAccessToken);
-		GithubAuthorizationPayload payload = createAuthorizationPayload(githubUserId, githubUsername, email);
-
-		String authorizationCode = UUID.randomUUID().toString();
-		redisService.setValue(
-			createAuthorizationCodeKey(authorizationCode),
-			payload.serialize(),
-			authorizationCodeTtl
-		);
-		return new GithubAuthorizationCode(authorizationCode, payload.requiresOnboarding());
+		return githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(githubUserId)
+			.map(githubAccount -> createLoginAuthorizationCode(githubAccount.getUser().getId()))
+			.orElseGet(() -> createSignUpAuthorizationCode(
+				githubUserId,
+				githubUsername,
+				getGithubEmail(oAuth2User, githubAccessToken)
+			));
 	}
 
 	@Transactional
@@ -78,10 +75,22 @@ public class GithubOAuthService {
 		return new SignInResponse(jwtToken.accessToken(), jwtToken.refreshToken(), jwtToken.accessTokenExpiresAt());
 	}
 
-	private GithubAuthorizationPayload createAuthorizationPayload(Long githubUserId, String githubUsername, String email) {
-		return githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(githubUserId)
-			.map(githubAccount -> GithubAuthorizationPayload.login(githubAccount.getUser().getId()))
-			.orElseGet(() -> GithubAuthorizationPayload.signUp(githubUserId, githubUsername, email));
+	private GithubAuthorizationCode createLoginAuthorizationCode(Long userId) {
+		return createAuthorizationCode(GithubAuthorizationPayload.login(userId));
+	}
+
+	private GithubAuthorizationCode createSignUpAuthorizationCode(Long githubUserId, String githubUsername, String email) {
+		return createAuthorizationCode(GithubAuthorizationPayload.signUp(githubUserId, githubUsername, email));
+	}
+
+	private GithubAuthorizationCode createAuthorizationCode(GithubAuthorizationPayload payload) {
+		String authorizationCode = UUID.randomUUID().toString();
+		redisService.setValue(
+			createAuthorizationCodeKey(authorizationCode),
+			payload.serialize(),
+			authorizationCodeTtl
+		);
+		return new GithubAuthorizationCode(authorizationCode, payload.requiresOnboarding());
 	}
 
 	private Users getLoginUser(GithubAuthorizationPayload payload) {

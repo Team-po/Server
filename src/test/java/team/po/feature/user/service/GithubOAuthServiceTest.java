@@ -89,6 +89,26 @@ class GithubOAuthServiceTest {
 	}
 
 	@Test
+	void createAuthorizationCode_returnsLoginCodeWithoutEmailLookupWhenGithubAccountExists() {
+		Users user = githubUser(1L, "test@email.com", "octocat", 3);
+		GithubAccount githubAccount = githubAccount(user, 123L, "octocat");
+		OAuth2User oAuth2User = githubOAuth2UserWithoutEmail(123L, "octocat");
+		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.of(githubAccount));
+
+		GithubAuthorizationCode authorizationCode =
+			githubOAuthService.createAuthorizationCode(oAuth2User, "github-access-token");
+
+		assertThat(authorizationCode.authorizationCode()).isNotBlank();
+		assertThat(authorizationCode.onboardingRequired()).isFalse();
+		verify(redisService).setValue(
+			eq("github-oauth-code:" + authorizationCode.authorizationCode()),
+			eq("LOGIN.1"),
+			eq(AUTHORIZATION_CODE_TTL)
+		);
+		verifyNoInteractions(restClient);
+	}
+
+	@Test
 	void createAuthorizationCode_returnsSignUpCodeWhenGithubAccountDoesNotExist() {
 		OAuth2User oAuth2User = githubOAuth2User(123L, "octocat", " Test@Email.com ");
 		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.empty());
@@ -290,6 +310,17 @@ class GithubOAuthServiceTest {
 				"id", id,
 				"login", login,
 				"email", email
+			),
+			"id"
+		);
+	}
+
+	private OAuth2User githubOAuth2UserWithoutEmail(Long id, String login) {
+		return new DefaultOAuth2User(
+			List.of(new SimpleGrantedAuthority("ROLE_USER")),
+			Map.of(
+				"id", id,
+				"login", login
 			),
 			"id"
 		);
