@@ -92,6 +92,7 @@ class EmailServiceTest {
 		assertThat(mimeMessage.getContentType()).contains("text/html");
 		assertThat(mimeMessage.getContent().toString())
 			.contains(authCode)
+			.contains("Team-po 계정 생성을 완료하려면")
 			.doesNotContain("__VERIFICATION_CODE__");
 	}
 
@@ -121,7 +122,7 @@ class EmailServiceTest {
 	}
 
 	@Test
-	void sendDeleteUserEmail_sendsAuthCodeWithoutEmailDuplicationCheck() {
+	void sendDeleteUserEmail_sendsAuthCodeWithoutEmailDuplicationCheck() throws Exception {
 		emailService.sendDeleteUserEmail(" Test@Email.com ");
 
 		ArgumentCaptor<String> authCodeCaptor = ArgumentCaptor.forClass(String.class);
@@ -135,6 +136,11 @@ class EmailServiceTest {
 		verify(userRepository, never()).existsByEmail(any());
 		verify(javaMailSender).send(mimeMessage);
 		assertThat(authCodeCaptor.getValue()).matches("\\d{6}");
+		mimeMessage.saveChanges();
+		assertThat(mimeMessage.getContent().toString())
+			.contains("Team-po 계정 삭제를 완료하려면")
+			.doesNotContain("Team-po 계정 생성을 완료하려면")
+			.doesNotContain("__VERIFICATION_GUIDE_MESSAGE__");
 	}
 
 	@Test

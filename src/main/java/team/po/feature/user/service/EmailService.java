@@ -38,6 +38,7 @@ public class EmailService {
 	private static final String VERIFIED_VALUE = "true";
 	private static final String EMAIL_VERIFICATION_TEMPLATE_PATH = "templates/email-verification.html";
 	private static final String VERIFICATION_CODE_PLACEHOLDER = "__VERIFICATION_CODE__";
+	private static final String VERIFICATION_GUIDE_MESSAGE_PLACEHOLDER = "__VERIFICATION_GUIDE_MESSAGE__";
 	private static final int AUTH_CODE_ORIGIN = 100_000;
 	private static final int AUTH_CODE_BOUND = 900_000;
 	private static final int MAX_AUTH_CODE_FAILURE_COUNT = 5;
@@ -67,7 +68,7 @@ public class EmailService {
 		redisService.deleteValue(createVerifiedEmailKey(email, purpose));
 
 		try {
-			javaMailSender.send(createAuthCodeMessage(email, authCode));
+			javaMailSender.send(createAuthCodeMessage(email, authCode, purpose.guideMessage));
 		} catch (MailException | MessagingException | IOException exception) {
 			redisService.deleteValue(authCodeKey);
 			throw new ApplicationException(
@@ -141,7 +142,8 @@ public class EmailService {
 		return String.valueOf(secureRandom.nextInt(AUTH_CODE_BOUND) + AUTH_CODE_ORIGIN);
 	}
 
-	private MimeMessage createAuthCodeMessage(String email, String authCode) throws MessagingException, IOException {
+	private MimeMessage createAuthCodeMessage(String email, String authCode, String guideMessage)
+		throws MessagingException, IOException {
 		MimeMessage message = javaMailSender.createMimeMessage();
 		MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
 		if (StringUtils.hasText(emailAuthProperties.username())) {
@@ -149,18 +151,20 @@ public class EmailService {
 		}
 		helper.setTo(email);
 		helper.setSubject(emailAuthProperties.authCodeSubject());
-		helper.setText(createAuthCodeHtml(authCode), true);
+		helper.setText(createAuthCodeHtml(authCode, guideMessage), true);
 
 		return message;
 	}
 
-	private String createAuthCodeHtml(String authCode) throws IOException {
+	private String createAuthCodeHtml(String authCode, String guideMessage) throws IOException {
 		Resource template = new ClassPathResource(EMAIL_VERIFICATION_TEMPLATE_PATH);
 		String html;
 		try (InputStream inputStream = template.getInputStream()) {
 			html = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
 		}
-		return html.replace(VERIFICATION_CODE_PLACEHOLDER, authCode);
+		return html
+			.replace(VERIFICATION_CODE_PLACEHOLDER, authCode)
+			.replace(VERIFICATION_GUIDE_MESSAGE_PLACEHOLDER, guideMessage);
 	}
 
 	private String createEmailAuthCodeKey(String email, EmailAuthPurpose purpose) {
@@ -190,13 +194,21 @@ public class EmailService {
 	}
 
 	private enum EmailAuthPurpose {
-		SIGN_UP("signup"),
-		DELETE_USER("delete-user");
+		SIGN_UP(
+			"signup",
+			"Team-po 계정 생성을 완료하려면 아래 인증번호를 인증 화면에 입력해 주세요. 인증번호는 발급 후 5분간만 유효합니다."
+		),
+		DELETE_USER(
+			"delete-user",
+			"Team-po 계정 삭제를 완료하려면 아래 인증번호를 인증 화면에 입력해 주세요. 인증번호는 발급 후 5분간만 유효합니다."
+		);
 
 		private final String key;
+		private final String guideMessage;
 
-		EmailAuthPurpose(String key) {
+		EmailAuthPurpose(String key, String guideMessage) {
 			this.key = key;
+			this.guideMessage = guideMessage;
 		}
 	}
 }
