@@ -1,10 +1,8 @@
 package team.po.feature.devguide.client;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 
 import team.po.feature.devguide.config.GeminiProperties;
 import team.po.feature.devguide.dto.DevGuideContent;
@@ -13,20 +11,16 @@ import team.po.feature.devguide.prompt.DevGuideSchema;
 
 /**
  * 실제 Gemini API와 연동되는지 수동으로 검증하는 테스트.
- * Spring 컨텍스트 없이 필요한 빈만 직접 생성하여 가볍게 실행한다.
- * 응답은 DB에 저장될 JSON 형태 그대로 출력하여 구조 검증을 돕는다.
  * CI에서 자동 실행되지 않도록 @Disabled 처리되어 있다.
  */
-// @Disabled("실제 Gemini API 호출 - 수동 실행 전용")
+@Disabled("실제 Gemini API 호출 - 수동 실행 전용")
 class GeminiClientSmokeTest {
 
 	private GeminiClient geminiClient;
 	private DevGuidePromptBuilder promptBuilder;
-	private ObjectMapper objectMapper;
 
 	@BeforeEach
 	void setUp() {
-		// 환경변수에서 API 키 직접 읽기
 		String apiKey = System.getenv("GEMINI_API_KEY");
 		if (apiKey == null || apiKey.isBlank()) {
 			throw new IllegalStateException("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.");
@@ -36,14 +30,13 @@ class GeminiClientSmokeTest {
 			apiKey,
 			"https://generativelanguage.googleapis.com/v1beta",
 			"gemini-3-flash-preview",
-			30
+			30,
+			8192,
+			0.7
 		);
 
 		this.geminiClient = new GeminiClient(properties);
 		this.promptBuilder = new DevGuidePromptBuilder();
-
-		this.objectMapper = new ObjectMapper()
-			.enable(SerializationFeature.INDENT_OUTPUT);
 	}
 
 	@Test
@@ -56,7 +49,7 @@ class GeminiClientSmokeTest {
 
 		DevGuideContent content = geminiClient.generateDevGuide(prompt, DevGuideSchema.RESPONSE_SCHEMA);
 
-		printAsJson("Team-po", content);
+		printContent("Team-po", content);
 	}
 
 	@Test
@@ -69,7 +62,7 @@ class GeminiClientSmokeTest {
 
 		DevGuideContent content = geminiClient.generateDevGuide(prompt, DevGuideSchema.RESPONSE_SCHEMA);
 
-		printAsJson("헬스장 PT 매칭 앱", content);
+		printContent("헬스장 PT 매칭 앱", content);
 	}
 
 	@Test
@@ -82,21 +75,46 @@ class GeminiClientSmokeTest {
 
 		DevGuideContent content = geminiClient.generateDevGuide(prompt, DevGuideSchema.RESPONSE_SCHEMA);
 
-		printAsJson("북클럽", content);
+		printContent("북클럽", content);
 	}
 
-	/**
-	 * DevGuideContent를 들여쓰기된 JSON 문자열로 콘솔에 출력한다.
-	 * 실패 시에도 테스트는 계속 진행되도록 RuntimeException으로 감싼다.
-	 */
-	private void printAsJson(String label, DevGuideContent content) {
-		try {
-			String json = objectMapper.writeValueAsString(content);
-			System.out.println("\n========== [" + label + "] DevGuide JSON ==========");
-			System.out.println(json);
-			System.out.println("===================================================\n");
-		} catch (Exception e) {
-			throw new RuntimeException("DevGuideContent JSON 직렬화 실패", e);
-		}
+	private void printContent(String label, DevGuideContent c) {
+		System.out.println("\n# " + label + " 개발 가이드라인\n");
+
+		System.out.println("## Overview");
+		System.out.println(c.overview());
+
+		System.out.println("\n## Tech Stack");
+		c.techStack().forEach(item -> {
+			System.out.printf("- **[%s] %s**%n", item.category(), item.recommendation());
+			System.out.printf("  %s%n", item.reason());
+		});
+
+		System.out.println("\n## MVP Priorities");
+		c.mvpPriorities().forEach(p -> {
+			System.out.printf("### %d. %s%n", p.priority(), p.feature());
+			System.out.printf("**Rationale:** %s%n", p.rationale());
+			System.out.println("**Sub-features:**");
+			p.subFeatures().forEach(sf -> System.out.printf("- %s%n", sf));
+			System.out.println();
+		});
+
+		System.out.println("## Decision Points");
+		c.decisionPoints().forEach(d -> {
+			System.out.printf("### %s%n", d.topic());
+			System.out.println("**Options:**");
+			d.options().forEach(opt -> System.out.printf("- %s%n", opt));
+			System.out.printf("**Consideration:** %s%n%n", d.consideration());
+		});
+
+		System.out.println("## Milestones");
+		c.milestones().forEach(m -> {
+			System.out.printf("### Week %d — %s%n", m.week(), m.goal());
+			System.out.printf("- **Backend:** %s%n", m.roleTasks().backend());
+			System.out.printf("- **Frontend:** %s%n", m.roleTasks().frontend());
+			System.out.printf("- **Design:** %s%n%n", m.roleTasks().design());
+		});
+
+		System.out.println("---\n");
 	}
 }

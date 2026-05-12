@@ -35,9 +35,15 @@ public final class DevGuideSchema {
 					"properties", Map.of(
 						"priority", Map.of("type", "INTEGER"),
 						"feature", Map.of("type", "STRING"),
-						"rationale", Map.of("type", "STRING")
+						"rationale", Map.of("type", "STRING"),
+						"subFeatures", Map.of(
+							"type", "ARRAY",
+							"minItems", 3,
+							"maxItems", 3,
+							"items", Map.of("type", "STRING")
+						)
 					),
-					"required", List.of("priority", "feature", "rationale")
+					"required", List.of("priority", "feature", "rationale", "subFeatures")
 				)
 			),
 			"decisionPoints", Map.of(
@@ -59,16 +65,24 @@ public final class DevGuideSchema {
 			),
 			"milestones", Map.of(
 				"type", "ARRAY",
-				"minItems", 8,
-				"maxItems", 8,
+				"minItems", 12,
+				"maxItems", 12,
 				"items", Map.of(
 					"type", "OBJECT",
 					"properties", Map.of(
 						"week", Map.of("type", "INTEGER"),
 						"goal", Map.of("type", "STRING"),
-						"deliverable", Map.of("type", "STRING")
+						"roleTasks", Map.of(
+							"type", "OBJECT",
+							"properties", Map.of(
+								"backend", Map.of("type", "STRING"),
+								"frontend", Map.of("type", "STRING"),
+								"design", Map.of("type", "STRING")
+							),
+							"required", List.of("backend", "frontend", "design")
+						)
 					),
-					"required", List.of("week", "goal", "deliverable")
+					"required", List.of("week", "goal", "roleTasks")
 				)
 			)
 		),

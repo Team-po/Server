@@ -14,17 +14,18 @@ public record GeminiRequest(
 	}
 
 	public record GenerationConfig(
-		Double temperature,
-		Integer maxOutputTokens,
+		double temperature,
+		int maxOutputTokens,
 		String responseMimeType,
 		Map<String, Object> responseSchema
 	) {
 	}
 
-	public static GeminiRequest ofStructured(String prompt, Map<String, Object> schema) {
+	public static GeminiRequest ofStructured(String prompt, Map<String, Object> schema, double temperature,
+		int maxOutputTokens) {
 		return new GeminiRequest(
 			List.of(new Content(List.of(new Part(prompt)))),
-			new GenerationConfig(0.7, 4096, "application/json", schema)
+			new GenerationConfig(temperature, maxOutputTokens, "application/json", schema)
 		);
 	}
 }

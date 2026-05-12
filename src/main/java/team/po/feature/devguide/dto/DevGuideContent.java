@@ -16,7 +16,7 @@ public record DevGuideContent(
 	}
 
 	@JsonIgnoreProperties(ignoreUnknown = true)
-	public record MvpPriority(int priority, String feature, String rationale) {
+	public record MvpPriority(int priority, String feature, String rationale, List<String> subFeatures) {
 	}
 
 	@JsonIgnoreProperties(ignoreUnknown = true)
@@ -24,6 +24,13 @@ public record DevGuideContent(
 	}
 
 	@JsonIgnoreProperties(ignoreUnknown = true)
-	public record Milestone(int week, String goal, String deliverable) {
+	public record Milestone(int week, String goal, RoleTasks roleTasks) {
+	}
+
+	public record RoleTasks(
+		String backend,
+		String frontend,
+		String design
+	) {
 	}
 }

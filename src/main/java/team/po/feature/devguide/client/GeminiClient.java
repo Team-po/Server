@@ -47,7 +47,8 @@ public class GeminiClient {
 			GeminiResponse response = restClient.post()
 				.uri("/models/{model}:generateContent?key={key}", properties.model(), properties.apiKey())
 				.contentType(MediaType.APPLICATION_JSON)
-				.body(GeminiRequest.ofStructured(prompt, schema))
+				.body(
+					GeminiRequest.ofStructured(prompt, schema, properties.temperature(), properties.maxOutputTokens()))
 				.retrieve()
 				.body(GeminiResponse.class);
 
