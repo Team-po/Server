@@ -36,7 +36,9 @@ public enum ErrorCode {
 	MATCH_DATA_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "MATCH_DATA_ERROR", "매칭 데이터가 정합하지 않습니다."),
 	GUIDELINE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "GUIDELINE_GENERATION_FAILED",
 		" AI 가이드라인 생성에 실패했습니다."),
-	GUIDELINE_INVALID_RESPONSE(HttpStatus.INTERNAL_SERVER_ERROR, "GUIDELINE_INVALID_RESPONSE", "AI 응답 형식이 올바르지 않습니다.");
+	GEMINI_INVALID_RESPONSE(HttpStatus.INTERNAL_SERVER_ERROR, "GEMINI_INVALID_RESPONSE",
+		"Gemini API 응답 형식이 올바르지 않습니다."),
+	GEMINI_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "GEMINI_API_ERROR", "Gemini API 호출에 실패했습니다.");
 
 	private final HttpStatus status;
 	private final String code;
