@@ -33,7 +33,10 @@ public enum ErrorCode {
 	MATCH_NOT_FOUND(HttpStatus.NOT_FOUND, "MATCH_NOT_FOUND", "이미 완료되었거나 존재하지 않는 매칭 세션입니다."),
 	MATCH_ACCESS_DENIED(HttpStatus.BAD_REQUEST, "MATCH_ACCESS_DENIED", "매칭 세션 접근 권한이 없습니다."),
 	INVALID_MATCH_STATUS(HttpStatus.BAD_REQUEST, "INVALID_MATCH_STATUS", "매칭 상태가 유효하지 않습니다."),
-	MATCH_DATA_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "MATCH_DATA_ERROR", "매칭 데이터가 정합하지 않습니다.");
+	MATCH_DATA_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "MATCH_DATA_ERROR", "매칭 데이터가 정합하지 않습니다."),
+	GUIDELINE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "GUIDELINE_GENERATION_FAILED",
+		" AI 가이드라인 생성에 실패했습니다."),
+	GUIDELINE_INVALID_RESPONSE(HttpStatus.INTERNAL_SERVER_ERROR, "GUIDELINE_INVALID_RESPONSE", "AI 응답 형식이 올바르지 않습니다.");
 
 	private final HttpStatus status;
 	private final String code;
