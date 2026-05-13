@@ -167,23 +167,20 @@ public class UserService {
 	}
 
 	public void sendDeleteUserEmail(Users loginUser) {
-		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
-			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
+		Users user = this.getActiveUser(loginUser.getId());
 
 		emailService.sendDeleteUserEmail(user.getEmail());
 	}
 
 	public void validateDeleteUserEmail(Users loginUser, ValidateDeleteUserEmailRequest request) {
-		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
-			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
+		Users user = this.getActiveUser(loginUser.getId());
 
 		emailService.validateDeleteUserAuthNumber(user.getEmail(), request.authNumber());
 	}
 
 	@Transactional
 	public void deleteUser(Users loginUser) {
-		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
-			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
+		Users user = this.getActiveUser(loginUser.getId());
 		emailService.consumeVerifiedDeleteUserEmail(user.getEmail());
 
 		Instant deletedAt = Instant.now();
@@ -242,4 +239,10 @@ public class UserService {
 
 		return normalizedEndpoint + "/" + bucket + "/" + normalizedObjectKey;
 	}
+
+	private Users getActiveUser(Long id) {
+		return  userRepository.findByIdAndDeletedAtIsNull(id).orElseThrow(
+			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
+	}
 }
+
