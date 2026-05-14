@@ -23,6 +23,7 @@ import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
+import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
@@ -131,6 +132,9 @@ public class UserService {
 	}
 
 	public GetProfileResponse getMyProfile(Users user) {
+		GithubAccount githubAccount = githubAccountRepository.findByUserIdAndDeletedAtIsNull(user.getId())
+			.orElse(null);
+
 		return GetProfileResponse.builder()
 			.email(user.getEmail())
 			.nickname(user.getNickname())
@@ -138,6 +142,9 @@ public class UserService {
 			.level(user.getLevel())
 			.description(user.getDescription())
 			.profileImage(buildProfileImageUrl(user.getProfileImage()))
+			.isGithubLogin(user.isGithubLogin())
+			.isGithubLinked(githubAccount != null)
+			.githubUsername(githubAccount == null ? null : githubAccount.getGithubUsername())
 			.build();
 	}
 

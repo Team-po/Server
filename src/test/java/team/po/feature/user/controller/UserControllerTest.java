@@ -37,6 +37,7 @@ import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInResponse;
+import team.po.feature.user.service.GithubOAuthService;
 import team.po.feature.user.service.ImageService;
 import team.po.feature.user.repository.UserRepository;
 import team.po.feature.user.service.UserService;
@@ -54,6 +55,9 @@ class UserControllerTest {
 
 	@MockitoBean
 	private ImageService profileImagePresignService;
+
+	@MockitoBean
+	private GithubOAuthService githubOAuthService;
 
 	@MockitoBean
 	private UserRepository userRepository;
@@ -246,6 +250,9 @@ class UserControllerTest {
 				.nickname("tester")
 				.temperature(50)
 				.level(3)
+				.isGithubLogin(false)
+				.isGithubLinked(true)
+				.githubUsername("octocat")
 				.build());
 
 		mockMvc.perform(get("/api/users/me"))
@@ -255,7 +262,10 @@ class UserControllerTest {
 			.andExpect(jsonPath("$.description").value("hello"))
 			.andExpect(jsonPath("$.nickname").value("tester"))
 			.andExpect(jsonPath("$.temperature").value(50))
-			.andExpect(jsonPath("$.level").value(3));
+			.andExpect(jsonPath("$.level").value(3))
+			.andExpect(jsonPath("$.isGithubLogin").value(false))
+			.andExpect(jsonPath("$.isGithubLinked").value(true))
+			.andExpect(jsonPath("$.githubUsername").value("octocat"));
 	}
 
 	@Test
@@ -268,6 +278,16 @@ class UserControllerTest {
 			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
 
 		verifyNoInteractions(userService);
+	}
+
+	@Test
+	void startGithubAccountLink_returnsAuthorizationUrl_whenAuthenticatedUserExists() throws Exception {
+		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
+		when(githubOAuthService.createGithubLinkCode(authenticatedUser)).thenReturn("link-code");
+
+		mockMvc.perform(post("/api/users/me/github-link-requests"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.authorizationUrl").value("/oauth2/authorization/github?linkCode=link-code"));
 	}
 
 	@Test

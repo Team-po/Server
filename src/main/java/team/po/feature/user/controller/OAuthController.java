@@ -24,7 +24,7 @@ public class OAuthController {
 	public ResponseEntity<SignInResponse> exchangeAuthorizationCode(
 		@Valid @RequestBody OAuthAuthorizationCodeRequest request
 	) {
-		SignInResponse response = githubOAuthService.exchangeAuthorizationCode(request);
+		SignInResponse response = githubOAuthService.exchangeGithubAuthorizationCode(request);
 		return ResponseEntity.ok(response);
 	}
 }

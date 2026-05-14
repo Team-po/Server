@@ -41,3 +41,4 @@ github:
   oauth:
     success-redirect-uri: http://localhost:5173/oauth/github/callback
     authorization-code-ttl: PT3M
+    token-encryption-secret: YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=

@@ -34,6 +34,21 @@ public class GithubAccount {
 	@Column(name = "github_username", nullable = false)
 	private String githubUsername;
 
+	@Column(name = "access_token_ciphertext", columnDefinition = "TEXT")
+	private String accessTokenCiphertext;
+
+	@Column(name = "token_type", length = 50)
+	private String tokenType;
+
+	@Column(name = "github_scopes", length = 1000)
+	private String githubScopes;
+
+	@Column(name = "connected_at", nullable = false, insertable = false, updatable = false)
+	private Instant connectedAt;
+
+	@Column(name = "token_updated_at")
+	private Instant tokenUpdatedAt;
+
 	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
 	private Instant createdAt;
 
@@ -41,10 +56,34 @@ public class GithubAccount {
 	private Instant deletedAt;
 
 	@Builder
-	public GithubAccount(Users user, Long githubUserId, String githubUsername) {
+	public GithubAccount(
+		Users user,
+		Long githubUserId,
+		String githubUsername,
+		String accessTokenCiphertext,
+		String tokenType,
+		String githubScopes,
+		Instant tokenUpdatedAt
+	) {
 		this.user = user;
 		this.githubUserId = githubUserId;
 		this.githubUsername = githubUsername;
+		this.accessTokenCiphertext = accessTokenCiphertext;
+		this.tokenType = tokenType;
+		this.githubScopes = githubScopes;
+		this.tokenUpdatedAt = tokenUpdatedAt;
+	}
+
+	public void updateAuthorization(
+		String accessTokenCiphertext,
+		String tokenType,
+		String githubScopes,
+		Instant tokenUpdatedAt
+	) {
+		this.accessTokenCiphertext = accessTokenCiphertext;
+		this.tokenType = tokenType;
+		this.githubScopes = githubScopes;
+		this.tokenUpdatedAt = tokenUpdatedAt;
 	}
 
 	public void softDelete(Instant deletedAt) {

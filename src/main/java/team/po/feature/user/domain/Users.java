@@ -38,6 +38,9 @@ public class Users {
 
 	private Integer level;
 
+	@Column(name = "is_github_login", nullable = false)
+	private boolean isGithubLogin;
+
 	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
 	private Instant createdAt;
 
@@ -46,7 +49,7 @@ public class Users {
 
 	@Builder
 	public Users(String password, String profileImage, String description, String email, String nickname,
-		Integer temperature, Integer level) {
+		Integer temperature, Integer level, boolean isGithubLogin) {
 		this.password = password;
 		this.profileImage = profileImage;
 		this.description = description;
@@ -54,6 +57,7 @@ public class Users {
 		this.nickname = nickname;
 		this.temperature = temperature;
 		this.level = level;
+		this.isGithubLogin = isGithubLogin;
 	}
 
 	public void editNickname(String nickname) {
@@ -78,6 +82,10 @@ public class Users {
 
 	public void editPassword(String password) {
 		this.password = password;
+	}
+
+	public void markAsGithubLogin() {
+		this.isGithubLogin = true;
 	}
 
 	public void softDelete(Instant deletedAt, String deletedEmail) {

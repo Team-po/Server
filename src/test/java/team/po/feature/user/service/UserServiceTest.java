@@ -91,6 +91,7 @@ class UserServiceTest {
 		assertThat(savedUser.getDescription()).isNull();
 		assertThat(savedUser.getTemperature()).isEqualTo(50);
 		assertThat(savedUser.getLevel()).isEqualTo(5);
+		assertThat(savedUser.isGithubLogin()).isFalse();
 		verify(profileImageRedisService).consumeSignUpTicket("images/sign-up/test.png");
 		verify(emailService).consumeVerifiedSignUpEmail("test@email.com");
 	}
@@ -279,6 +280,7 @@ class UserServiceTest {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		loginUser.editProfileImage("profile.png");
 		loginUser.editDescription("hello");
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 
 		GetProfileResponse response = userService.getMyProfile(loginUser);
 
@@ -288,6 +290,26 @@ class UserServiceTest {
 		assertThat(response.nickname()).isEqualTo("tester");
 		assertThat(response.temperature()).isEqualTo(50);
 		assertThat(response.level()).isEqualTo(3);
+		assertThat(response.isGithubLogin()).isFalse();
+		assertThat(response.isGithubLinked()).isFalse();
+		assertThat(response.githubUsername()).isNull();
+	}
+
+	@Test
+	void getMyProfile_returnsGithubStatusWhenGithubAccountIsLinked() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		GithubAccount githubAccount = GithubAccount.builder()
+			.user(loginUser)
+			.githubUserId(123L)
+			.githubUsername("octocat")
+			.build();
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(githubAccount));
+
+		GetProfileResponse response = userService.getMyProfile(loginUser);
+
+		assertThat(response.isGithubLogin()).isFalse();
+		assertThat(response.isGithubLinked()).isTrue();
+		assertThat(response.githubUsername()).isEqualTo("octocat");
 	}
 
 	@Test
@@ -295,6 +317,7 @@ class UserServiceTest {
 		ReflectionTestUtils.setField(userService, "s3Endpoint", "");
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		loginUser.editProfileImage("images/users/1/profile.png");
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 
 		GetProfileResponse response = userService.getMyProfile(loginUser);
 

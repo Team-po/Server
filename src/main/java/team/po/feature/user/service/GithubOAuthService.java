@@ -5,6 +5,8 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Locale;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -36,22 +38,97 @@ import team.po.feature.user.repository.UserRepository;
 public class GithubOAuthService {
 	private static final String GITHUB_EMAILS_URL = "https://api.github.com/user/emails";
 	private static final String AUTHORIZATION_CODE_PREFIX = "github-oauth-code:";
+	private static final String LINK_CODE_PREFIX = "github-oauth-link-code:";
+	private static final String LINK_STATE_PREFIX = "github-oauth-link-state:";
+	private static final String INVALID_LINK_STATE_VALUE = "INVALID";
 
 	private final GithubAccountRepository githubAccountRepository;
 	private final UserRepository userRepository;
 	private final JwtTokenProvider jwtTokenProvider;
 	private final RedisService redisService;
 	private final RestClient restClient;
+	private final GithubTokenEncryptor githubTokenEncryptor;
 
 	@Value("${github.oauth.authorization-code-ttl}")
 	private Duration authorizationCodeTtl;
 
-	public GithubAuthorizationCode createAuthorizationCode(OAuth2User oAuth2User, String githubAccessToken) {
+	@Transactional(readOnly = true)
+	public String createGithubLinkCode(Users user) {
+
+		String linkCode = UUID.randomUUID().toString();
+		redisService.setValue(createGithubLinkCodeKey(linkCode), user.getId().toString(), authorizationCodeTtl);
+		return linkCode;
+	}
+
+	public void bindGithubLinkState(String state, String linkCode) {
+		if (!StringUtils.hasText(state) || !StringUtils.hasText(linkCode)) {
+			return;
+		}
+		String userId = redisService.getAndDeleteStringValue(createGithubLinkCodeKey(linkCode));
+		redisService.setValue(
+			createGithubLinkStateKey(state),
+			userId == null ? INVALID_LINK_STATE_VALUE : userId,
+			authorizationCodeTtl
+		);
+	}
+
+	@Transactional
+	public boolean linkGithubAccountIfRequested(
+		String state,
+		OAuth2User oAuth2User,
+		String githubAccessToken,
+		String tokenType,
+		Set<String> scopes
+	) {
+		if (!StringUtils.hasText(state)) {
+			return false;
+		}
+
+		String userIdValue = redisService.getAndDeleteStringValue(createGithubLinkStateKey(state));
+		if (userIdValue == null) {
+			return false;
+		}
+		if (INVALID_LINK_STATE_VALUE.equals(userIdValue)) {
+			throw new ApplicationException(ErrorCode.INVALID_GITHUB_OAUTH_LINK_STATE);
+		}
+
+		Long userId = Long.valueOf(userIdValue);
+		Users user = userRepository.findByIdAndDeletedAtIsNull(userId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
+		Long githubUserId = getGithubUserId(oAuth2User);
+		String githubUsername = getGithubNickname(oAuth2User);
+
+		if (githubAccountRepository.findByUserIdAndDeletedAtIsNull(user.getId()).isPresent()) {
+			throw new ApplicationException(ErrorCode.GITHUB_ACCOUNT_ALREADY_LINKED);
+		}
+
+		githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(githubUserId)
+			.ifPresent(githubAccount -> {
+				throw new ApplicationException(ErrorCode.GITHUB_ACCOUNT_LINKED_TO_ANOTHER_USER);
+			});
+
+		try {
+			githubAccountRepository.save(GithubAccount.builder()
+				.user(user)
+				.githubUserId(githubUserId)
+				.githubUsername(githubUsername)
+				.accessTokenCiphertext(githubTokenEncryptor.encrypt(githubAccessToken))
+				.tokenType(tokenType)
+				.githubScopes(normalizeGithubScopes(scopes))
+				.build());
+		} catch (DataIntegrityViolationException exception) {
+			throw new ApplicationException(ErrorCode.GITHUB_ACCOUNT_LINKED_TO_ANOTHER_USER, exception);
+		}
+
+		return true;
+	}
+
+	public GithubAuthorizationCode createGithubAuthorizationCode(OAuth2User oAuth2User, String githubAccessToken) {
 		Long githubUserId = getGithubUserId(oAuth2User);
 		String githubUsername = getGithubNickname(oAuth2User);
 		return githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(githubUserId)
-			.map(githubAccount -> createLoginAuthorizationCode(githubAccount.getUser().getId()))
-			.orElseGet(() -> createSignUpAuthorizationCode(
+			.map(githubAccount -> createLoginGithubAuthorizationCode(githubAccount.getUser().getId()))
+			.orElseGet(() -> createSignUpGithubAuthorizationCode(
 				githubUserId,
 				githubUsername,
 				getGithubEmail(oAuth2User, githubAccessToken)
@@ -59,15 +136,15 @@ public class GithubOAuthService {
 	}
 
 	@Transactional
-	public SignInResponse exchangeAuthorizationCode(OAuthAuthorizationCodeRequest request) {
-		String payloadValue = redisService.getAndDeleteStringValue(createAuthorizationCodeKey(request.code()));
+	public SignInResponse exchangeGithubAuthorizationCode(OAuthAuthorizationCodeRequest request) {
+		String payloadValue = redisService.getAndDeleteStringValue(createGithubAuthorizationCodeKey(request.code()));
 		if (payloadValue == null) {
 			throw new ApplicationException(ErrorCode.INVALID_OAUTH_AUTHORIZATION_CODE);
 		}
 
 		GithubAuthorizationPayload payload = GithubAuthorizationPayload.deserialize(payloadValue);
 		Users user = switch (payload.type()) {
-			case LOGIN -> getLoginUser(payload);
+			case LOGIN -> getGithubLoginUser(payload);
 			case SIGN_UP -> signUpGithubUser(payload, request.level());
 		};
 
@@ -75,25 +152,29 @@ public class GithubOAuthService {
 		return new SignInResponse(jwtToken.accessToken(), jwtToken.refreshToken(), jwtToken.accessTokenExpiresAt());
 	}
 
-	private GithubAuthorizationCode createLoginAuthorizationCode(Long userId) {
-		return createAuthorizationCode(GithubAuthorizationPayload.login(userId));
+	private GithubAuthorizationCode createLoginGithubAuthorizationCode(Long userId) {
+		return createGithubAuthorizationCode(GithubAuthorizationPayload.login(userId));
 	}
 
-	private GithubAuthorizationCode createSignUpAuthorizationCode(Long githubUserId, String githubUsername, String email) {
-		return createAuthorizationCode(GithubAuthorizationPayload.signUp(githubUserId, githubUsername, email));
+	private GithubAuthorizationCode createSignUpGithubAuthorizationCode(
+		Long githubUserId,
+		String githubUsername,
+		String email
+	) {
+		return createGithubAuthorizationCode(GithubAuthorizationPayload.signUp(githubUserId, githubUsername, email));
 	}
 
-	private GithubAuthorizationCode createAuthorizationCode(GithubAuthorizationPayload payload) {
+	private GithubAuthorizationCode createGithubAuthorizationCode(GithubAuthorizationPayload payload) {
 		String authorizationCode = UUID.randomUUID().toString();
 		redisService.setValue(
-			createAuthorizationCodeKey(authorizationCode),
+			createGithubAuthorizationCodeKey(authorizationCode),
 			payload.serialize(),
 			authorizationCodeTtl
 		);
 		return new GithubAuthorizationCode(authorizationCode, payload.requiresOnboarding());
 	}
 
-	private Users getLoginUser(GithubAuthorizationPayload payload) {
+	private Users getGithubLoginUser(GithubAuthorizationPayload payload) {
 		return userRepository.findByIdAndDeletedAtIsNull(payload.userId())
 			.orElseThrow(() -> new ApplicationException(ErrorCode.GITHUB_LOGIN_USER_NOT_FOUND));
 	}
@@ -138,6 +219,7 @@ public class GithubOAuthService {
 			.level(level)
 			.temperature(50)
 			.build();
+		user.markAsGithubLogin();
 
 		try {
 			return userRepository.save(user);
@@ -197,8 +279,23 @@ public class GithubOAuthService {
 		return email.trim().toLowerCase(Locale.ROOT);
 	}
 
-	private String createAuthorizationCodeKey(String authorizationCode) {
+	private String createGithubAuthorizationCodeKey(String authorizationCode) {
 		return AUTHORIZATION_CODE_PREFIX + authorizationCode;
+	}
+
+	private String createGithubLinkCodeKey(String linkCode) {
+		return LINK_CODE_PREFIX + linkCode;
+	}
+
+	private String createGithubLinkStateKey(String state) {
+		return LINK_STATE_PREFIX + state;
+	}
+
+	private String normalizeGithubScopes(Set<String> scopes) {
+		if (scopes == null || scopes.isEmpty()) {
+			return null;
+		}
+		return String.join(",", new TreeSet<>(scopes));
 	}
 
 	private record GithubEmail(

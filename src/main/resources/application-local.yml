@@ -65,6 +65,7 @@ github:
   oauth:
     success-redirect-uri: ${GITHUB_OAUTH_SUCCESS_REDIRECT_URI:http://localhost:5173/oauth/github/callback}
     authorization-code-ttl: ${GITHUB_OAUTH_AUTHORIZATION_CODE_TTL:PT3M}
+    token-encryption-secret: ${GITHUB_OAUTH_TOKEN_ENCRYPTION_SECRET:${JWT_SECRET:${local.jwt.secret:}}}
     rest-client:
       connect-timeout: ${GITHUB_OAUTH_REST_CLIENT_CONNECT_TIMEOUT:PT3S}
       read-timeout: ${GITHUB_OAUTH_REST_CLIENT_READ_TIMEOUT:PT5S}
