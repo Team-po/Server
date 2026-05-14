@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.util.UriComponentsBuilder;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -22,7 +21,6 @@ import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
-import team.po.feature.user.dto.GithubLinkStartResponse;
 import team.po.feature.user.dto.ProfileImageUploadUrlRequest;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
 import team.po.feature.user.dto.RefreshTokenRequest;
@@ -30,7 +28,6 @@ import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
-import team.po.feature.user.service.GithubOAuthService;
 import team.po.feature.user.service.ImageService;
 import team.po.feature.user.service.UserService;
 
@@ -40,7 +37,6 @@ import team.po.feature.user.service.UserService;
 public class UserController {
 	private final UserService userService;
 	private final ImageService imageService;
-	private final GithubOAuthService githubOAuthService;
 
 	@Operation(summary = "회원 가입 API")
 	@PostMapping(value = "/sign-up")
@@ -84,19 +80,6 @@ public class UserController {
 	public ResponseEntity<GetProfileResponse> getMyProfile(@Parameter(hidden = true) @LoginUser Users user) {
 		GetProfileResponse response = userService.getMyProfile(user);
 		return ResponseEntity.ok().body(response);
-	}
-
-	@Operation(summary = "GitHub 계정 연동 API")
-	@PostMapping(value = "/me/github-link-requests")
-	public ResponseEntity<GithubLinkStartResponse> startGithubAccountLink(
-		@Parameter(hidden = true) @LoginUser Users user
-	) {
-		String linkCode = githubOAuthService.createGithubLinkCode(user);
-		String authorizationUrl = UriComponentsBuilder.fromPath("/oauth2/authorization/github")
-			.queryParam("linkCode", linkCode)
-			.build()
-			.toUriString();
-		return ResponseEntity.ok(new GithubLinkStartResponse(authorizationUrl));
 	}
 
 	@Operation(summary = "유저 프로필 수정 API")

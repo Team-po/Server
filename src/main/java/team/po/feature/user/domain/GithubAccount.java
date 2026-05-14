@@ -88,5 +88,9 @@ public class GithubAccount {
 
 	public void softDelete(Instant deletedAt) {
 		this.deletedAt = deletedAt;
+		this.accessTokenCiphertext = null;
+		this.tokenType = null;
+		this.githubScopes = null;
+		this.tokenUpdatedAt = null;
 	}
 }

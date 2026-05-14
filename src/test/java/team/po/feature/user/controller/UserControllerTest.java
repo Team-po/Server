@@ -37,7 +37,6 @@ import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInResponse;
-import team.po.feature.user.service.GithubOAuthService;
 import team.po.feature.user.service.ImageService;
 import team.po.feature.user.repository.UserRepository;
 import team.po.feature.user.service.UserService;
@@ -55,9 +54,6 @@ class UserControllerTest {
 
 	@MockitoBean
 	private ImageService profileImagePresignService;
-
-	@MockitoBean
-	private GithubOAuthService githubOAuthService;
 
 	@MockitoBean
 	private UserRepository userRepository;
@@ -278,28 +274,6 @@ class UserControllerTest {
 			.andExpect(jsonPath("$.message").value("존재하지 않은 유저입니다."));
 
 		verifyNoInteractions(userService);
-	}
-
-	@Test
-	void startGithubAccountLink_returnsAuthorizationUrl_whenAuthenticatedUserExists() throws Exception {
-		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
-		when(githubOAuthService.createGithubLinkCode(authenticatedUser)).thenReturn("link-code");
-
-		mockMvc.perform(post("/api/users/me/github-link-requests"))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.authorizationUrl").value("/oauth2/authorization/github?linkCode=link-code"));
-	}
-
-	@Test
-	void startGithubAccountLink_returnsConflict_whenGithubAccountIsAlreadyLinked() throws Exception {
-		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
-		when(githubOAuthService.createGithubLinkCode(authenticatedUser))
-			.thenThrow(new ApplicationException(ErrorCode.GITHUB_ACCOUNT_ALREADY_LINKED));
-
-		mockMvc.perform(post("/api/users/me/github-link-requests"))
-			.andExpect(status().isConflict())
-			.andExpect(jsonPath("$.code").value(ErrorCode.GITHUB_ACCOUNT_ALREADY_LINKED.getCode()))
-			.andExpect(jsonPath("$.message").value("이미 GitHub 계정이 연동되어 있습니다."));
 	}
 
 	@Test

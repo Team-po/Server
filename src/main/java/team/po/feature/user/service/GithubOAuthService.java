@@ -2,6 +2,7 @@ package team.po.feature.user.service;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Locale;
@@ -61,6 +62,17 @@ public class GithubOAuthService {
 		String linkCode = UUID.randomUUID().toString();
 		redisService.setValue(createGithubLinkCodeKey(linkCode), user.getId().toString(), authorizationCodeTtl);
 		return linkCode;
+	}
+
+	@Transactional
+	public void unlinkGithubAccount(Users user) {
+		if (user.isGithubLogin()) {
+			throw new ApplicationException(ErrorCode.GITHUB_LOGIN_ACCOUNT_UNLINK_NOT_ALLOWED);
+		}
+
+		GithubAccount githubAccount = githubAccountRepository.findByUserIdAndDeletedAtIsNull(user.getId())
+			.orElseThrow(() -> new ApplicationException(ErrorCode.GITHUB_ACCOUNT_NOT_LINKED));
+		githubAccount.softDelete(Instant.now());
 	}
 
 	public void bindGithubLinkState(String state, String linkCode) {

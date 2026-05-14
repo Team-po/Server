@@ -117,6 +117,52 @@ class GithubOAuthServiceTest {
 	}
 
 	@Test
+	void unlinkGithubAccount_softDeletesGithubAccountAndClearsAuthorization() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		GithubAccount githubAccount = GithubAccount.builder()
+			.user(user)
+			.githubUserId(123L)
+			.githubUsername("octocat")
+			.accessTokenCiphertext("encrypted-token")
+			.tokenType("Bearer")
+			.githubScopes("repo,user:email")
+			.tokenUpdatedAt(Instant.parse("2026-05-06T12:00:00Z"))
+			.build();
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(githubAccount));
+
+		githubOAuthService.unlinkGithubAccount(user);
+
+		assertThat(githubAccount.getDeletedAt()).isNotNull();
+		assertThat(githubAccount.getAccessTokenCiphertext()).isNull();
+		assertThat(githubAccount.getTokenType()).isNull();
+		assertThat(githubAccount.getGithubScopes()).isNull();
+		assertThat(githubAccount.getTokenUpdatedAt()).isNull();
+	}
+
+	@Test
+	void unlinkGithubAccount_throwsWhenGithubAccountIsNotLinked() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> githubOAuthService.unlinkGithubAccount(user))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.GITHUB_ACCOUNT_NOT_LINKED);
+	}
+
+	@Test
+	void unlinkGithubAccount_throwsWhenUserIsGithubLoginAccount() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		user.markAsGithubLogin();
+
+		assertThatThrownBy(() -> githubOAuthService.unlinkGithubAccount(user))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.GITHUB_LOGIN_ACCOUNT_UNLINK_NOT_ALLOWED);
+		verify(githubAccountRepository, never()).findByUserIdAndDeletedAtIsNull(anyLong());
+	}
+
+	@Test
 	void bindGithubLinkState_storesStateMappingWhenLinkCodeExists() {
 		when(redisService.getAndDeleteStringValue("github-oauth-link-code:link-code")).thenReturn("1");
 
