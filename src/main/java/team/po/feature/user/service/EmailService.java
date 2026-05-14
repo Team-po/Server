@@ -114,6 +114,19 @@ public class EmailService {
 		consumeVerifiedEmail(email, EmailAuthPurpose.DELETE_USER);
 	}
 
+	public void validateVerifiedDeleteUserEmail(String email) {
+		validateVerifiedEmail(email, EmailAuthPurpose.DELETE_USER);
+	}
+
+	private void validateVerifiedEmail(String email, EmailAuthPurpose purpose) {
+		String normalizedEmail = normalizeEmail(email);
+		String verified = redisService.getStringValue(createVerifiedEmailKey(normalizedEmail, purpose));
+
+		if (!VERIFIED_VALUE.equals(verified)) {
+			throw new ApplicationException(ErrorCode.EMAIL_NOT_VERIFIED);
+		}
+	}
+
 	private void consumeVerifiedEmail(String email, EmailAuthPurpose purpose) {
 		String normalizedEmail = normalizeEmail(email);
 		Object verified = redisService.getAndDeleteValue(createVerifiedEmailKey(normalizedEmail, purpose));

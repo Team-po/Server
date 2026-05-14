@@ -181,7 +181,7 @@ public class UserService {
 	@Transactional
 	public void deleteUser(Users loginUser) {
 		Users user = this.getActiveUser(loginUser.getId());
-		emailService.consumeVerifiedDeleteUserEmail(user.getEmail());
+		emailService.validateVerifiedDeleteUserEmail(user.getEmail());
 
 		Instant deletedAt = Instant.now();
 		String email = user.getEmail();
@@ -190,7 +190,9 @@ public class UserService {
 		user.softDelete(deletedAt, deletedEmail);
 		githubAccountRepository.findByUserIdAndDeletedAtIsNull(user.getId())
 			.ifPresent(githubAccount -> githubAccount.softDelete(deletedAt));
+		userRepository.flush();
 		jwtTokenProvider.deleteRefreshToken(email);
+		emailService.consumeVerifiedDeleteUserEmail(email);
 	}
 
 	private String normalizeEmail(String email) {
@@ -245,4 +247,3 @@ public class UserService {
 			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
 	}
 }
-

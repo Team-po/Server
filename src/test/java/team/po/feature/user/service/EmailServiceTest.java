@@ -265,6 +265,27 @@ class EmailServiceTest {
 	}
 
 	@Test
+	void validateVerifiedDeleteUserEmail_passesWithoutDeletingVerifiedFlag() {
+		when(redisService.getStringValue(deleteUserEmailVerifiedKey("test@email.com"))).thenReturn("true");
+
+		emailService.validateVerifiedDeleteUserEmail(" Test@Email.com ");
+
+		verify(redisService).getStringValue(deleteUserEmailVerifiedKey("test@email.com"));
+		verify(redisService, never()).getAndDeleteValue(any());
+	}
+
+	@Test
+	void validateVerifiedDeleteUserEmail_throwsWhenVerifiedFlagDoesNotExist() {
+		when(redisService.getStringValue(deleteUserEmailVerifiedKey("test@email.com"))).thenReturn(null);
+
+		assertThatThrownBy(() -> emailService.validateVerifiedDeleteUserEmail("test@email.com"))
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("이메일 인증이 필요합니다.");
+
+		verify(redisService, never()).getAndDeleteValue(any());
+	}
+
+	@Test
 	void consumeVerifiedSignUpEmail_throwsWhenVerifiedFlagDoesNotExist() {
 		when(redisService.getAndDeleteValue(emailVerifiedKey("test@email.com"))).thenReturn(null);
 
