@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.HexFormat;
 import java.util.Locale;
 
@@ -39,6 +40,8 @@ public class EmailService {
 	private static final String EMAIL_VERIFICATION_TEMPLATE_PATH = "templates/email-verification.html";
 	private static final String VERIFICATION_CODE_PLACEHOLDER = "__VERIFICATION_CODE__";
 	private static final String VERIFICATION_GUIDE_MESSAGE_PLACEHOLDER = "__VERIFICATION_GUIDE_MESSAGE__";
+	private static final String VERIFICATION_PREHEADER_PLACEHOLDER = "__VERIFICATION_PREHEADER__";
+	private static final String VERIFICATION_BADGE_TEXT_PLACEHOLDER = "__VERIFICATION_BADGE_TEXT__";
 	private static final int AUTH_CODE_ORIGIN = 100_000;
 	private static final int AUTH_CODE_BOUND = 900_000;
 	private static final int MAX_AUTH_CODE_FAILURE_COUNT = 5;
@@ -68,7 +71,7 @@ public class EmailService {
 		redisService.deleteValue(createVerifiedEmailKey(email, purpose));
 
 		try {
-			javaMailSender.send(createAuthCodeMessage(email, authCode, purpose.guideMessage));
+			javaMailSender.send(createAuthCodeMessage(email, authCode, purpose));
 		} catch (MailException | MessagingException | IOException exception) {
 			redisService.deleteValue(authCodeKey);
 			throw new ApplicationException(
@@ -142,7 +145,7 @@ public class EmailService {
 		return String.valueOf(secureRandom.nextInt(AUTH_CODE_BOUND) + AUTH_CODE_ORIGIN);
 	}
 
-	private MimeMessage createAuthCodeMessage(String email, String authCode, String guideMessage)
+	private MimeMessage createAuthCodeMessage(String email, String authCode, EmailAuthPurpose purpose)
 		throws MessagingException, IOException {
 		MimeMessage message = javaMailSender.createMimeMessage();
 		MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
@@ -151,20 +154,58 @@ public class EmailService {
 		}
 		helper.setTo(email);
 		helper.setSubject(emailAuthProperties.authCodeSubject());
-		helper.setText(createAuthCodeHtml(authCode, guideMessage), true);
+		helper.setText(createAuthCodeHtml(authCode, purpose), true);
 
 		return message;
 	}
 
-	private String createAuthCodeHtml(String authCode, String guideMessage) throws IOException {
+	private String createAuthCodeHtml(String authCode, EmailAuthPurpose purpose) throws IOException {
 		Resource template = new ClassPathResource(EMAIL_VERIFICATION_TEMPLATE_PATH);
 		String html;
 		try (InputStream inputStream = template.getInputStream()) {
 			html = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
 		}
+		String authCodeTtlText = formatDuration(emailAuthProperties.authCodeTtl());
 		return html
 			.replace(VERIFICATION_CODE_PLACEHOLDER, authCode)
-			.replace(VERIFICATION_GUIDE_MESSAGE_PLACEHOLDER, guideMessage);
+			.replace(VERIFICATION_GUIDE_MESSAGE_PLACEHOLDER, purpose.createGuideMessage(authCodeTtlText))
+			.replace(VERIFICATION_PREHEADER_PLACEHOLDER, purpose.createPreheader(authCodeTtlText))
+			.replace(VERIFICATION_BADGE_TEXT_PLACEHOLDER, purpose.badgeText);
+	}
+
+	private String formatDuration(Duration duration) {
+		long seconds = duration.toSeconds();
+		if (duration.minusSeconds(seconds).toNanos() > 0) {
+			seconds++;
+		}
+		if (seconds <= 0) {
+			return "0초";
+		}
+
+		long days = seconds / 86_400;
+		seconds %= 86_400;
+		long hours = seconds / 3_600;
+		seconds %= 3_600;
+		long minutes = seconds / 60;
+		seconds %= 60;
+
+		StringBuilder builder = new StringBuilder();
+		appendDurationPart(builder, days, "일");
+		appendDurationPart(builder, hours, "시간");
+		appendDurationPart(builder, minutes, "분");
+		appendDurationPart(builder, seconds, "초");
+
+		return builder.toString();
+	}
+
+	private void appendDurationPart(StringBuilder builder, long value, String unit) {
+		if (value <= 0) {
+			return;
+		}
+		if (!builder.isEmpty()) {
+			builder.append(' ');
+		}
+		builder.append(value).append(unit);
 	}
 
 	private String createEmailAuthCodeKey(String email, EmailAuthPurpose purpose) {
@@ -196,19 +237,35 @@ public class EmailService {
 	private enum EmailAuthPurpose {
 		SIGN_UP(
 			"signup",
-			"Team-po 계정 생성을 완료하려면 아래 인증번호를 인증 화면에 입력해 주세요. 인증번호는 발급 후 5분간만 유효합니다."
+			"회원가입 인증",
+			"Team-po 계정 생성 인증번호입니다.",
+			"Team-po 계정 생성을 완료하려면 아래 인증번호를 인증 화면에 입력해 주세요."
 		),
 		DELETE_USER(
 			"delete-user",
-			"Team-po 계정 삭제를 완료하려면 아래 인증번호를 인증 화면에 입력해 주세요. 인증번호는 발급 후 5분간만 유효합니다."
+			"계정 삭제 인증",
+			"Team-po 계정 삭제 인증번호입니다.",
+			"Team-po 계정 삭제를 완료하려면 아래 인증번호를 인증 화면에 입력해 주세요."
 		);
 
 		private final String key;
-		private final String guideMessage;
+		private final String badgeText;
+		private final String preheaderPrefix;
+		private final String guideMessagePrefix;
 
-		EmailAuthPurpose(String key, String guideMessage) {
+		EmailAuthPurpose(String key, String badgeText, String preheaderPrefix, String guideMessagePrefix) {
 			this.key = key;
-			this.guideMessage = guideMessage;
+			this.badgeText = badgeText;
+			this.preheaderPrefix = preheaderPrefix;
+			this.guideMessagePrefix = guideMessagePrefix;
+		}
+
+		private String createPreheader(String authCodeTtlText) {
+			return preheaderPrefix + " 인증번호는 " + authCodeTtlText + " 동안 유효합니다.";
+		}
+
+		private String createGuideMessage(String authCodeTtlText) {
+			return guideMessagePrefix + " 인증번호는 발급 후 " + authCodeTtlText + " 동안만 유효합니다.";
 		}
 	}
 }

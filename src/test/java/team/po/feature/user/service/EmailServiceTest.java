@@ -55,13 +55,7 @@ class EmailServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		EmailAuthProperties emailAuthProperties = new EmailAuthProperties(
-			"no-reply@teampo.com",
-			AUTH_CODE_TTL,
-			VERIFIED_TTL,
-			"TeamPo 이메일 인증번호"
-		);
-		emailService = new EmailService(javaMailSender, redisService, userRepository, emailAuthProperties);
+		emailService = createEmailService(AUTH_CODE_TTL);
 		mimeMessage = new MimeMessage(Session.getInstance(new Properties()));
 		lenient().when(javaMailSender.createMimeMessage()).thenReturn(mimeMessage);
 	}
@@ -92,8 +86,31 @@ class EmailServiceTest {
 		assertThat(mimeMessage.getContentType()).contains("text/html");
 		assertThat(mimeMessage.getContent().toString())
 			.contains(authCode)
+			.contains("회원가입 인증")
 			.contains("Team-po 계정 생성을 완료하려면")
+			.contains("인증번호는 발급 후 5분 동안만 유효합니다.")
 			.doesNotContain("__VERIFICATION_CODE__");
+	}
+
+	@Test
+	void sendEmail_usesConfiguredAuthCodeTtlInHtmlGuideMessage() throws Exception {
+		Duration customAuthCodeTtl = Duration.ofMinutes(7);
+		emailService = createEmailService(customAuthCodeTtl);
+		mimeMessage = new MimeMessage(Session.getInstance(new Properties()));
+		when(javaMailSender.createMimeMessage()).thenReturn(mimeMessage);
+		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
+
+		emailService.sendEmail(new SendEmailRequest("test@email.com"));
+
+		verify(redisService).setValue(
+			eq(emailAuthCodeKey("test@email.com")),
+			any(String.class),
+			eq(customAuthCodeTtl)
+		);
+		mimeMessage.saveChanges();
+		assertThat(mimeMessage.getContent().toString())
+			.contains("인증번호는 발급 후 7분 동안만 유효합니다.")
+			.doesNotContain("인증번호는 발급 후 5분 동안만 유효합니다.");
 	}
 
 	@Test
@@ -138,8 +155,11 @@ class EmailServiceTest {
 		assertThat(authCodeCaptor.getValue()).matches("\\d{6}");
 		mimeMessage.saveChanges();
 		assertThat(mimeMessage.getContent().toString())
+			.contains("계정 삭제 인증")
 			.contains("Team-po 계정 삭제를 완료하려면")
+			.contains("Team-po 계정 삭제 인증번호입니다.")
 			.doesNotContain("Team-po 계정 생성을 완료하려면")
+			.doesNotContain("회원가입 인증")
 			.doesNotContain("__VERIFICATION_GUIDE_MESSAGE__");
 	}
 
@@ -275,6 +295,16 @@ class EmailServiceTest {
 
 	private String deleteUserEmailVerifiedKey(String email) {
 		return "email-auth-verified:delete-user:" + hashEmail(email);
+	}
+
+	private EmailService createEmailService(Duration authCodeTtl) {
+		EmailAuthProperties emailAuthProperties = new EmailAuthProperties(
+			"no-reply@teampo.com",
+			authCodeTtl,
+			VERIFIED_TTL,
+			"TeamPo 이메일 인증번호"
+		);
+		return new EmailService(javaMailSender, redisService, userRepository, emailAuthProperties);
 	}
 
 	private String hashEmail(String email) {
