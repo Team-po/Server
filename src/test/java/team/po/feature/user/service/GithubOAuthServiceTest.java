@@ -78,9 +78,15 @@ class GithubOAuthServiceTest {
 		GithubAccount githubAccount = githubAccount(user, 123L, "octocat");
 		OAuth2User oAuth2User = githubOAuth2User(123L, "octocat", " Test@Email.com ");
 		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.of(githubAccount));
+		when(githubTokenEncryptor.encrypt("github-access-token")).thenReturn("encrypted-token");
 
 		GithubAuthorizationCode authorizationCode =
-			githubOAuthService.createGithubAuthorizationCode(oAuth2User, "github-access-token");
+			githubOAuthService.createGithubAuthorizationCode(
+				oAuth2User,
+				"github-access-token",
+				"Bearer",
+				Set.of("repo", "user:email")
+			);
 
 		assertThat(authorizationCode.authorizationCode()).isNotBlank();
 		assertThat(authorizationCode.onboardingRequired()).isFalse();
@@ -89,6 +95,11 @@ class GithubOAuthServiceTest {
 			eq("LOGIN.1"),
 			eq(AUTHORIZATION_CODE_TTL)
 		);
+		assertThat(githubAccount.getAccessTokenCiphertext()).isEqualTo("encrypted-token");
+		assertThat(githubAccount.getTokenType()).isEqualTo("Bearer");
+		assertThat(githubAccount.getGithubScopes()).isEqualTo("repo,user:email");
+		assertThat(githubAccount.getTokenUpdatedAt()).isNotNull();
+		verify(githubAccountRepository).save(githubAccount);
 		verifyNoInteractions(restClient);
 	}
 
@@ -223,6 +234,7 @@ class GithubOAuthServiceTest {
 		assertThat(savedGithubAccount.getAccessTokenCiphertext()).isEqualTo("encrypted-token");
 		assertThat(savedGithubAccount.getTokenType()).isEqualTo("Bearer");
 		assertThat(savedGithubAccount.getGithubScopes()).isEqualTo("repo,user:email");
+		assertThat(savedGithubAccount.getTokenUpdatedAt()).isNotNull();
 	}
 
 	@Test
@@ -298,9 +310,15 @@ class GithubOAuthServiceTest {
 		GithubAccount githubAccount = githubAccount(user, 123L, "octocat");
 		OAuth2User oAuth2User = githubOAuth2UserWithoutEmail(123L, "octocat");
 		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.of(githubAccount));
+		when(githubTokenEncryptor.encrypt("github-access-token")).thenReturn("encrypted-token");
 
 		GithubAuthorizationCode authorizationCode =
-			githubOAuthService.createGithubAuthorizationCode(oAuth2User, "github-access-token");
+			githubOAuthService.createGithubAuthorizationCode(
+				oAuth2User,
+				"github-access-token",
+				"Bearer",
+				Set.of("user:email")
+			);
 
 		assertThat(authorizationCode.authorizationCode()).isNotBlank();
 		assertThat(authorizationCode.onboardingRequired()).isFalse();
@@ -309,6 +327,11 @@ class GithubOAuthServiceTest {
 			eq("LOGIN.1"),
 			eq(AUTHORIZATION_CODE_TTL)
 		);
+		assertThat(githubAccount.getAccessTokenCiphertext()).isEqualTo("encrypted-token");
+		assertThat(githubAccount.getTokenType()).isEqualTo("Bearer");
+		assertThat(githubAccount.getGithubScopes()).isEqualTo("user:email");
+		assertThat(githubAccount.getTokenUpdatedAt()).isNotNull();
+		verify(githubAccountRepository).save(githubAccount);
 		verifyNoInteractions(restClient);
 	}
 
@@ -435,6 +458,7 @@ class GithubOAuthServiceTest {
 		assertThat(savedGithubAccount.getAccessTokenCiphertext()).isEqualTo("encrypted-token");
 		assertThat(savedGithubAccount.getTokenType()).isEqualTo("Bearer");
 		assertThat(savedGithubAccount.getGithubScopes()).isEqualTo("repo,user:email");
+		assertThat(savedGithubAccount.getTokenUpdatedAt()).isNotNull();
 	}
 
 	@Test
@@ -489,6 +513,7 @@ class GithubOAuthServiceTest {
 		assertThat(savedGithubAccount.getAccessTokenCiphertext()).isEqualTo("encrypted-token");
 		assertThat(savedGithubAccount.getTokenType()).isEqualTo("Bearer");
 		assertThat(savedGithubAccount.getGithubScopes()).isEqualTo("repo,user:email");
+		assertThat(savedGithubAccount.getTokenUpdatedAt()).isNotNull();
 	}
 
 	@Test

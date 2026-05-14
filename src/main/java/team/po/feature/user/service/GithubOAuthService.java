@@ -130,6 +130,7 @@ public class GithubOAuthService {
 				.accessTokenCiphertext(githubTokenEncryptor.encrypt(githubAccessToken))
 				.tokenType(tokenType)
 				.githubScopes(normalizeGithubScopes(scopes))
+				.tokenUpdatedAt(Instant.now())
 				.build());
 		} catch (DataIntegrityViolationException exception) {
 			throw new ApplicationException(ErrorCode.GITHUB_ACCOUNT_LINKED_TO_ANOTHER_USER, exception);
@@ -151,7 +152,12 @@ public class GithubOAuthService {
 		Long githubUserId = getGithubUserId(oAuth2User);
 		String githubUsername = getGithubNickname(oAuth2User);
 		return githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(githubUserId)
-			.map(githubAccount -> createLoginGithubAuthorizationCode(githubAccount.getUser().getId()))
+			.map(githubAccount -> createLoginGithubAuthorizationCode(
+				githubAccount,
+				githubAccessToken,
+				tokenType,
+				scopes
+			))
 			.orElseGet(() -> createSignUpGithubAuthorizationCode(
 				githubUserId,
 				githubUsername,
@@ -179,8 +185,20 @@ public class GithubOAuthService {
 		return new SignInResponse(jwtToken.accessToken(), jwtToken.refreshToken(), jwtToken.accessTokenExpiresAt());
 	}
 
-	private GithubAuthorizationCode createLoginGithubAuthorizationCode(Long userId) {
-		return createGithubAuthorizationCode(GithubAuthorizationPayload.login(userId));
+	private GithubAuthorizationCode createLoginGithubAuthorizationCode(
+		GithubAccount githubAccount,
+		String githubAccessToken,
+		String tokenType,
+		Set<String> scopes
+	) {
+		githubAccount.updateAuthorization(
+			githubTokenEncryptor.encrypt(githubAccessToken),
+			tokenType,
+			normalizeGithubScopes(scopes),
+			Instant.now()
+		);
+		githubAccountRepository.save(githubAccount);
+		return createGithubAuthorizationCode(GithubAuthorizationPayload.login(githubAccount.getUser().getId()));
 	}
 
 	private GithubAuthorizationCode createSignUpGithubAuthorizationCode(
@@ -238,6 +256,7 @@ public class GithubOAuthService {
 				.accessTokenCiphertext(payload.accessTokenCiphertext())
 				.tokenType(payload.tokenType())
 				.githubScopes(payload.githubScopes())
+				.tokenUpdatedAt(Instant.now())
 				.build());
 		} catch (DataIntegrityViolationException exception) {
 			throw new ApplicationException(ErrorCode.EMAIL_ALREADY_EXISTS, "이미 연결된 GitHub 계정입니다.", exception);
