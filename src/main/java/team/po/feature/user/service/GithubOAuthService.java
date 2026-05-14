@@ -54,6 +54,9 @@ public class GithubOAuthService {
 
 	@Transactional(readOnly = true)
 	public String createGithubLinkCode(Users user) {
+		if (githubAccountRepository.findByUserIdAndDeletedAtIsNull(user.getId()).isPresent()) {
+			throw new ApplicationException(ErrorCode.GITHUB_ACCOUNT_ALREADY_LINKED);
+		}
 
 		String linkCode = UUID.randomUUID().toString();
 		redisService.setValue(createGithubLinkCodeKey(linkCode), user.getId().toString(), authorizationCodeTtl);

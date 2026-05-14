@@ -291,6 +291,18 @@ class UserControllerTest {
 	}
 
 	@Test
+	void startGithubAccountLink_returnsConflict_whenGithubAccountIsAlreadyLinked() throws Exception {
+		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
+		when(githubOAuthService.createGithubLinkCode(authenticatedUser))
+			.thenThrow(new ApplicationException(ErrorCode.GITHUB_ACCOUNT_ALREADY_LINKED));
+
+		mockMvc.perform(post("/api/users/me/github-link-requests"))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value(ErrorCode.GITHUB_ACCOUNT_ALREADY_LINKED.getCode()))
+			.andExpect(jsonPath("$.message").value("이미 GitHub 계정이 연동되어 있습니다."));
+	}
+
+	@Test
 	void createSignUpProfileImageUploadUrl_returnsOk_whenRequestIsValid() throws Exception {
 		org.mockito.Mockito.when(profileImagePresignService.createSignUpUploadUrl(
 			new team.po.feature.user.dto.ProfileImageUploadUrlRequest("image/webp")

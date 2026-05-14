@@ -95,11 +95,25 @@ class GithubOAuthServiceTest {
 	@Test
 	void createGithubLinkCode_storesCurrentUserIdInRedis() {
 		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 
 		String linkCode = githubOAuthService.createGithubLinkCode(user);
 
 		assertThat(linkCode).isNotBlank();
 		verify(redisService).setValue("github-oauth-link-code:" + linkCode, "1", AUTHORIZATION_CODE_TTL);
+	}
+
+	@Test
+	void createGithubLinkCode_throwsWhenCurrentUserAlreadyHasGithubAccount() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L))
+			.thenReturn(Optional.of(githubAccount(user, 123L, "octocat")));
+
+		assertThatThrownBy(() -> githubOAuthService.createGithubLinkCode(user))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.GITHUB_ACCOUNT_ALREADY_LINKED);
+		verify(redisService, never()).setValue(anyString(), any(), any());
 	}
 
 	@Test
