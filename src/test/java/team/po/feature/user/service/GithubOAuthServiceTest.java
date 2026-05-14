@@ -316,9 +316,15 @@ class GithubOAuthServiceTest {
 	void createGithubAuthorizationCode_returnsSignUpCodeWhenGithubAccountDoesNotExist() {
 		OAuth2User oAuth2User = githubOAuth2User(123L, "octocat", " Test@Email.com ");
 		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.empty());
+		when(githubTokenEncryptor.encrypt("github-access-token")).thenReturn("encrypted-token");
 
 		GithubAuthorizationCode authorizationCode =
-			githubOAuthService.createGithubAuthorizationCode(oAuth2User, "github-access-token");
+			githubOAuthService.createGithubAuthorizationCode(
+				oAuth2User,
+				"github-access-token",
+				"Bearer",
+				Set.of("repo", "user:email")
+			);
 
 		assertThat(authorizationCode.authorizationCode()).isNotBlank();
 		assertThat(authorizationCode.onboardingRequired()).isTrue();
@@ -426,6 +432,9 @@ class GithubOAuthServiceTest {
 		assertThat(savedGithubAccount.getUser()).isSameAs(savedUser);
 		assertThat(savedGithubAccount.getGithubUserId()).isEqualTo(123L);
 		assertThat(savedGithubAccount.getGithubUsername()).isEqualTo("octocat");
+		assertThat(savedGithubAccount.getAccessTokenCiphertext()).isEqualTo("encrypted-token");
+		assertThat(savedGithubAccount.getTokenType()).isEqualTo("Bearer");
+		assertThat(savedGithubAccount.getGithubScopes()).isEqualTo("repo,user:email");
 	}
 
 	@Test
@@ -477,6 +486,9 @@ class GithubOAuthServiceTest {
 		assertThat(savedGithubAccount.getUser().getId()).isEqualTo(2L);
 		assertThat(savedGithubAccount.getGithubUserId()).isEqualTo(123L);
 		assertThat(savedGithubAccount.getGithubUsername()).isEqualTo("octocat");
+		assertThat(savedGithubAccount.getAccessTokenCiphertext()).isEqualTo("encrypted-token");
+		assertThat(savedGithubAccount.getTokenType()).isEqualTo("Bearer");
+		assertThat(savedGithubAccount.getGithubScopes()).isEqualTo("repo,user:email");
 	}
 
 	@Test
@@ -566,7 +578,12 @@ class GithubOAuthServiceTest {
 	}
 
 	private String signUpPayload(Long githubUserId, String githubUsername, String email) {
-		return "SIGN_UP." + githubUserId + "." + encode(githubUsername) + "." + encode(email);
+		return "SIGN_UP." + githubUserId
+			+ "." + encode(githubUsername)
+			+ "." + encode(email)
+			+ "." + encode("encrypted-token")
+			+ "." + encode("Bearer")
+			+ "." + encode("repo,user:email");
 	}
 
 	private String encode(String value) {

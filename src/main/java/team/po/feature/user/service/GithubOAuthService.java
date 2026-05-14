@@ -139,6 +139,15 @@ public class GithubOAuthService {
 	}
 
 	public GithubAuthorizationCode createGithubAuthorizationCode(OAuth2User oAuth2User, String githubAccessToken) {
+		return createGithubAuthorizationCode(oAuth2User, githubAccessToken, null, null);
+	}
+
+	public GithubAuthorizationCode createGithubAuthorizationCode(
+		OAuth2User oAuth2User,
+		String githubAccessToken,
+		String tokenType,
+		Set<String> scopes
+	) {
 		Long githubUserId = getGithubUserId(oAuth2User);
 		String githubUsername = getGithubNickname(oAuth2User);
 		return githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(githubUserId)
@@ -146,7 +155,10 @@ public class GithubOAuthService {
 			.orElseGet(() -> createSignUpGithubAuthorizationCode(
 				githubUserId,
 				githubUsername,
-				getGithubEmail(oAuth2User, githubAccessToken)
+				getGithubEmail(oAuth2User, githubAccessToken),
+				githubTokenEncryptor.encrypt(githubAccessToken),
+				tokenType,
+				normalizeGithubScopes(scopes)
 			));
 	}
 
@@ -174,9 +186,19 @@ public class GithubOAuthService {
 	private GithubAuthorizationCode createSignUpGithubAuthorizationCode(
 		Long githubUserId,
 		String githubUsername,
-		String email
+		String email,
+		String accessTokenCiphertext,
+		String tokenType,
+		String githubScopes
 	) {
-		return createGithubAuthorizationCode(GithubAuthorizationPayload.signUp(githubUserId, githubUsername, email));
+		return createGithubAuthorizationCode(GithubAuthorizationPayload.signUp(
+			githubUserId,
+			githubUsername,
+			email,
+			accessTokenCiphertext,
+			tokenType,
+			githubScopes
+		));
 	}
 
 	private GithubAuthorizationCode createGithubAuthorizationCode(GithubAuthorizationPayload payload) {
@@ -213,6 +235,9 @@ public class GithubOAuthService {
 				.user(savedUser)
 				.githubUserId(payload.githubUserId())
 				.githubUsername(payload.githubUsername())
+				.accessTokenCiphertext(payload.accessTokenCiphertext())
+				.tokenType(payload.tokenType())
+				.githubScopes(payload.githubScopes())
 				.build());
 		} catch (DataIntegrityViolationException exception) {
 			throw new ApplicationException(ErrorCode.EMAIL_ALREADY_EXISTS, "이미 연결된 GitHub 계정입니다.", exception);
@@ -327,16 +352,36 @@ public class GithubOAuthService {
 		Long userId,
 		Long githubUserId,
 		String githubUsername,
-		String email
+		String email,
+		String accessTokenCiphertext,
+		String tokenType,
+		String githubScopes
 	) {
 		private static final String DELIMITER = ".";
+		private static final String NULL_VALUE = "~";
 
 		private static GithubAuthorizationPayload login(Long userId) {
-			return new GithubAuthorizationPayload(GithubAuthorizationType.LOGIN, userId, null, null, null);
+			return new GithubAuthorizationPayload(GithubAuthorizationType.LOGIN, userId, null, null, null, null, null, null);
 		}
 
-		private static GithubAuthorizationPayload signUp(Long githubUserId, String githubUsername, String email) {
-			return new GithubAuthorizationPayload(GithubAuthorizationType.SIGN_UP, null, githubUserId, githubUsername, email);
+		private static GithubAuthorizationPayload signUp(
+			Long githubUserId,
+			String githubUsername,
+			String email,
+			String accessTokenCiphertext,
+			String tokenType,
+			String githubScopes
+		) {
+			return new GithubAuthorizationPayload(
+				GithubAuthorizationType.SIGN_UP,
+				null,
+				githubUserId,
+				githubUsername,
+				email,
+				accessTokenCiphertext,
+				tokenType,
+				githubScopes
+			);
 		}
 
 		private boolean requiresOnboarding() {
@@ -346,12 +391,18 @@ public class GithubOAuthService {
 		private String serialize() {
 			return switch (type) {
 				case LOGIN -> type.name() + DELIMITER + userId;
-				case SIGN_UP -> type.name() + DELIMITER + githubUserId + DELIMITER + encode(githubUsername) + DELIMITER + encode(email);
+				case SIGN_UP -> type.name() + DELIMITER
+					+ githubUserId + DELIMITER
+					+ encode(githubUsername) + DELIMITER
+					+ encode(email) + DELIMITER
+					+ encodeNullable(accessTokenCiphertext) + DELIMITER
+					+ encodeNullable(tokenType) + DELIMITER
+					+ encodeNullable(githubScopes);
 			};
 		}
 
 		private static GithubAuthorizationPayload deserialize(String value) {
-			String[] tokens = value.split("\\.", 4);
+			String[] tokens = value.split("\\.", 7);
 			if (tokens.length < 2) {
 				throw new ApplicationException(ErrorCode.INVALID_OAUTH_AUTHORIZATION_CODE);
 			}
@@ -375,18 +426,39 @@ public class GithubOAuthService {
 		}
 
 		private static GithubAuthorizationPayload deserializeSignUp(String[] tokens) {
-			if (tokens.length != 4) {
+			if (tokens.length != 4 && tokens.length != 7) {
 				throw new ApplicationException(ErrorCode.INVALID_OAUTH_AUTHORIZATION_CODE);
 			}
-			return signUp(Long.valueOf(tokens[1]), decode(tokens[2]), decode(tokens[3]));
+			return signUp(
+				Long.valueOf(tokens[1]),
+				decode(tokens[2]),
+				decode(tokens[3]),
+				tokens.length == 7 ? decodeNullable(tokens[4]) : null,
+				tokens.length == 7 ? decodeNullable(tokens[5]) : null,
+				tokens.length == 7 ? decodeNullable(tokens[6]) : null
+			);
 		}
 
 		private static String encode(String value) {
 			return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
 		}
 
+		private static String encodeNullable(String value) {
+			if (value == null) {
+				return NULL_VALUE;
+			}
+			return encode(value);
+		}
+
 		private static String decode(String value) {
 			return new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
+		}
+
+		private static String decodeNullable(String value) {
+			if (NULL_VALUE.equals(value)) {
+				return null;
+			}
+			return decode(value);
 		}
 	}
 

@@ -63,7 +63,12 @@ public class GithubOAuthSuccessHandler implements AuthenticationSuccessHandler {
 			return;
 		}
 
-		GithubAuthorizationCode authorizationCode = githubOAuthService.createGithubAuthorizationCode(oAuth2User, tokenValue);
+		GithubAuthorizationCode authorizationCode = githubOAuthService.createGithubAuthorizationCode(
+			oAuth2User,
+			tokenValue,
+			accessToken.getTokenType().getValue(),
+			accessToken.getScopes()
+		);
 		String redirectUri = UriComponentsBuilder.fromUriString(successRedirectUri)
 			.queryParam("code", authorizationCode.authorizationCode())
 			.queryParam("onboardingRequired", authorizationCode.onboardingRequired())
