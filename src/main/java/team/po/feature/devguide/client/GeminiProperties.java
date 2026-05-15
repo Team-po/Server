@@ -1,4 +1,4 @@
-package team.po.feature.devguide.config;
+package team.po.feature.devguide.client;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
