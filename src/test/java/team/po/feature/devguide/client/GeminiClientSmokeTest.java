@@ -10,8 +10,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.prompt.DevGuideSchema;
@@ -55,7 +53,7 @@ class GeminiClientSmokeTest {
 			.build();
 
 		// 3. 주입
-		this.geminiClient = new GeminiClient(testRestClient, properties, new ObjectMapper());
+		this.geminiClient = new GeminiClient(testRestClient, properties);
 		this.promptBuilder = new DevGuidePromptBuilder();
 	}
 

@@ -24,10 +24,10 @@ public class GeminiClient {
 	private final GeminiProperties properties;
 	private final ObjectMapper objectMapper;
 
-	public GeminiClient(RestClient geminiRestClient, GeminiProperties properties, ObjectMapper objectMapper) {
+	public GeminiClient(RestClient geminiRestClient, GeminiProperties properties) {
 		this.geminiRestClient = geminiRestClient;
 		this.properties = properties;
-		this.objectMapper = objectMapper;
+		this.objectMapper = new ObjectMapper();
 	}
 
 	/**
