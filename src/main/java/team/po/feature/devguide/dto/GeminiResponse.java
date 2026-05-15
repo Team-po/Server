@@ -23,10 +23,22 @@ public record GeminiResponse(
 		if (candidates == null || candidates.isEmpty()) {
 			return "";
 		}
-		List<Part> parts = candidates.get(0).content().parts();
+
+		Candidate candidate = candidates.get(0);
+		if (candidate == null || candidate.content() == null) {
+			return "";
+		}
+
+		List<Part> parts = candidate.content().parts();
 		if (parts == null || parts.isEmpty()) {
 			return "";
 		}
-		return parts.get(0).text();
+
+		Part firstPart = parts.get(0);
+		if (firstPart == null || firstPart.text == null) {
+			return "";
+		}
+
+		return firstPart.text();
 	}
 }

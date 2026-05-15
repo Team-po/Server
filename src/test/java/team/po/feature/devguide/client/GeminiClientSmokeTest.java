@@ -1,10 +1,17 @@
 package team.po.feature.devguide.client;
 
+import java.time.Duration;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.web.client.RestClient;
 
-import team.po.feature.devguide.config.GeminiProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.prompt.DevGuideSchema;
@@ -29,13 +36,26 @@ class GeminiClientSmokeTest {
 		GeminiProperties properties = new GeminiProperties(
 			apiKey,
 			"https://generativelanguage.googleapis.com/v1beta",
-			"gemini-3-flash-preview",
-			30,
+			"gemini-2.5-flash",
+			90,
 			8192,
 			0.7
 		);
 
-		this.geminiClient = new GeminiClient(properties);
+		// 1. 테스트 환경용 RequestFactory 설정 (Timeout 적용)
+		JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory();
+		requestFactory.setReadTimeout(Duration.ofSeconds(properties.timeoutSeconds()));
+
+		// 2. GeminiClientConfig와 동일한 스펙의 RestClient 빌드
+		RestClient testRestClient = RestClient.builder()
+			.baseUrl(properties.baseUrl())
+			.defaultHeader("x-goog-api-key", properties.apiKey())
+			.defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+			.requestFactory(requestFactory)
+			.build();
+
+		// 3. 주입
+		this.geminiClient = new GeminiClient(testRestClient, properties, new ObjectMapper());
 		this.promptBuilder = new DevGuidePromptBuilder();
 	}
 
@@ -48,7 +68,6 @@ class GeminiClientSmokeTest {
 		);
 
 		DevGuideContent content = geminiClient.generateDevGuide(prompt, DevGuideSchema.RESPONSE_SCHEMA);
-
 		printContent("Team-po", content);
 	}
 
@@ -61,7 +80,6 @@ class GeminiClientSmokeTest {
 		);
 
 		DevGuideContent content = geminiClient.generateDevGuide(prompt, DevGuideSchema.RESPONSE_SCHEMA);
-
 		printContent("헬스장 PT 매칭 앱", content);
 	}
 
@@ -74,13 +92,11 @@ class GeminiClientSmokeTest {
 		);
 
 		DevGuideContent content = geminiClient.generateDevGuide(prompt, DevGuideSchema.RESPONSE_SCHEMA);
-
 		printContent("북클럽", content);
 	}
 
 	private void printContent(String label, DevGuideContent c) {
 		System.out.println("\n# " + label + " 개발 가이드라인\n");
-
 		System.out.println("## Overview");
 		System.out.println(c.overview());
 
