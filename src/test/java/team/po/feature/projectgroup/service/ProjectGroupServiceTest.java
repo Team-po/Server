@@ -278,6 +278,18 @@ class ProjectGroupServiceTest {
 		assertThat(targetMember.isAdmin()).isFalse();
 	}
 
+	@Test
+	void getMyProjectGroup_throwsNotFound_whenUserHasNoActiveGroup() {
+		Users requester = mockUser(100L);
+		when(projectGroupMemberRepository.findByUser_IdAndProjectGroup_Status(100L, ProjectGroupStatus.ACTIVE))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> projectGroupService.getMyProjectGroup(requester))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_NOT_FOUND.getCode());
+	}
+
 	private CreateProjectGroupRequest defaultRequest() {
 		return new CreateProjectGroupRequest(
 			defaultMembers(),
