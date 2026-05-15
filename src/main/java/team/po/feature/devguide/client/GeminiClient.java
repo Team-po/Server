@@ -2,8 +2,8 @@ package team.po.feature.devguide.client;
 
 import java.util.Map;
 
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -13,7 +13,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
-import team.po.feature.devguide.config.GeminiProperties;
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.dto.GeminiRequest;
 import team.po.feature.devguide.dto.GeminiResponse;
@@ -21,16 +20,14 @@ import team.po.feature.devguide.dto.GeminiResponse;
 @Slf4j
 @Component
 public class GeminiClient {
-	private final RestClient restClient;
+	private final RestClient geminiRestClient;
 	private final GeminiProperties properties;
 	private final ObjectMapper objectMapper;
 
-	public GeminiClient(GeminiProperties properties) {
+	public GeminiClient(RestClient geminiRestClient, GeminiProperties properties, ObjectMapper objectMapper) {
+		this.geminiRestClient = geminiRestClient;
 		this.properties = properties;
-		this.objectMapper = new ObjectMapper();
-		this.restClient = RestClient.builder()
-			.baseUrl(properties.baseUrl())
-			.build();
+		this.objectMapper = objectMapper;
 	}
 
 	/**
@@ -44,9 +41,8 @@ public class GeminiClient {
 		log.info("Gemini API 호출 시작: model={}, promptLength={}", properties.model(), prompt.length());
 
 		try {
-			GeminiResponse response = restClient.post()
-				.uri("/models/{model}:generateContent?key={key}", properties.model(), properties.apiKey())
-				.contentType(MediaType.APPLICATION_JSON)
+			GeminiResponse response = geminiRestClient.post()
+				.uri("/models/{model}:generateContent", properties.model())
 				.body(
 					GeminiRequest.ofStructured(prompt, schema, properties.temperature(), properties.maxOutputTokens()))
 				.retrieve()
@@ -71,13 +67,11 @@ public class GeminiClient {
 				log.error("Gemini 응답 JSON 파싱 실패: rawJsonLength={}", json.length(), e);
 				throw new ApplicationException(ErrorCode.GEMINI_INVALID_RESPONSE);
 			}
-		} catch (ApplicationException e) {
-			throw e;
-		} catch (RestClientException e) {
-			log.error("Gemini API 호출 실패 (Network/HTTP)", e);
+		} catch (HttpStatusCodeException e) {
+			log.error("Gemini API 응답 오류: status={}", e.getStatusCode());
 			throw new ApplicationException(ErrorCode.GEMINI_API_ERROR);
-		} catch (Exception e) {
-			log.error("Gemini API 호출 실패 (예상치 못한 오류)", e);
+		} catch (RestClientException e) {
+			log.error("Gemini API 호출 실패: cause={}", e.getClass().getSimpleName());
 			throw new ApplicationException(ErrorCode.GEMINI_API_ERROR);
 		}
 	}
