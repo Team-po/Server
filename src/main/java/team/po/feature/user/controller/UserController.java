@@ -1,6 +1,5 @@
 package team.po.feature.user.controller;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,7 +16,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import team.po.common.auth.LoginUser;
 import team.po.feature.user.domain.Users;
-import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
@@ -28,6 +26,7 @@ import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
+import team.po.feature.user.dto.ValidateDeleteUserEmailRequest;
 import team.po.feature.user.service.ImageService;
 import team.po.feature.user.service.UserService;
 
@@ -111,13 +110,29 @@ public class UserController {
 		return ResponseEntity.ok().build();
 	}
 
+	@Operation(summary = "회원 탈퇴용 이메일 인증번호 전송 API")
+	@PostMapping(value = "/me/deletion-email")
+	public ResponseEntity<Void> sendDeleteUserEmail(@Parameter(hidden = true) @LoginUser Users user) {
+		userService.sendDeleteUserEmail(user);
+
+		return ResponseEntity.ok().build();
+	}
+
+	@Operation(summary = "회원 탈퇴용 이메일 인증번호 검증 API")
+	@PostMapping(value = "/me/deletion-number-validation")
+	public ResponseEntity<Void> validateDeleteUserEmail(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@Valid @RequestBody ValidateDeleteUserEmailRequest request
+	) {
+		userService.validateDeleteUserEmail(user, request);
+
+		return ResponseEntity.ok().build();
+	}
+
 	@Operation(summary = "회원 탈퇴 API")
 	@DeleteMapping(value = "/me")
-	public ResponseEntity<Void> deleteUser(
-		@Parameter(hidden = true) @LoginUser Users user,
-		@Valid @RequestBody DeleteUserRequest request
-	) {
-		userService.deleteUser(user, request);
+	public ResponseEntity<Void> deleteUser(@Parameter(hidden = true) @LoginUser Users user) {
+		userService.deleteUser(user);
 
 		return ResponseEntity.ok().build();
 	}
