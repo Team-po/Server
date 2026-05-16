@@ -11,6 +11,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,6 +61,9 @@ class GithubOAuthServiceTest {
 	@Mock
 	private RestClient restClient;
 
+	@Mock
+	private GithubTokenEncryptor githubTokenEncryptor;
+
 	@InjectMocks
 	private GithubOAuthService githubOAuthService;
 
@@ -69,14 +73,20 @@ class GithubOAuthServiceTest {
 	}
 
 	@Test
-	void createAuthorizationCode_returnsLoginCodeWhenGithubAccountIsConnectedToActiveUser() {
+	void createGithubAuthorizationCode_returnsLoginCodeWhenGithubAccountIsConnectedToActiveUser() {
 		Users user = githubUser(1L, "test@email.com", "octocat", 3);
 		GithubAccount githubAccount = githubAccount(user, 123L, "octocat");
 		OAuth2User oAuth2User = githubOAuth2User(123L, "octocat", " Test@Email.com ");
 		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.of(githubAccount));
+		when(githubTokenEncryptor.encrypt("github-access-token")).thenReturn("encrypted-token");
 
 		GithubAuthorizationCode authorizationCode =
-			githubOAuthService.createAuthorizationCode(oAuth2User, "github-access-token");
+			githubOAuthService.createGithubAuthorizationCode(
+				oAuth2User,
+				"github-access-token",
+				"Bearer",
+				Set.of("repo", "user:email")
+			);
 
 		assertThat(authorizationCode.authorizationCode()).isNotBlank();
 		assertThat(authorizationCode.onboardingRequired()).isFalse();
@@ -85,18 +95,226 @@ class GithubOAuthServiceTest {
 			eq("LOGIN.1"),
 			eq(AUTHORIZATION_CODE_TTL)
 		);
+		assertThat(githubAccount.getAccessTokenCiphertext()).isEqualTo("encrypted-token");
+		assertThat(githubAccount.getTokenType()).isEqualTo("Bearer");
+		assertThat(githubAccount.getGithubScopes()).isEqualTo("repo,user:email");
+		assertThat(githubAccount.getTokenUpdatedAt()).isNotNull();
+		verify(githubAccountRepository).save(githubAccount);
 		verifyNoInteractions(restClient);
 	}
 
 	@Test
-	void createAuthorizationCode_returnsLoginCodeWithoutEmailLookupWhenGithubAccountExists() {
+	void createGithubLinkCode_storesCurrentUserIdInRedis() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		when(githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(1L)).thenReturn(false);
+
+		String linkCode = githubOAuthService.createGithubLinkCode(user);
+
+		assertThat(linkCode).isNotBlank();
+		verify(redisService).setValue("github-oauth-link-code:" + linkCode, "1", AUTHORIZATION_CODE_TTL);
+	}
+
+	@Test
+	void createGithubLinkCode_throwsWhenCurrentUserAlreadyHasGithubAccount() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		when(githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(1L)).thenReturn(true);
+
+		assertThatThrownBy(() -> githubOAuthService.createGithubLinkCode(user))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.GITHUB_ACCOUNT_ALREADY_LINKED);
+		verify(redisService, never()).setValue(anyString(), any(), any());
+	}
+
+	@Test
+	void unlinkGithubAccount_softDeletesGithubAccountAndClearsAuthorization() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		GithubAccount githubAccount = GithubAccount.builder()
+			.user(user)
+			.githubUserId(123L)
+			.githubUsername("octocat")
+			.accessTokenCiphertext("encrypted-token")
+			.tokenType("Bearer")
+			.githubScopes("repo,user:email")
+			.tokenUpdatedAt(Instant.parse("2026-05-06T12:00:00Z"))
+			.build();
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(githubAccount));
+
+		githubOAuthService.unlinkGithubAccount(user);
+
+		assertThat(githubAccount.getDeletedAt()).isNotNull();
+		assertThat(githubAccount.getAccessTokenCiphertext()).isNull();
+		assertThat(githubAccount.getTokenType()).isNull();
+		assertThat(githubAccount.getGithubScopes()).isNull();
+		assertThat(githubAccount.getTokenUpdatedAt()).isNull();
+	}
+
+	@Test
+	void unlinkGithubAccount_throwsWhenGithubAccountIsNotLinked() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> githubOAuthService.unlinkGithubAccount(user))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.GITHUB_ACCOUNT_NOT_LINKED);
+	}
+
+	@Test
+	void unlinkGithubAccount_throwsWhenUserIsGithubLoginAccount() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		user.markAsGithubLogin();
+
+		assertThatThrownBy(() -> githubOAuthService.unlinkGithubAccount(user))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.GITHUB_LOGIN_ACCOUNT_UNLINK_NOT_ALLOWED);
+		verify(githubAccountRepository, never()).findByUserIdAndDeletedAtIsNull(anyLong());
+	}
+
+	@Test
+	void bindGithubLinkState_storesStateMappingWhenLinkCodeExists() {
+		when(redisService.getAndDeleteStringValue("github-oauth-link-code:link-code")).thenReturn("1");
+
+		githubOAuthService.bindGithubLinkState("oauth-state", "link-code");
+
+		verify(redisService).setValue("github-oauth-link-state:oauth-state", "1", AUTHORIZATION_CODE_TTL);
+	}
+
+	@Test
+	void bindGithubLinkState_storesInvalidMarkerWhenLinkCodeDoesNotExist() {
+		when(redisService.getAndDeleteStringValue("github-oauth-link-code:expired-link-code")).thenReturn(null);
+
+		githubOAuthService.bindGithubLinkState("oauth-state", "expired-link-code");
+
+		verify(redisService).setValue("github-oauth-link-state:oauth-state", "INVALID", AUTHORIZATION_CODE_TTL);
+	}
+
+	@Test
+	void linkGithubAccountIfRequested_returnsFalseWhenStateIsNotForLink() {
+		boolean linked = githubOAuthService.linkGithubAccountIfRequested(
+			"oauth-state",
+			githubOAuth2User(123L, "octocat", "test@email.com"),
+			"github-access-token",
+			"Bearer",
+			Set.of("user:email")
+		);
+
+		assertThat(linked).isFalse();
+		verify(redisService).getAndDeleteStringValue("github-oauth-link-state:oauth-state");
+		verify(githubAccountRepository, never()).save(any());
+	}
+
+	@Test
+	void linkGithubAccountIfRequested_savesGithubAccountForCurrentUser() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		OAuth2User oAuth2User = githubOAuth2User(123L, "octocat", "test@email.com");
+		when(redisService.getAndDeleteStringValue("github-oauth-link-state:oauth-state")).thenReturn("1");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(1L)).thenReturn(false);
+		when(githubAccountRepository.existsByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(false);
+		when(githubTokenEncryptor.encrypt("github-access-token")).thenReturn("encrypted-token");
+
+		boolean linked = githubOAuthService.linkGithubAccountIfRequested(
+			"oauth-state",
+			oAuth2User,
+			"github-access-token",
+			"Bearer",
+			Set.of("repo", "user:email")
+		);
+
+		assertThat(linked).isTrue();
+		ArgumentCaptor<GithubAccount> githubAccountCaptor = ArgumentCaptor.forClass(GithubAccount.class);
+		verify(githubAccountRepository).save(githubAccountCaptor.capture());
+		GithubAccount savedGithubAccount = githubAccountCaptor.getValue();
+		assertThat(savedGithubAccount.getUser()).isSameAs(user);
+		assertThat(savedGithubAccount.getGithubUserId()).isEqualTo(123L);
+		assertThat(savedGithubAccount.getGithubUsername()).isEqualTo("octocat");
+		assertThat(savedGithubAccount.getAccessTokenCiphertext()).isEqualTo("encrypted-token");
+		assertThat(savedGithubAccount.getTokenType()).isEqualTo("Bearer");
+		assertThat(savedGithubAccount.getGithubScopes()).isEqualTo("repo,user:email");
+		assertThat(savedGithubAccount.getTokenUpdatedAt()).isNotNull();
+	}
+
+	@Test
+	void linkGithubAccountIfRequested_throwsWhenCurrentUserAlreadyHasGithubAccount() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		when(redisService.getAndDeleteStringValue("github-oauth-link-state:oauth-state")).thenReturn("1");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(1L)).thenReturn(true);
+
+		assertThatThrownBy(() -> githubOAuthService.linkGithubAccountIfRequested(
+			"oauth-state",
+			githubOAuth2User(456L, "other", "other@email.com"),
+			"github-access-token",
+			"Bearer",
+			Set.of("user:email")
+		))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.GITHUB_ACCOUNT_ALREADY_LINKED);
+		verify(githubAccountRepository, never()).save(any());
+	}
+
+	@Test
+	void linkGithubAccountIfRequested_throwsWhenGithubAccountIsLinkedToAnotherUser() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		when(redisService.getAndDeleteStringValue("github-oauth-link-state:oauth-state")).thenReturn("1");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(1L)).thenReturn(false);
+		when(githubAccountRepository.existsByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(true);
+
+		assertThatThrownBy(() -> githubOAuthService.linkGithubAccountIfRequested(
+			"oauth-state",
+			githubOAuth2User(123L, "octocat", "octocat@email.com"),
+			"github-access-token",
+			"Bearer",
+			Set.of("user:email")
+		))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.GITHUB_ACCOUNT_LINKED_TO_ANOTHER_USER);
+		verify(githubAccountRepository, never()).save(any());
+	}
+
+	@Test
+	void linkGithubAccountIfRequested_wrapsDataIntegrityViolationAsGithubAccountConflict() {
+		Users user = githubUser(1L, "test@email.com", "tester", 3);
+		when(redisService.getAndDeleteStringValue("github-oauth-link-state:oauth-state")).thenReturn("1");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(1L)).thenReturn(false);
+		when(githubAccountRepository.existsByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(false);
+		when(githubTokenEncryptor.encrypt("github-access-token")).thenReturn("encrypted-token");
+		when(githubAccountRepository.save(any(GithubAccount.class)))
+			.thenThrow(new DataIntegrityViolationException("Duplicate entry"));
+
+		assertThatThrownBy(() -> githubOAuthService.linkGithubAccountIfRequested(
+			"oauth-state",
+			githubOAuth2User(123L, "octocat", "octocat@email.com"),
+			"github-access-token",
+			"Bearer",
+			Set.of("user:email")
+		))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.GITHUB_ACCOUNT_LINKED_TO_ANOTHER_USER);
+	}
+
+	@Test
+	void createGithubAuthorizationCode_returnsLoginCodeWithoutEmailLookupWhenGithubAccountExists() {
 		Users user = githubUser(1L, "test@email.com", "octocat", 3);
 		GithubAccount githubAccount = githubAccount(user, 123L, "octocat");
 		OAuth2User oAuth2User = githubOAuth2UserWithoutEmail(123L, "octocat");
 		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.of(githubAccount));
+		when(githubTokenEncryptor.encrypt("github-access-token")).thenReturn("encrypted-token");
 
 		GithubAuthorizationCode authorizationCode =
-			githubOAuthService.createAuthorizationCode(oAuth2User, "github-access-token");
+			githubOAuthService.createGithubAuthorizationCode(
+				oAuth2User,
+				"github-access-token",
+				"Bearer",
+				Set.of("user:email")
+			);
 
 		assertThat(authorizationCode.authorizationCode()).isNotBlank();
 		assertThat(authorizationCode.onboardingRequired()).isFalse();
@@ -105,16 +323,27 @@ class GithubOAuthServiceTest {
 			eq("LOGIN.1"),
 			eq(AUTHORIZATION_CODE_TTL)
 		);
+		assertThat(githubAccount.getAccessTokenCiphertext()).isEqualTo("encrypted-token");
+		assertThat(githubAccount.getTokenType()).isEqualTo("Bearer");
+		assertThat(githubAccount.getGithubScopes()).isEqualTo("user:email");
+		assertThat(githubAccount.getTokenUpdatedAt()).isNotNull();
+		verify(githubAccountRepository).save(githubAccount);
 		verifyNoInteractions(restClient);
 	}
 
 	@Test
-	void createAuthorizationCode_returnsSignUpCodeWhenGithubAccountDoesNotExist() {
+	void createGithubAuthorizationCode_returnsSignUpCodeWhenGithubAccountDoesNotExist() {
 		OAuth2User oAuth2User = githubOAuth2User(123L, "octocat", " Test@Email.com ");
 		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.empty());
+		when(githubTokenEncryptor.encrypt("github-access-token")).thenReturn("encrypted-token");
 
 		GithubAuthorizationCode authorizationCode =
-			githubOAuthService.createAuthorizationCode(oAuth2User, "github-access-token");
+			githubOAuthService.createGithubAuthorizationCode(
+				oAuth2User,
+				"github-access-token",
+				"Bearer",
+				Set.of("repo", "user:email")
+			);
 
 		assertThat(authorizationCode.authorizationCode()).isNotBlank();
 		assertThat(authorizationCode.onboardingRequired()).isTrue();
@@ -130,7 +359,7 @@ class GithubOAuthServiceTest {
 	}
 
 	@Test
-	void exchangeAuthorizationCode_returnsTokenWithoutLevelWhenPayloadIsLogin() {
+	void exchangeGithubAuthorizationCode_returnsTokenWithoutLevelWhenPayloadIsLogin() {
 		Users user = githubUser(1L, "test@email.com", "octocat", 3);
 		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", null);
 		when(redisService.getAndDeleteStringValue(AUTHORIZATION_CODE_KEY)).thenReturn("LOGIN.1");
@@ -138,7 +367,7 @@ class GithubOAuthServiceTest {
 		when(jwtTokenProvider.generateToken(1L, "test@email.com"))
 			.thenReturn(jwtToken());
 
-		SignInResponse response = githubOAuthService.exchangeAuthorizationCode(request);
+		SignInResponse response = githubOAuthService.exchangeGithubAuthorizationCode(request);
 
 		assertThat(response.accessToken()).isEqualTo("access-token");
 		assertThat(response.refreshToken()).isEqualTo("refresh-token");
@@ -148,35 +377,35 @@ class GithubOAuthServiceTest {
 	}
 
 	@Test
-	void exchangeAuthorizationCode_throwsServerErrorWhenLoginUserDoesNotExist() {
+	void exchangeGithubAuthorizationCode_throwsServerErrorWhenLoginUserDoesNotExist() {
 		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", null);
 		when(redisService.getAndDeleteStringValue(AUTHORIZATION_CODE_KEY)).thenReturn("LOGIN.1");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> githubOAuthService.exchangeAuthorizationCode(request))
+		assertThatThrownBy(() -> githubOAuthService.exchangeGithubAuthorizationCode(request))
 			.isInstanceOf(ApplicationException.class)
 			.extracting("errorCode")
 			.isEqualTo(ErrorCode.GITHUB_LOGIN_USER_NOT_FOUND);
 	}
 
 	@Test
-	void exchangeAuthorizationCode_throwsWhenAuthorizationCodeIsExpiredOrInvalid() {
+	void exchangeGithubAuthorizationCode_throwsWhenAuthorizationCodeIsExpiredOrInvalid() {
 		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", null);
 		when(redisService.getAndDeleteStringValue(AUTHORIZATION_CODE_KEY)).thenReturn(null);
 
-		assertThatThrownBy(() -> githubOAuthService.exchangeAuthorizationCode(request))
+		assertThatThrownBy(() -> githubOAuthService.exchangeGithubAuthorizationCode(request))
 			.isInstanceOf(ApplicationException.class)
 			.extracting("errorCode")
 			.isEqualTo(ErrorCode.INVALID_OAUTH_AUTHORIZATION_CODE);
 	}
 
 	@Test
-	void exchangeAuthorizationCode_throwsWhenSignUpPayloadHasNoLevel() {
+	void exchangeGithubAuthorizationCode_throwsWhenSignUpPayloadHasNoLevel() {
 		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", null);
 		when(redisService.getAndDeleteStringValue(AUTHORIZATION_CODE_KEY))
 			.thenReturn(signUpPayload(123L, "octocat", "test@email.com"));
 
-		assertThatThrownBy(() -> githubOAuthService.exchangeAuthorizationCode(request))
+		assertThatThrownBy(() -> githubOAuthService.exchangeGithubAuthorizationCode(request))
 			.isInstanceOf(ApplicationException.class)
 			.hasMessage("레벨 선택은 필수입니다.")
 			.extracting("errorCode")
@@ -186,7 +415,7 @@ class GithubOAuthServiceTest {
 	}
 
 	@Test
-	void exchangeAuthorizationCode_createsUserAndGithubAccountWhenPayloadIsSignUp() {
+	void exchangeGithubAuthorizationCode_createsUserAndGithubAccountWhenPayloadIsSignUp() {
 		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", 4);
 		when(redisService.getAndDeleteStringValue(AUTHORIZATION_CODE_KEY))
 			.thenReturn(signUpPayload(123L, "octocat", "test@email.com"));
@@ -200,7 +429,7 @@ class GithubOAuthServiceTest {
 		when(jwtTokenProvider.generateToken(1L, "test@email.com"))
 			.thenReturn(jwtToken());
 
-		SignInResponse response = githubOAuthService.exchangeAuthorizationCode(request);
+		SignInResponse response = githubOAuthService.exchangeGithubAuthorizationCode(request);
 
 		assertThat(response.accessToken()).isEqualTo("access-token");
 
@@ -214,6 +443,7 @@ class GithubOAuthServiceTest {
 		assertThat(savedUser.getPassword()).isNull();
 		assertThat(savedUser.getProfileImage()).isNull();
 		assertThat(savedUser.getDescription()).isNull();
+		assertThat(savedUser.isGithubLogin()).isTrue();
 
 		ArgumentCaptor<GithubAccount> githubAccountCaptor = ArgumentCaptor.forClass(GithubAccount.class);
 		verify(githubAccountRepository).save(githubAccountCaptor.capture());
@@ -221,10 +451,14 @@ class GithubOAuthServiceTest {
 		assertThat(savedGithubAccount.getUser()).isSameAs(savedUser);
 		assertThat(savedGithubAccount.getGithubUserId()).isEqualTo(123L);
 		assertThat(savedGithubAccount.getGithubUsername()).isEqualTo("octocat");
+		assertThat(savedGithubAccount.getAccessTokenCiphertext()).isEqualTo("encrypted-token");
+		assertThat(savedGithubAccount.getTokenType()).isEqualTo("Bearer");
+		assertThat(savedGithubAccount.getGithubScopes()).isEqualTo("repo,user:email");
+		assertThat(savedGithubAccount.getTokenUpdatedAt()).isNotNull();
 	}
 
 	@Test
-	void exchangeAuthorizationCode_throwsEmailAlreadyExistsWhenUserSaveConflicts() {
+	void exchangeGithubAuthorizationCode_throwsEmailAlreadyExistsWhenUserSaveConflicts() {
 		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", 4);
 		when(redisService.getAndDeleteStringValue(AUTHORIZATION_CODE_KEY))
 			.thenReturn(signUpPayload(123L, "octocat", "test@email.com"));
@@ -233,7 +467,7 @@ class GithubOAuthServiceTest {
 		when(userRepository.save(any(Users.class)))
 			.thenThrow(new DataIntegrityViolationException("Duplicate entry for uq_users_email"));
 
-		assertThatThrownBy(() -> githubOAuthService.exchangeAuthorizationCode(request))
+		assertThatThrownBy(() -> githubOAuthService.exchangeGithubAuthorizationCode(request))
 			.isInstanceOf(ApplicationException.class)
 			.hasMessage("이미 가입된 이메일입니다.")
 			.extracting("errorCode")
@@ -243,7 +477,7 @@ class GithubOAuthServiceTest {
 	}
 
 	@Test
-	void exchangeAuthorizationCode_createsNewGithubAccountWhenPreviousGithubAccountWasSoftDeleted() {
+	void exchangeGithubAuthorizationCode_createsNewGithubAccountWhenPreviousGithubAccountWasSoftDeleted() {
 		Users deletedUser = githubUser(1L, "deleted-test@email.com", "old-octocat", 2);
 		deletedUser.softDelete(Instant.parse("2026-05-06T09:00:00Z"), "deleted-test@email.com");
 		GithubAccount githubAccount = githubAccount(deletedUser, 123L, "old-octocat");
@@ -260,7 +494,7 @@ class GithubOAuthServiceTest {
 		when(jwtTokenProvider.generateToken(2L, "test@email.com"))
 			.thenReturn(jwtToken());
 
-		SignInResponse response = githubOAuthService.exchangeAuthorizationCode(request);
+		SignInResponse response = githubOAuthService.exchangeGithubAuthorizationCode(request);
 
 		assertThat(response.accessToken()).isEqualTo("access-token");
 		assertThat(githubAccount.getUser()).isSameAs(deletedUser);
@@ -272,10 +506,14 @@ class GithubOAuthServiceTest {
 		assertThat(savedGithubAccount.getUser().getId()).isEqualTo(2L);
 		assertThat(savedGithubAccount.getGithubUserId()).isEqualTo(123L);
 		assertThat(savedGithubAccount.getGithubUsername()).isEqualTo("octocat");
+		assertThat(savedGithubAccount.getAccessTokenCiphertext()).isEqualTo("encrypted-token");
+		assertThat(savedGithubAccount.getTokenType()).isEqualTo("Bearer");
+		assertThat(savedGithubAccount.getGithubScopes()).isEqualTo("repo,user:email");
+		assertThat(savedGithubAccount.getTokenUpdatedAt()).isNotNull();
 	}
 
 	@Test
-	void exchangeAuthorizationCode_returnsExistingUserWhenSignUpPayloadIsAlreadyConnectedToActiveUser() {
+	void exchangeGithubAuthorizationCode_returnsExistingUserWhenSignUpPayloadIsAlreadyConnectedToActiveUser() {
 		Users user = githubUser(1L, "test@email.com", "octocat", 3);
 		GithubAccount githubAccount = githubAccount(user, 123L, "octocat");
 		OAuthAuthorizationCodeRequest request = new OAuthAuthorizationCodeRequest("authorization-code", 5);
@@ -285,7 +523,7 @@ class GithubOAuthServiceTest {
 		when(jwtTokenProvider.generateToken(1L, "test@email.com"))
 			.thenReturn(jwtToken());
 
-		SignInResponse response = githubOAuthService.exchangeAuthorizationCode(request);
+		SignInResponse response = githubOAuthService.exchangeGithubAuthorizationCode(request);
 
 		assertThat(response.accessToken()).isEqualTo("access-token");
 		verify(userRepository, never()).save(any());
@@ -293,10 +531,10 @@ class GithubOAuthServiceTest {
 	}
 
 	@Test
-	void createAuthorizationCode_throwsWhenGithubUserIdIsMissing() {
+	void createGithubAuthorizationCode_throwsWhenGithubUserIdIsMissing() {
 		OAuth2User oAuth2User = githubOAuth2UserWithoutId("octocat", "test@email.com");
 
-		assertThatThrownBy(() -> githubOAuthService.createAuthorizationCode(oAuth2User, "github-access-token"))
+		assertThatThrownBy(() -> githubOAuthService.createGithubAuthorizationCode(oAuth2User, "github-access-token"))
 			.isInstanceOf(ApplicationException.class)
 			.extracting("errorCode")
 			.isEqualTo(ErrorCode.INVALID_GITHUB_OAUTH_USER);
@@ -361,7 +599,12 @@ class GithubOAuthServiceTest {
 	}
 
 	private String signUpPayload(Long githubUserId, String githubUsername, String email) {
-		return "SIGN_UP." + githubUserId + "." + encode(githubUsername) + "." + encode(email);
+		return "SIGN_UP." + githubUserId
+			+ "." + encode(githubUsername)
+			+ "." + encode(email)
+			+ "." + encode("encrypted-token")
+			+ "." + encode("Bearer")
+			+ "." + encode("repo,user:email");
 	}
 
 	private String encode(String value) {
