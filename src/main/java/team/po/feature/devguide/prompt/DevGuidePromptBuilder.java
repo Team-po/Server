@@ -2,10 +2,7 @@ package team.po.feature.devguide.prompt;
 
 import org.springframework.stereotype.Component;
 
-import lombok.RequiredArgsConstructor;
-
 @Component
-@RequiredArgsConstructor
 public class DevGuidePromptBuilder {
 
 	private static final String PROMPT_TEMPLATE = """
