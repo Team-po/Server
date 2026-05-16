@@ -10,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
+import team.po.config.GeminiProperties;
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.prompt.DevGuideSchema;

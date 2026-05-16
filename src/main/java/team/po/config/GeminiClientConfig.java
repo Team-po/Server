@@ -1,4 +1,4 @@
-package team.po.feature.devguide.client;
+package team.po.config;
 
 import java.time.Duration;
 
