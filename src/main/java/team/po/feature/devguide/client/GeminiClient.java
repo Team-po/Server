@@ -62,6 +62,7 @@ public class GeminiClient {
 
 			try {
 				DevGuideContent content = objectMapper.readValue(json, DevGuideContent.class);
+				content.validate();
 				log.info("Gemini API 호출 완료: jsonLength={}", json.length());
 				return content;
 			} catch (JsonProcessingException e) {

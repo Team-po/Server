@@ -33,7 +33,7 @@ public final class DevGuideSchema {
 				"items", Map.of(
 					"type", "OBJECT",
 					"properties", Map.of(
-						"priority", Map.of("type", "INTEGER"),
+						"priority", Map.of("type", "INTEGER", "minimum", 1, "maximum", 3),
 						"feature", Map.of("type", "STRING"),
 						"rationale", Map.of("type", "STRING"),
 						"subFeatures", Map.of(
@@ -70,7 +70,7 @@ public final class DevGuideSchema {
 				"items", Map.of(
 					"type", "OBJECT",
 					"properties", Map.of(
-						"week", Map.of("type", "INTEGER"),
+						"week", Map.of("type", "INTEGER", "minimum", 1, "maximum", 12),
 						"goal", Map.of("type", "STRING"),
 						"roleTasks", Map.of(
 							"type", "OBJECT",
