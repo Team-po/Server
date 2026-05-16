@@ -89,3 +89,12 @@ logging:
 
 server:
   port: ${SERVER_PORT:8080}
+
+gemini:
+  api-key: ${GEMINI_API_KEY:}
+  base-url: https://generativelanguage.googleapis.com/v1beta
+  model: gemini-2.5-flash
+  connect-timeout-seconds: 5
+  read-timeout-seconds: 90
+  max-output-tokens: 8192
+  temperature: 0.7
