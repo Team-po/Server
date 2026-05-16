@@ -106,7 +106,7 @@ class GithubOAuthServiceTest {
 	@Test
 	void createGithubLinkCode_storesCurrentUserIdInRedis() {
 		Users user = githubUser(1L, "test@email.com", "tester", 3);
-		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+		when(githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(1L)).thenReturn(false);
 
 		String linkCode = githubOAuthService.createGithubLinkCode(user);
 
@@ -117,8 +117,7 @@ class GithubOAuthServiceTest {
 	@Test
 	void createGithubLinkCode_throwsWhenCurrentUserAlreadyHasGithubAccount() {
 		Users user = githubUser(1L, "test@email.com", "tester", 3);
-		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L))
-			.thenReturn(Optional.of(githubAccount(user, 123L, "octocat")));
+		when(githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(1L)).thenReturn(true);
 
 		assertThatThrownBy(() -> githubOAuthService.createGithubLinkCode(user))
 			.isInstanceOf(ApplicationException.class)
@@ -212,8 +211,8 @@ class GithubOAuthServiceTest {
 		OAuth2User oAuth2User = githubOAuth2User(123L, "octocat", "test@email.com");
 		when(redisService.getAndDeleteStringValue("github-oauth-link-state:oauth-state")).thenReturn("1");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
-		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
-		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.empty());
+		when(githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(1L)).thenReturn(false);
+		when(githubAccountRepository.existsByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(false);
 		when(githubTokenEncryptor.encrypt("github-access-token")).thenReturn("encrypted-token");
 
 		boolean linked = githubOAuthService.linkGithubAccountIfRequested(
@@ -242,8 +241,7 @@ class GithubOAuthServiceTest {
 		Users user = githubUser(1L, "test@email.com", "tester", 3);
 		when(redisService.getAndDeleteStringValue("github-oauth-link-state:oauth-state")).thenReturn("1");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
-		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L))
-			.thenReturn(Optional.of(githubAccount(user, 123L, "octocat")));
+		when(githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(1L)).thenReturn(true);
 
 		assertThatThrownBy(() -> githubOAuthService.linkGithubAccountIfRequested(
 			"oauth-state",
@@ -261,12 +259,10 @@ class GithubOAuthServiceTest {
 	@Test
 	void linkGithubAccountIfRequested_throwsWhenGithubAccountIsLinkedToAnotherUser() {
 		Users user = githubUser(1L, "test@email.com", "tester", 3);
-		Users anotherUser = githubUser(2L, "other@email.com", "other", 4);
 		when(redisService.getAndDeleteStringValue("github-oauth-link-state:oauth-state")).thenReturn("1");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
-		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
-		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L))
-			.thenReturn(Optional.of(githubAccount(anotherUser, 123L, "octocat")));
+		when(githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(1L)).thenReturn(false);
+		when(githubAccountRepository.existsByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(true);
 
 		assertThatThrownBy(() -> githubOAuthService.linkGithubAccountIfRequested(
 			"oauth-state",
@@ -286,8 +282,8 @@ class GithubOAuthServiceTest {
 		Users user = githubUser(1L, "test@email.com", "tester", 3);
 		when(redisService.getAndDeleteStringValue("github-oauth-link-state:oauth-state")).thenReturn("1");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
-		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
-		when(githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(Optional.empty());
+		when(githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(1L)).thenReturn(false);
+		when(githubAccountRepository.existsByGithubUserIdAndDeletedAtIsNull(123L)).thenReturn(false);
 		when(githubTokenEncryptor.encrypt("github-access-token")).thenReturn("encrypted-token");
 		when(githubAccountRepository.save(any(GithubAccount.class)))
 			.thenThrow(new DataIntegrityViolationException("Duplicate entry"));

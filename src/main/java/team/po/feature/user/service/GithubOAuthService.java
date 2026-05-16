@@ -55,7 +55,7 @@ public class GithubOAuthService {
 
 	@Transactional(readOnly = true)
 	public String createGithubLinkCode(Users user) {
-		if (githubAccountRepository.findByUserIdAndDeletedAtIsNull(user.getId()).isPresent()) {
+		if (githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(user.getId())) {
 			throw new ApplicationException(ErrorCode.GITHUB_ACCOUNT_ALREADY_LINKED);
 		}
 
@@ -113,14 +113,13 @@ public class GithubOAuthService {
 		Long githubUserId = getGithubUserId(oAuth2User);
 		String githubUsername = getGithubNickname(oAuth2User);
 
-		if (githubAccountRepository.findByUserIdAndDeletedAtIsNull(user.getId()).isPresent()) {
+		if (githubAccountRepository.existsByUser_IdAndDeletedAtIsNull(userId)) {
 			throw new ApplicationException(ErrorCode.GITHUB_ACCOUNT_ALREADY_LINKED);
 		}
 
-		githubAccountRepository.findByGithubUserIdAndDeletedAtIsNull(githubUserId)
-			.ifPresent(githubAccount -> {
-				throw new ApplicationException(ErrorCode.GITHUB_ACCOUNT_LINKED_TO_ANOTHER_USER);
-			});
+		if (githubAccountRepository.existsByGithubUserIdAndDeletedAtIsNull(githubUserId)) {
+			throw new ApplicationException(ErrorCode.GITHUB_ACCOUNT_LINKED_TO_ANOTHER_USER);
+		}
 
 		try {
 			githubAccountRepository.save(GithubAccount.builder()
