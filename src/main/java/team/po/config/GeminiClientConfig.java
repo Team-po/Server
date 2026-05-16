@@ -1,5 +1,6 @@
 package team.po.config;
 
+import java.net.http.HttpClient;
 import java.time.Duration;
 
 import org.springframework.context.annotation.Bean;
@@ -28,8 +29,12 @@ public class GeminiClientConfig {
 	}
 
 	private ClientHttpRequestFactory clientHttpRequestFactory() {
-		JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory();
-		factory.setReadTimeout(Duration.ofSeconds(properties.timeoutSeconds()));
+		HttpClient httpClient = HttpClient.newBuilder()
+			.connectTimeout(Duration.ofSeconds(properties.connectTimeoutSeconds()))
+			.build();
+
+		JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+		factory.setReadTimeout(Duration.ofSeconds(properties.readTimeoutSeconds()));
 		return factory;
 	}
 }

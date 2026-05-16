@@ -1,5 +1,6 @@
 package team.po.feature.devguide.client;
 
+import java.net.http.HttpClient;
 import java.time.Duration;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -36,14 +37,18 @@ class GeminiClientSmokeTest {
 			apiKey,
 			"https://generativelanguage.googleapis.com/v1beta",
 			"gemini-2.5-flash",
+			5,
 			90,
 			8192,
 			0.7
 		);
 
 		// 1. 테스트 환경용 RequestFactory 설정 (Timeout 적용)
+		HttpClient httpClient = HttpClient.newBuilder()
+			.connectTimeout(Duration.ofSeconds(properties.connectTimeoutSeconds()))
+			.build();
 		JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory();
-		requestFactory.setReadTimeout(Duration.ofSeconds(properties.timeoutSeconds()));
+		requestFactory.setReadTimeout(Duration.ofSeconds(properties.readTimeoutSeconds()));
 
 		// 2. GeminiClientConfig와 동일한 스펙의 RestClient 빌드
 		RestClient testRestClient = RestClient.builder()
