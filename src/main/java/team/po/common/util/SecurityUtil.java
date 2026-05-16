@@ -4,8 +4,8 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
-
 import team.po.common.jwt.UserPrincipal;
+
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 

@@ -24,7 +24,6 @@ import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.user.domain.Users;
-import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
@@ -33,6 +32,8 @@ import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
+import team.po.feature.user.dto.ValidateDeleteUserEmailRequest;
+import team.po.feature.user.repository.GithubAccountRepository;
 import team.po.feature.user.repository.UserRepository;
 
 @Slf4j
@@ -40,6 +41,7 @@ import team.po.feature.user.repository.UserRepository;
 @RequiredArgsConstructor
 public class UserService {
 	private final UserRepository userRepository;
+	private final GithubAccountRepository githubAccountRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final AuthenticationManager authenticationManager;
 	private final JwtTokenProvider jwtTokenProvider;
@@ -164,19 +166,33 @@ public class UserService {
 		jwtTokenProvider.deleteRefreshToken(user.getEmail());
 	}
 
+	public void sendDeleteUserEmail(Users loginUser) {
+		Users user = this.getActiveUser(loginUser.getId());
+
+		emailService.sendDeleteUserEmail(user.getEmail());
+	}
+
+	public void validateDeleteUserEmail(Users loginUser, ValidateDeleteUserEmailRequest request) {
+		Users user = this.getActiveUser(loginUser.getId());
+
+		emailService.validateDeleteUserAuthNumber(user.getEmail(), request.authNumber());
+	}
+
 	@Transactional
-	public void deleteUser(Users loginUser, DeleteUserRequest request) {
-		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
-			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
-		if (!passwordEncoder.matches(request.password(), user.getPassword()))
-			throw new ApplicationException(ErrorCode.UNMATCHED_PASSWORD);
+	public void deleteUser(Users loginUser) {
+		Users user = this.getActiveUser(loginUser.getId());
+		emailService.validateVerifiedDeleteUserEmail(user.getEmail());
 
 		Instant deletedAt = Instant.now();
 		String email = user.getEmail();
 		String deletedEmail = createDeletedEmail(user.getId(), email, deletedAt);
 
 		user.softDelete(deletedAt, deletedEmail);
+		githubAccountRepository.findByUserIdAndDeletedAtIsNull(user.getId())
+			.ifPresent(githubAccount -> githubAccount.softDelete(deletedAt));
+		userRepository.flush();
 		jwtTokenProvider.deleteRefreshToken(email);
+		emailService.consumeVerifiedDeleteUserEmail(email);
 	}
 
 	private String normalizeEmail(String email) {
@@ -224,5 +240,10 @@ public class UserService {
 		String normalizedEndpoint = s3Endpoint.endsWith("/") ? s3Endpoint.substring(0, s3Endpoint.length() - 1) : s3Endpoint;
 
 		return normalizedEndpoint + "/" + bucket + "/" + normalizedObjectKey;
+	}
+
+	private Users getActiveUser(Long id) {
+		return  userRepository.findByIdAndDeletedAtIsNull(id).orElseThrow(
+			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
 	}
 }
