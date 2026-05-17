@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.util.HexFormat;
 import java.util.Locale;
 
@@ -32,12 +33,15 @@ import team.po.feature.user.repository.UserRepository;
 @Service
 @RequiredArgsConstructor
 public class EmailService {
-	private static final String EMAIL_AUTH_CODE_KEY_PREFIX = "email-auth-code:signup:";
-	private static final String EMAIL_AUTH_FAIL_COUNT_KEY_PREFIX = "email-auth-fail-count:signup:";
-	private static final String VERIFIED_EMAIL_KEY_PREFIX = "email-auth-verified:signup:";
+	private static final String EMAIL_AUTH_CODE_KEY_PREFIX = "email-auth-code:";
+	private static final String EMAIL_AUTH_FAIL_COUNT_KEY_PREFIX = "email-auth-fail-count:";
+	private static final String VERIFIED_EMAIL_KEY_PREFIX = "email-auth-verified:";
 	private static final String VERIFIED_VALUE = "true";
 	private static final String EMAIL_VERIFICATION_TEMPLATE_PATH = "templates/email-verification.html";
 	private static final String VERIFICATION_CODE_PLACEHOLDER = "__VERIFICATION_CODE__";
+	private static final String VERIFICATION_GUIDE_MESSAGE_PLACEHOLDER = "__VERIFICATION_GUIDE_MESSAGE__";
+	private static final String VERIFICATION_PREHEADER_PLACEHOLDER = "__VERIFICATION_PREHEADER__";
+	private static final String VERIFICATION_BADGE_TEXT_PLACEHOLDER = "__VERIFICATION_BADGE_TEXT__";
 	private static final int AUTH_CODE_ORIGIN = 100_000;
 	private static final int AUTH_CODE_BOUND = 900_000;
 	private static final int MAX_AUTH_CODE_FAILURE_COUNT = 5;
@@ -52,14 +56,22 @@ public class EmailService {
 		String email = normalizeEmail(request.email());
 		checkEmailDuplication(email);
 
+		sendAuthCodeEmail(email, EmailAuthPurpose.SIGN_UP);
+	}
+
+	public void sendDeleteUserEmail(String email) {
+		sendAuthCodeEmail(normalizeEmail(email), EmailAuthPurpose.DELETE_USER);
+	}
+
+	private void sendAuthCodeEmail(String email, EmailAuthPurpose purpose) {
 		String authCode = createAuthCode();
-		String authCodeKey = createEmailAuthCodeKey(email);
+		String authCodeKey = createEmailAuthCodeKey(email, purpose);
 		redisService.setValue(authCodeKey, authCode, emailAuthProperties.authCodeTtl());
-		redisService.deleteValue(createAuthFailCountKey(email));
-		redisService.deleteValue(createVerifiedEmailKey(email));
+		redisService.deleteValue(createAuthFailCountKey(email, purpose));
+		redisService.deleteValue(createVerifiedEmailKey(email, purpose));
 
 		try {
-			javaMailSender.send(createAuthCodeMessage(email, authCode));
+			javaMailSender.send(createAuthCodeMessage(email, authCode, purpose));
 		} catch (MailException | MessagingException | IOException exception) {
 			redisService.deleteValue(authCodeKey);
 			throw new ApplicationException(
@@ -72,23 +84,52 @@ public class EmailService {
 
 	public void validateAuthNumber(ValidateAuthNumberRequest request) {
 		String email = normalizeEmail(request.email());
-		String authCodeKey = createEmailAuthCodeKey(email);
-		String failCountKey = createAuthFailCountKey(email);
+		validateAuthNumber(email, request.authNumber(), EmailAuthPurpose.SIGN_UP);
+	}
+
+	public void validateDeleteUserAuthNumber(String email, Integer authNumber) {
+		validateAuthNumber(normalizeEmail(email), authNumber, EmailAuthPurpose.DELETE_USER);
+	}
+
+	private void validateAuthNumber(String email, Integer authNumber, EmailAuthPurpose purpose) {
+		String authCodeKey = createEmailAuthCodeKey(email, purpose);
+		String failCountKey = createAuthFailCountKey(email, purpose);
 		String savedAuthCode = redisService.getStringValue(authCodeKey);
 
-		if (!String.valueOf(request.authNumber()).equals(savedAuthCode)) {
-			recordAuthCodeFailure(email, authCodeKey, failCountKey);
+		if (!String.valueOf(authNumber).equals(savedAuthCode)) {
+			recordAuthCodeFailure(authCodeKey, failCountKey);
 			throw new ApplicationException(ErrorCode.INVALID_EMAIL_AUTH_CODE);
 		}
 
-		redisService.setValue(createVerifiedEmailKey(email), VERIFIED_VALUE, emailAuthProperties.verifiedTtl());
+		redisService.setValue(createVerifiedEmailKey(email, purpose), VERIFIED_VALUE, emailAuthProperties.verifiedTtl());
 		redisService.deleteValue(authCodeKey);
 		redisService.deleteValue(failCountKey);
 	}
 
 	public void consumeVerifiedSignUpEmail(String email) {
+		consumeVerifiedEmail(email, EmailAuthPurpose.SIGN_UP);
+	}
+
+	public void consumeVerifiedDeleteUserEmail(String email) {
+		consumeVerifiedEmail(email, EmailAuthPurpose.DELETE_USER);
+	}
+
+	public void validateVerifiedDeleteUserEmail(String email) {
+		validateVerifiedEmail(email, EmailAuthPurpose.DELETE_USER);
+	}
+
+	private void validateVerifiedEmail(String email, EmailAuthPurpose purpose) {
 		String normalizedEmail = normalizeEmail(email);
-		Object verified = redisService.getAndDeleteValue(createVerifiedEmailKey(normalizedEmail));
+		String verified = redisService.getStringValue(createVerifiedEmailKey(normalizedEmail, purpose));
+
+		if (!VERIFIED_VALUE.equals(verified)) {
+			throw new ApplicationException(ErrorCode.EMAIL_NOT_VERIFIED);
+		}
+	}
+
+	private void consumeVerifiedEmail(String email, EmailAuthPurpose purpose) {
+		String normalizedEmail = normalizeEmail(email);
+		Object verified = redisService.getAndDeleteValue(createVerifiedEmailKey(normalizedEmail, purpose));
 
 		if (!VERIFIED_VALUE.equals(verified)) {
 			throw new ApplicationException(ErrorCode.EMAIL_NOT_VERIFIED);
@@ -101,7 +142,7 @@ public class EmailService {
 		}
 	}
 
-	private void recordAuthCodeFailure(String email, String authCodeKey, String failCountKey) {
+	private void recordAuthCodeFailure(String authCodeKey, String failCountKey) {
 		Long failCount = redisService.incrementValue(failCountKey);
 		if (Long.valueOf(1L).equals(failCount)) {
 			redisService.expire(failCountKey, emailAuthProperties.authCodeTtl());
@@ -117,7 +158,8 @@ public class EmailService {
 		return String.valueOf(secureRandom.nextInt(AUTH_CODE_BOUND) + AUTH_CODE_ORIGIN);
 	}
 
-	private MimeMessage createAuthCodeMessage(String email, String authCode) throws MessagingException, IOException {
+	private MimeMessage createAuthCodeMessage(String email, String authCode, EmailAuthPurpose purpose)
+		throws MessagingException, IOException {
 		MimeMessage message = javaMailSender.createMimeMessage();
 		MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
 		if (StringUtils.hasText(emailAuthProperties.username())) {
@@ -125,30 +167,70 @@ public class EmailService {
 		}
 		helper.setTo(email);
 		helper.setSubject(emailAuthProperties.authCodeSubject());
-		helper.setText(createAuthCodeHtml(authCode), true);
+		helper.setText(createAuthCodeHtml(authCode, purpose), true);
 
 		return message;
 	}
 
-	private String createAuthCodeHtml(String authCode) throws IOException {
+	private String createAuthCodeHtml(String authCode, EmailAuthPurpose purpose) throws IOException {
 		Resource template = new ClassPathResource(EMAIL_VERIFICATION_TEMPLATE_PATH);
 		String html;
 		try (InputStream inputStream = template.getInputStream()) {
 			html = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
 		}
-		return html.replace(VERIFICATION_CODE_PLACEHOLDER, authCode);
+		String authCodeTtlText = formatDuration(emailAuthProperties.authCodeTtl());
+		return html
+			.replace(VERIFICATION_CODE_PLACEHOLDER, authCode)
+			.replace(VERIFICATION_GUIDE_MESSAGE_PLACEHOLDER, purpose.createGuideMessage(authCodeTtlText))
+			.replace(VERIFICATION_PREHEADER_PLACEHOLDER, purpose.createPreheader(authCodeTtlText))
+			.replace(VERIFICATION_BADGE_TEXT_PLACEHOLDER, purpose.badgeText);
 	}
 
-	private String createEmailAuthCodeKey(String email) {
-		return EMAIL_AUTH_CODE_KEY_PREFIX + hashEmail(email);
+	private String formatDuration(Duration duration) {
+		long seconds = duration.toSeconds();
+		if (duration.minusSeconds(seconds).toNanos() > 0) {
+			seconds++;
+		}
+		if (seconds <= 0) {
+			return "0초";
+		}
+
+		long days = seconds / 86_400;
+		seconds %= 86_400;
+		long hours = seconds / 3_600;
+		seconds %= 3_600;
+		long minutes = seconds / 60;
+		seconds %= 60;
+
+		StringBuilder builder = new StringBuilder();
+		appendDurationPart(builder, days, "일");
+		appendDurationPart(builder, hours, "시간");
+		appendDurationPart(builder, minutes, "분");
+		appendDurationPart(builder, seconds, "초");
+
+		return builder.toString();
 	}
 
-	private String createAuthFailCountKey(String email) {
-		return EMAIL_AUTH_FAIL_COUNT_KEY_PREFIX + hashEmail(email);
+	private void appendDurationPart(StringBuilder builder, long value, String unit) {
+		if (value <= 0) {
+			return;
+		}
+		if (!builder.isEmpty()) {
+			builder.append(' ');
+		}
+		builder.append(value).append(unit);
 	}
 
-	private String createVerifiedEmailKey(String email) {
-		return VERIFIED_EMAIL_KEY_PREFIX + hashEmail(email);
+	private String createEmailAuthCodeKey(String email, EmailAuthPurpose purpose) {
+		return EMAIL_AUTH_CODE_KEY_PREFIX + purpose.key + ":" + hashEmail(email);
+	}
+
+	private String createAuthFailCountKey(String email, EmailAuthPurpose purpose) {
+		return EMAIL_AUTH_FAIL_COUNT_KEY_PREFIX + purpose.key + ":" + hashEmail(email);
+	}
+
+	private String createVerifiedEmailKey(String email, EmailAuthPurpose purpose) {
+		return VERIFIED_EMAIL_KEY_PREFIX + purpose.key + ":" + hashEmail(email);
 	}
 
 	private String normalizeEmail(String email) {
@@ -162,6 +244,41 @@ public class EmailService {
 			return HexFormat.of().formatHex(hash);
 		} catch (NoSuchAlgorithmException exception) {
 			throw new IllegalStateException("SHA-256 algorithm is unavailable.", exception);
+		}
+	}
+
+	private enum EmailAuthPurpose {
+		SIGN_UP(
+			"signup",
+			"회원가입 인증",
+			"Team-po 계정 생성 인증번호입니다.",
+			"Team-po 계정 생성을 완료하려면 아래 인증번호를 인증 화면에 입력해 주세요."
+		),
+		DELETE_USER(
+			"delete-user",
+			"계정 삭제 인증",
+			"Team-po 계정 삭제 인증번호입니다.",
+			"Team-po 계정 삭제를 완료하려면 아래 인증번호를 인증 화면에 입력해 주세요."
+		);
+
+		private final String key;
+		private final String badgeText;
+		private final String preheaderPrefix;
+		private final String guideMessagePrefix;
+
+		EmailAuthPurpose(String key, String badgeText, String preheaderPrefix, String guideMessagePrefix) {
+			this.key = key;
+			this.badgeText = badgeText;
+			this.preheaderPrefix = preheaderPrefix;
+			this.guideMessagePrefix = guideMessagePrefix;
+		}
+
+		private String createPreheader(String authCodeTtlText) {
+			return preheaderPrefix + " 인증번호는 " + authCodeTtlText + " 동안 유효합니다.";
+		}
+
+		private String createGuideMessage(String authCodeTtlText) {
+			return guideMessagePrefix + " 인증번호는 발급 후 " + authCodeTtlText + " 동안만 유효합니다.";
 		}
 	}
 }

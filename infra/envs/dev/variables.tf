@@ -28,7 +28,8 @@ variable "profile_image_allowed_origins" {
   default = [
     "http://localhost:3000",
     "http://localhost:5173",
-    "https://team-po.cloud"
+    "https://team-po.cloud",
+    "https://www.team-po.cloud"
   ]
 }
 

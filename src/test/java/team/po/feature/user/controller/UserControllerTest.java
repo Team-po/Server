@@ -30,13 +30,13 @@ import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.common.jwt.UserPrincipal;
 import team.po.feature.user.domain.Users;
-import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
 import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInResponse;
+import team.po.feature.user.dto.ValidateDeleteUserEmailRequest;
 import team.po.feature.user.service.ImageService;
 import team.po.feature.user.repository.UserRepository;
 import team.po.feature.user.service.UserService;
@@ -530,55 +530,70 @@ class UserControllerTest {
 	}
 
 	@Test
-	void deleteUser_returnsOk_whenRequestIsValid() throws Exception {
+	void sendDeleteUserEmail_returnsOk_whenAuthenticatedUserExists() throws Exception {
 		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
 
-		mockMvc.perform(delete("/api/users/me")
+		mockMvc.perform(post("/api/users/me/deletion-email")
+				.with(csrf()))
+			.andExpect(status().isOk());
+
+		verify(userService).sendDeleteUserEmail(authenticatedUser);
+	}
+
+	@Test
+	void validateDeleteUserEmail_returnsOk_whenRequestIsValid() throws Exception {
+		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
+
+		mockMvc.perform(post("/api/users/me/deletion-number-validation")
 				.with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-					{"password":"password123"}
+					{"authNumber":123456}
 					"""))
 			.andExpect(status().isOk());
 
-		verify(userService).deleteUser(
+		verify(userService).validateDeleteUserEmail(
 			authenticatedUser,
-			new DeleteUserRequest("password123")
+			new ValidateDeleteUserEmailRequest(123456)
 		);
 	}
 
 	@Test
-	void deleteUser_returnsBadRequest_whenRequestIsInvalid() throws Exception {
+	void validateDeleteUserEmail_returnsBadRequest_whenRequestIsInvalid() throws Exception {
 		setAuthenticatedUser(1L, "test@email.com");
 
-		mockMvc.perform(delete("/api/users/me")
+		mockMvc.perform(post("/api/users/me/deletion-number-validation")
 				.with(csrf())
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-					{"password":"123"}
+					{"authNumber":12345}
 					"""))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
-			.andExpect(jsonPath("$.fieldErrors.password").value("비밀번호는 8글자 이상이어야 합니다."));
+			.andExpect(jsonPath("$.fieldErrors.authNumber").value("인증번호는 6자리 숫자입니다."));
 	}
 
 	@Test
-	void deleteUser_returnsUnauthorized_whenPasswordDoesNotMatch() throws Exception {
+	void deleteUser_returnsOk_whenEmailWasVerified() throws Exception {
 		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
-		doThrow(new ApplicationException(ErrorCode.UNMATCHED_PASSWORD)).when(userService).deleteUser(
-			authenticatedUser,
-			new DeleteUserRequest("password123")
-		);
 
 		mockMvc.perform(delete("/api/users/me")
-				.with(csrf())
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-					{"password":"password123"}
-					"""))
-			.andExpect(status().isUnauthorized())
-			.andExpect(jsonPath("$.code").value(ErrorCode.UNMATCHED_PASSWORD.getCode()))
-			.andExpect(jsonPath("$.message").value("현재 비밀번호와 동일하지 않습니다."));
+				.with(csrf()))
+			.andExpect(status().isOk());
+
+		verify(userService).deleteUser(authenticatedUser);
+	}
+
+	@Test
+	void deleteUser_returnsBadRequest_whenEmailWasNotVerified() throws Exception {
+		Users authenticatedUser = setAuthenticatedUser(1L, "test@email.com");
+		doThrow(new ApplicationException(ErrorCode.EMAIL_NOT_VERIFIED)).when(userService).deleteUser(authenticatedUser);
+
+		mockMvc.perform(delete("/api/users/me")
+				.with(csrf()))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCode.EMAIL_NOT_VERIFIED.getCode()))
+			.andExpect(jsonPath("$.message").value("이메일 인증이 필요합니다."));
 	}
 
 	private String signUpRequestJson(String email, String password, String nickname, Integer level, String profileImageKey) {

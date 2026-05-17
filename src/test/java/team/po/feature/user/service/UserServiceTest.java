@@ -12,8 +12,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -24,8 +26,8 @@ import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.ApplicationException;
+import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
-import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
@@ -34,6 +36,8 @@ import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
+import team.po.feature.user.dto.ValidateDeleteUserEmailRequest;
+import team.po.feature.user.repository.GithubAccountRepository;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +45,9 @@ class UserServiceTest {
 
 	@Mock
 	private UserRepository userRepository;
+
+	@Mock
+	private GithubAccountRepository githubAccountRepository;
 
 	@Mock
 	private PasswordEncoder passwordEncoder;
@@ -365,22 +372,54 @@ class UserServiceTest {
 	}
 
 	@Test
+	void sendDeleteUserEmail_sendsEmailToManagedUserEmail() {
+		Users loginUser = authenticatedUser(1L, "login@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+
+		userService.sendDeleteUserEmail(loginUser);
+
+		verify(emailService).sendDeleteUserEmail("test@email.com");
+	}
+
+	@Test
+	void validateDeleteUserEmail_validatesManagedUserEmail() {
+		Users loginUser = authenticatedUser(1L, "login@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		ValidateDeleteUserEmailRequest request = new ValidateDeleteUserEmailRequest(123456);
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+
+		userService.validateDeleteUserEmail(loginUser, request);
+
+		verify(emailService).validateDeleteUserAuthNumber("test@email.com", 123456);
+	}
+
+	@Test
 	void deleteUser_softDeletesManagedUserAndDeletesRefreshToken() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		Users managedUser = authenticatedUser(1L, "test@email.com");
-		DeleteUserRequest request = new DeleteUserRequest("current-password");
-		managedUser.editPassword("encoded-current-password");
+		GithubAccount githubAccount = GithubAccount.builder()
+			.user(managedUser)
+			.githubUserId(123L)
+			.githubUsername("octocat")
+			.build();
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
-		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(githubAccount));
 
-		userService.deleteUser(loginUser, request);
+		userService.deleteUser(loginUser);
 
 		assertThat(managedUser.getDeletedAt()).isNotNull();
 		assertThat(managedUser.getEmail()).startsWith("deleted__1__");
 		assertThat(managedUser.getEmail()).doesNotContain("test@email.com");
 		assertThat(managedUser.getEmail().length()).isLessThanOrEqualTo(255);
+		assertThat(githubAccount.getDeletedAt()).isEqualTo(managedUser.getDeletedAt());
 		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
-		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
+		verify(githubAccountRepository).findByUserIdAndDeletedAtIsNull(1L);
+		InOrder inOrder = inOrder(emailService, userRepository, jwtTokenProvider);
+		inOrder.verify(emailService).validateVerifiedDeleteUserEmail("test@email.com");
+		inOrder.verify(userRepository).flush();
+		inOrder.verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
+		inOrder.verify(emailService).consumeVerifiedDeleteUserEmail("test@email.com");
 	}
 
 	@Test
@@ -390,13 +429,10 @@ class UserServiceTest {
 		String longLocalPart = "a".repeat(120);
 		String longDomainPart = "b".repeat(120);
 		String originalEmail = longLocalPart + "@" + longDomainPart + ".com";
-		DeleteUserRequest request = new DeleteUserRequest("current-password");
 		ReflectionTestUtils.setField(managedUser, "email", originalEmail);
-		managedUser.editPassword("encoded-current-password");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
-		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
 
-		userService.deleteUser(loginUser, request);
+		userService.deleteUser(loginUser);
 
 		assertThat(managedUser.getEmail().length()).isLessThanOrEqualTo(255);
 		assertThat(managedUser.getEmail()).startsWith("deleted__1__");
@@ -405,18 +441,36 @@ class UserServiceTest {
 	}
 
 	@Test
-	void deleteUser_throwsWhenPasswordDoesNotMatch() {
+	void deleteUser_throwsWhenEmailWasNotVerified() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		Users managedUser = authenticatedUser(1L, "test@email.com");
-		DeleteUserRequest request = new DeleteUserRequest("wrong-password");
-		managedUser.editPassword("encoded-current-password");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
-		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
+		doThrow(new ApplicationException(team.po.exception.ErrorCode.EMAIL_NOT_VERIFIED))
+			.when(emailService).validateVerifiedDeleteUserEmail("test@email.com");
 
-		assertThatThrownBy(() -> userService.deleteUser(loginUser, request))
+		assertThatThrownBy(() -> userService.deleteUser(loginUser))
 			.isInstanceOf(ApplicationException.class)
-			.hasMessage("현재 비밀번호와 동일하지 않습니다.");
+			.hasMessage("이메일 인증이 필요합니다.");
 
+		assertThat(managedUser.getDeletedAt()).isNull();
+		verify(userRepository, never()).flush();
+		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
+		verify(emailService, never()).consumeVerifiedDeleteUserEmail(any());
+	}
+
+	@Test
+	void deleteUser_doesNotConsumeVerifiedEmailWhenSoftDeleteFlushFails() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		doThrow(new DataIntegrityViolationException("failed"))
+			.when(userRepository).flush();
+
+		assertThatThrownBy(() -> userService.deleteUser(loginUser))
+			.isInstanceOf(DataIntegrityViolationException.class);
+
+		verify(emailService).validateVerifiedDeleteUserEmail("test@email.com");
+		verify(emailService, never()).consumeVerifiedDeleteUserEmail(any());
 		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
 	}
 

@@ -28,6 +28,7 @@ import team.po.common.jwt.JwtAuthenticationFilter;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.exception.ErrorCode;
 import team.po.exception.ExceptionResponse;
+import team.po.feature.user.oauth.GithubOAuthSuccessHandler;
 
 @Configuration
 @EnableWebSecurity
@@ -37,7 +38,8 @@ public class SecurityConfig {
 	@Bean
 	public SecurityFilterChain filterChain(
 		HttpSecurity http,
-		JwtTokenProvider jwtTokenProvider
+		JwtTokenProvider jwtTokenProvider,
+		GithubOAuthSuccessHandler githubOAuthSuccessHandler
 	) throws Exception {
 		http
 			.httpBasic(AbstractHttpConfigurer::disable)
@@ -48,19 +50,24 @@ public class SecurityConfig {
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.exceptionHandling(exception -> exception.authenticationEntryPoint(this::writeUnauthorizedResponse))
 			.authorizeHttpRequests(authorize -> authorize
-				.requestMatchers(HttpMethod.POST, "/api/users/sign-up").permitAll()
-				.requestMatchers(HttpMethod.POST, "/api/signup/email").permitAll()
-				.requestMatchers(HttpMethod.POST, "/api/signup/number-validation").permitAll()
-				.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-				.requestMatchers(HttpMethod.POST, "/api/users/sign-in").permitAll()
-				.requestMatchers(HttpMethod.POST, "/api/users/refresh-token").permitAll()
-				.requestMatchers(HttpMethod.GET, "/api/users/check-email").permitAll()
-				.requestMatchers(HttpMethod.POST, "/api/users/profile-image/upload-url").permitAll()
-				.requestMatchers("/error").permitAll()
-				.anyRequest().authenticated()
-			)
-			.addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider, objectMapper),
-				UsernamePasswordAuthenticationFilter.class);
+					.requestMatchers(HttpMethod.POST, "/api/users/sign-up").permitAll()
+					.requestMatchers(HttpMethod.POST, "/api/signup/email").permitAll()
+					.requestMatchers(HttpMethod.POST, "/api/signup/number-validation").permitAll()
+					.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+					.requestMatchers(HttpMethod.POST, "/api/users/sign-in").permitAll()
+					.requestMatchers(HttpMethod.POST, "/api/users/refresh-token").permitAll()
+					.requestMatchers(HttpMethod.POST, "/api/oauth/github/token").permitAll()
+					.requestMatchers("/oauth2/authorization/github", "/api/auth/github/callback").permitAll()
+					.requestMatchers(HttpMethod.GET, "/api/users/check-email").permitAll()
+					.requestMatchers(HttpMethod.POST, "/api/users/profile-image/upload-url").permitAll()
+					.requestMatchers("/error").permitAll()
+					.anyRequest().authenticated()
+				)
+			.oauth2Login(oauth2 -> oauth2
+						.redirectionEndpoint(redirection -> redirection.baseUri("/api/auth/github/callback"))
+						.successHandler(githubOAuthSuccessHandler)
+					)
+			.addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider, objectMapper), UsernamePasswordAuthenticationFilter.class);
 
 		return http.build();
 	}

@@ -14,6 +14,18 @@ spring:
     enabled: true
     baseline-on-migrate: true
 
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: test-github-client-id
+            client-secret: test-github-client-secret
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope:
+              - read:user
+              - user:email
+
 cloud:
   aws:
     s3:
@@ -25,3 +37,8 @@ jwt:
   secret: YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
   access-token-expiration: 30m
   refresh-token-expiration: 14d
+
+github:
+  oauth:
+    success-redirect-uri: http://localhost:5173/oauth/github/callback
+    authorization-code-ttl: PT3M

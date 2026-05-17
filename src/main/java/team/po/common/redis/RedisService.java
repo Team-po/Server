@@ -42,6 +42,15 @@ public class RedisService {
 		return valueOperations.getAndDelete(key);
 	}
 
+	public String getAndDeleteStringValue(String key) {
+		Object value = valueOperations.getAndDelete(key);
+		if (value == null) {
+			return null;
+		}
+
+		return value.toString();
+	}
+
 	public Long incrementValue(String key) {
 		return valueOperations.increment(key);
 	}
