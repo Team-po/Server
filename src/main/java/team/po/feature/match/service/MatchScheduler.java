@@ -72,7 +72,11 @@ public class MatchScheduler {
 				MatchingContext context = new MatchingContext(host, waitingPool, blacklist);
 				matchingStrategy.findTeamCandidates(context).ifPresent(result -> {
 					List<ProjectRequest> candidates = result.selectedCandidates();
-					matchService.createMatchingSession(host, candidates);
+
+					matchService.createMatchingSession(
+						host.getId(),
+						candidates.stream().map(ProjectRequest::getId).toList()
+					);
 
 					// 매칭된 인원은 pool에서 제거 (사이클 내 중복 매칭 방지)
 					Set<Long> matchedIds = candidates.stream()
@@ -148,7 +152,7 @@ public class MatchScheduler {
 					break;
 
 				ProjectRequest selected = candidate.get();
-				matchService.fillVacancy(session.getId(), role, selected);
+				matchService.fillVacancy(session.getId(), role, selected.getId());
 
 				// 트랜잭션 완료 후 pool 및 blacklist 업데이트
 				blacklist.add(selected.getUser().getId());
