@@ -508,15 +508,16 @@ class MatchServiceTest {
 
 		ProjectRequest candidatePr = createMemberRequest(candidateUser);
 		ReflectionTestUtils.setField(candidatePr, "id", 2L);
-		// candidatePr은 WAITING 상태 (생성 시 기본값)
 
 		when(matchingSessionRepository.findByIdWithLock(42L))
 			.thenReturn(Optional.of(session));
+		when(projectRequestRepository.findById(2L))  // ← 추가
+			.thenReturn(Optional.of(candidatePr));
 
 		// When
-		matchService.fillVacancy(42L, Role.FRONTEND, candidatePr);
+		matchService.fillVacancy(42L, Role.FRONTEND, candidatePr.getId());
 
-		// Then: 후보가 MATCHING 상태로 전환되고 이벤트 발행됨
+		// Then
 		assertThat(candidatePr.getStatus()).isEqualTo(Status.MATCHING);
 		verify(matchingMemberRepository).save(any(MatchingMember.class));
 
@@ -528,25 +529,26 @@ class MatchServiceTest {
 
 	@Test
 	void fillVacancy_skip_whenCandidateNotWaiting() {
-		// Given: 락 잡는 사이 후보가 cancel하여 CANCELED 상태로 변경됨
 		Users candidateUser = createUser(2L);
 		MatchingSession session = createSession(42L);
 
 		ProjectRequest candidatePr = createMemberRequest(candidateUser);
 		ReflectionTestUtils.setField(candidatePr, "id", 2L);
 		candidatePr.startMatching();
-		candidatePr.cancel();  // WAITING → MATCHING → CANCELED
+		candidatePr.cancel();
 
 		when(matchingSessionRepository.findByIdWithLock(42L))
 			.thenReturn(Optional.of(session));
+		when(projectRequestRepository.findById(2L))  // ← 추가
+			.thenReturn(Optional.of(candidatePr));
 
 		// When
-		matchService.fillVacancy(42L, Role.FRONTEND, candidatePr);
+		matchService.fillVacancy(42L, Role.FRONTEND, candidatePr.getId());
 
-		// Then: 멤버 INSERT도, 이벤트 발행도 일어나지 않음
+		// Then
 		verify(matchingMemberRepository, never()).save(any(MatchingMember.class));
 		verify(eventPublisher, never()).publishEvent(any());
-		assertThat(candidatePr.getStatus()).isEqualTo(Status.CANCELED);  // 상태 그대로
+		assertThat(candidatePr.getStatus()).isEqualTo(Status.CANCELED);
 	}
 
 	@Test
@@ -560,7 +562,7 @@ class MatchServiceTest {
 			.thenReturn(Optional.empty());
 
 		// When & Then
-		assertThatThrownBy(() -> matchService.fillVacancy(42L, Role.FRONTEND, candidatePr))
+		assertThatThrownBy(() -> matchService.fillVacancy(42L, Role.FRONTEND, candidatePr.getId()))
 			.isInstanceOf(ApplicationException.class);
 
 		verify(matchingMemberRepository, never()).save(any(MatchingMember.class));

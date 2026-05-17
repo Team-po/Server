@@ -10,7 +10,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import org.slf4j.MDC;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -43,29 +42,26 @@ public class MatchScheduler {
 	@Scheduled(fixedDelay = 60_000) // 1분마다 실행
 	public void runMatchingCycle() {
 		String cycleId = UUID.randomUUID().toString().substring(0, 8);
-		MDC.put("cycleId", cycleId);
 
 		try {
-			log.info("매칭 사이클 시작");
+			log.info("[{}] 매칭 사이클 시작", cycleId);
 			// 1. waiting pool 로드
 			Map<Role, List<ProjectRequest>> waitingPool = loadWaitingMemberPool();
 			// 2. 빈자리 충원 프로세스 (기존 세션 우선)
-			processVacancies(waitingPool);
+			processVacancies(waitingPool, cycleId);
 			// 3. 신규 매칭 프로세스
-			processNewMatching(waitingPool);
+			processNewMatching(waitingPool, cycleId);
 
-			log.info("매칭 사이클 완료");
+			log.info("[{}] 매칭 사이클 완료", cycleId);
 		} catch (Exception e) {
-			log.error("매칭 사이클 실행 중 예외 발생", e);
-		} finally {
-			MDC.remove("cycleId");
+			log.error("[{}] 매칭 사이클 실행 중 예외 발생", cycleId, e);
 		}
 	}
 
 	// 신규 매칭 세션 생성
-	private void processNewMatching(Map<Role, List<ProjectRequest>> waitingPool) {
+	private void processNewMatching(Map<Role, List<ProjectRequest>> waitingPool, String cycleId) {
 		List<ProjectRequest> hosts = projectRequestRepository.findWaitingHosts(PageRequest.of(0, HOST_BATCH_LIMIT));
-		log.debug("New Host Candidate: {}명", hosts.size());
+		log.debug("[{}] New Host Candidate: {}명", cycleId, hosts.size());
 
 		for (ProjectRequest host : hosts) {
 			try {
@@ -76,7 +72,11 @@ public class MatchScheduler {
 				MatchingContext context = new MatchingContext(host, waitingPool, blacklist);
 				matchingStrategy.findTeamCandidates(context).ifPresent(result -> {
 					List<ProjectRequest> candidates = result.selectedCandidates();
-					matchService.createMatchingSession(host, candidates);
+
+					matchService.createMatchingSession(
+						host.getId(),
+						candidates.stream().map(ProjectRequest::getId).toList()
+					);
 
 					// 매칭된 인원은 pool에서 제거 (사이클 내 중복 매칭 방지)
 					Set<Long> matchedIds = candidates.stream()
@@ -86,20 +86,20 @@ public class MatchScheduler {
 					removeMatchedFromPool(waitingPool, matchedIds);
 				});
 			} catch (Exception e) {
-				log.error("신규 매칭 세션 생성 실패: hostId={}", host.getId(), e);
+				log.error("[{}] 신규 매칭 세션 생성 실패: hostId={}", cycleId, host.getId(), e);
 			}
 		}
 	}
 
 	// 기존 세션 빈자리 충원
-	private void processVacancies(Map<Role, List<ProjectRequest>> waitingPool) {
+	private void processVacancies(Map<Role, List<ProjectRequest>> waitingPool, String cycleId) {
 		List<MatchingSession> activeSessions = matchingSessionRepository.findAllActive();
 
 		for (MatchingSession session : activeSessions) {
 			try {
 				fillSessionVacancy(session, waitingPool);
 			} catch (Exception e) {
-				log.error("빈자리 충원 실패: sessionId={}", session.getId(), e);
+				log.error("[{}] 빈자리 충원 실패: sessionId={}", cycleId, session.getId(), e);
 			}
 		}
 	}
@@ -152,7 +152,7 @@ public class MatchScheduler {
 					break;
 
 				ProjectRequest selected = candidate.get();
-				matchService.fillVacancy(session.getId(), role, selected);
+				matchService.fillVacancy(session.getId(), role, selected.getId());
 
 				// 트랜잭션 완료 후 pool 및 blacklist 업데이트
 				blacklist.add(selected.getUser().getId());

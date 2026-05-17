@@ -61,6 +61,8 @@ public class ProjectRequestService {
 				.projectMvp(request.projectMvp())
 				.build();
 			projectRequestRepository.save(projectRequest);
+			log.info("매칭 요청 생성 완료. userId: {}, projectRequestId: {}, role: {}",
+				user.getId(), projectRequest.getId(), projectRequest.getRole());
 		} catch (DataIntegrityViolationException e) { // 동시 요청 Race Condition
 			throw new ApplicationException(ErrorCode.PROJECT_REQUEST_ALREADY_EXISTS);
 		}
