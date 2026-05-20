@@ -15,18 +15,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import team.po.common.redis.RedisService;
+import team.po.config.GithubAppProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.projectgroup.domain.GroupRole;
 import team.po.feature.projectgroup.domain.ProjectGroup;
 import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
+import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.domain.GithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
@@ -50,13 +51,28 @@ class TeamspaceServiceTest {
 	@Mock
 	private RedisService redisService;
 
-	@InjectMocks
+	@Mock
+	private GithubAppClient githubAppClient;
+
 	private TeamspaceService teamspaceService;
 
 	@BeforeEach
 	void setUp() {
-		ReflectionTestUtils.setField(teamspaceService, "githubAppSlug", "teampo");
-		ReflectionTestUtils.setField(teamspaceService, "githubAppInstallationStateTtl", Duration.ofMinutes(5));
+		GithubAppProperties githubAppProperties = new GithubAppProperties(
+			12345L,
+			"teampo",
+			"test-private-key",
+			Duration.ofMinutes(5),
+			"https://api.github.com"
+		);
+		teamspaceService = new TeamspaceService(
+			projectGroupMemberRepository,
+			projectGroupGithubInstallationRepository,
+			projectGroupGithubRepository,
+			redisService,
+			githubAppProperties,
+			githubAppClient
+		);
 	}
 
 	@Test
@@ -129,8 +145,8 @@ class TeamspaceServiceTest {
 
 		String state = response.installUrl().substring(response.installUrl().indexOf("state=") + "state=".length());
 		assertThat(keyCaptor.getValue()).isEqualTo("github-app-install-state:" + state);
-		assertThat(payloadCaptor.getValue()).startsWith("10:1:");
-		assertThat(payloadCaptor.getValue()).endsWith(":" + state);
+		assertThat(payloadCaptor.getValue()).startsWith("10|1|");
+		assertThat(payloadCaptor.getValue()).endsWith("|" + state);
 	}
 
 	@Test
@@ -149,6 +165,110 @@ class TeamspaceServiceTest {
 		verify(redisService, never()).setValue(anyString(), anyString(), eq(Duration.ofMinutes(5)));
 	}
 
+	@Test
+	void completeGithubAppInstallation_consumesState_whenRequestIsValid() {
+		CompleteGithubAppInstallationRequest request = new CompleteGithubAppInstallationRequest(
+			12345L,
+			"install",
+			"test-state"
+		);
+		when(redisService.getAndDeleteStringValue("github-app-install-state:test-state"))
+			.thenReturn("10|1|2026-05-20T00:00:00Z|test-state");
+		when(githubAppClient.getInstallation(12345L))
+			.thenReturn(organizationInstallationInfo());
+
+		teamspaceService.completeGithubAppInstallation(request, 10L, 1L);
+
+		verify(redisService).getAndDeleteStringValue("github-app-install-state:test-state");
+		verify(githubAppClient).getInstallation(12345L);
+	}
+
+	@Test
+	void completeGithubAppInstallation_throwsBadRequest_whenInstallationAccountIsNotOrganization() {
+		CompleteGithubAppInstallationRequest request = new CompleteGithubAppInstallationRequest(
+			12345L,
+			"install",
+			"test-state"
+		);
+		when(redisService.getAndDeleteStringValue("github-app-install-state:test-state"))
+			.thenReturn("10|1|2026-05-20T00:00:00Z|test-state");
+		when(githubAppClient.getInstallation(12345L))
+			.thenReturn(new GithubAppClient.GithubAppInstallationInfo(
+				12345L,
+				98765L,
+				"personal-account",
+				"User"
+			));
+
+		assertThatThrownBy(() -> teamspaceService.completeGithubAppInstallation(request, 10L, 1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_GITHUB_APP_INSTALLATION_ACCOUNT.getCode());
+	}
+
+	@Test
+	void completeGithubAppInstallation_throwsBadRequest_whenStateIsExpired() {
+		CompleteGithubAppInstallationRequest request = new CompleteGithubAppInstallationRequest(
+			12345L,
+			"install",
+			"expired-state"
+		);
+		when(redisService.getAndDeleteStringValue("github-app-install-state:expired-state")).thenReturn(null);
+
+		assertThatThrownBy(() -> teamspaceService.completeGithubAppInstallation(request, 10L, 1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_GITHUB_APP_INSTALLATION_STATE.getCode());
+	}
+
+	@Test
+	void completeGithubAppInstallation_throwsBadRequest_whenProjectGroupDoesNotMatchState() {
+		CompleteGithubAppInstallationRequest request = new CompleteGithubAppInstallationRequest(
+			12345L,
+			"install",
+			"test-state"
+		);
+		when(redisService.getAndDeleteStringValue("github-app-install-state:test-state"))
+			.thenReturn("99|1|2026-05-20T00:00:00Z|test-state");
+
+		assertThatThrownBy(() -> teamspaceService.completeGithubAppInstallation(request, 10L, 1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_GITHUB_APP_INSTALLATION_STATE.getCode());
+	}
+
+	@Test
+	void completeGithubAppInstallation_throwsBadRequest_whenRequesterDoesNotMatchState() {
+		CompleteGithubAppInstallationRequest request = new CompleteGithubAppInstallationRequest(
+			12345L,
+			"install",
+			"test-state"
+		);
+		when(redisService.getAndDeleteStringValue("github-app-install-state:test-state"))
+			.thenReturn("10|99|2026-05-20T00:00:00Z|test-state");
+
+		assertThatThrownBy(() -> teamspaceService.completeGithubAppInstallation(request, 10L, 1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_GITHUB_APP_INSTALLATION_STATE.getCode());
+	}
+
+	@Test
+	void completeGithubAppInstallation_throwsBadRequest_whenSetupActionIsInvalid() {
+		CompleteGithubAppInstallationRequest request = new CompleteGithubAppInstallationRequest(
+			12345L,
+			"update",
+			"test-state"
+		);
+
+		assertThatThrownBy(() -> teamspaceService.completeGithubAppInstallation(request, 10L, 1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_GITHUB_APP_SETUP_ACTION.getCode());
+
+		verify(redisService, never()).getAndDeleteStringValue(anyString());
+	}
+
 	private ProjectGroup projectGroup() {
 		return ProjectGroup.builder()
 			.projectName("TeamPo")
@@ -164,6 +284,15 @@ class TeamspaceServiceTest {
 			.accountLogin("student-team-org")
 			.accountType(GithubInstallation.ORGANIZATION_ACCOUNT_TYPE)
 			.build();
+	}
+
+	private GithubAppClient.GithubAppInstallationInfo organizationInstallationInfo() {
+		return new GithubAppClient.GithubAppInstallationInfo(
+			12345L,
+			98765L,
+			"student-team-org",
+			GithubInstallation.ORGANIZATION_ACCOUNT_TYPE
+		);
 	}
 
 	private Users user() {

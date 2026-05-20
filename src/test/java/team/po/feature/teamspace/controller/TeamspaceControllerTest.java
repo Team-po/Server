@@ -1,6 +1,7 @@
 package team.po.feature.teamspace.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -16,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -26,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import team.po.common.auth.LoginUserArgumentResolver;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.CustomExceptionHandler;
+import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.service.TeamspaceService;
@@ -93,5 +96,25 @@ class TeamspaceControllerTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.installUrl")
 				.value("https://github.com/apps/teampo-dev/installations/new?state=test-state"));
+	}
+
+	@Test
+	void completeGithubAppInstallation_returnsOk() throws Exception {
+		mockMvc.perform(post("/api/team-space/10/github/installations/complete")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "installationId": 12345,
+					  "setupAction": "install",
+					  "state": "test-state"
+					}
+					"""))
+			.andExpect(status().isOk());
+
+		verify(teamspaceService).completeGithubAppInstallation(
+			new CompleteGithubAppInstallationRequest(12345L, "install", "test-state"),
+			10L,
+			1L
+		);
 	}
 }

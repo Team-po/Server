@@ -4,13 +4,16 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import team.po.common.auth.LoginUser;
+import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.service.TeamspaceService;
@@ -43,5 +46,17 @@ public class TeamspaceController {
 		CreateGithubAppInstallationUrlResponse response = teamspaceService.createGithubAppInstallationUrl(user, projectGroupId);
 
 		return ResponseEntity.ok(response);
+	}
+
+	@Operation(summary = "GitHub 설치 완료 API")
+	@PostMapping("/{projectGroupId}/github/installations/complete")
+	public ResponseEntity<Void> completeGithubAppInstallation(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@Valid @RequestBody CompleteGithubAppInstallationRequest request,
+		@PathVariable Long projectGroupId
+	) {
+
+		teamspaceService.completeGithubAppInstallation(request, projectGroupId, user.getId());
+		return ResponseEntity.ok().build();
 	}
 }

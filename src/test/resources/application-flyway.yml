@@ -43,5 +43,8 @@ github:
     success-redirect-uri: http://localhost:5173/oauth/github/callback
     authorization-code-ttl: PT3M
   app:
+    id: 12345
     slug: test-github-app
+    private-key: test-private-key
     installation-state-ttl: PT5M
+    api-base-url: https://api.github.com

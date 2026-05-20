@@ -1,0 +1,128 @@
+package team.po.feature.teamspace.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
+
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.time.Duration;
+
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.web.client.RestClient;
+
+import team.po.config.GithubAppProperties;
+import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
+import team.po.feature.teamspace.provider.GithubAppJwtProvider;
+import team.po.feature.teamspace.service.GithubAppClient.GithubAppInstallationInfo;
+
+class GithubAppClientTest {
+
+	@Test
+	void getInstallation_returnsInstallationInfo() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/12345", exchange -> {
+			assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isEqualTo("Bearer github-app-jwt");
+			assertThat(exchange.getRequestHeaders().getFirst("Accept")).isEqualTo("application/vnd.github+json");
+			assertThat(exchange.getRequestHeaders().getFirst("X-GitHub-Api-Version")).isEqualTo("2022-11-28");
+			writeResponse(exchange, 200, """
+				{
+				  "id": 12345,
+				  "account": {
+				    "id": 98765,
+				    "login": "student-team-org",
+				    "type": "Organization"
+				  }
+				}
+				""");
+		});
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			GithubAppInstallationInfo response = client.getInstallation(12345L);
+
+			assertThat(response.installationId()).isEqualTo(12345L);
+			assertThat(response.accountId()).isEqualTo(98765L);
+			assertThat(response.accountLogin()).isEqualTo("student-team-org");
+			assertThat(response.accountType()).isEqualTo("Organization");
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	void getInstallation_throwsBadRequest_whenInstallationIsNotFound() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/404", exchange -> writeResponse(exchange, 404, "{}"));
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			assertThatThrownBy(() -> client.getInstallation(404L))
+				.isInstanceOf(ApplicationException.class)
+				.extracting("code")
+				.isEqualTo(ErrorCode.GITHUB_APP_INSTALLATION_NOT_FOUND.getCode());
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	void getInstallation_throwsBadGateway_whenGithubApiFails() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/12345", exchange -> writeResponse(exchange, 500, "{}"));
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			assertThatThrownBy(() -> client.getInstallation(12345L))
+				.isInstanceOf(ApplicationException.class)
+				.extracting("code")
+				.isEqualTo(ErrorCode.GITHUB_API_REQUEST_FAILED.getCode());
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	private GithubAppClient githubAppClient(HttpServer server, GithubAppJwtProvider jwtProvider) {
+		String apiBaseUrl = "http://localhost:" + server.getAddress().getPort();
+		GithubAppProperties properties = new GithubAppProperties(
+			12345L,
+			"teampo-dev",
+			"test-private-key",
+			Duration.ofMinutes(5),
+			apiBaseUrl
+		);
+		return new GithubAppClient(RestClient.create(), jwtProvider, properties);
+	}
+
+	private void writeResponse(HttpExchange exchange, int statusCode, String responseBody) throws IOException {
+		byte[] responseBytes = responseBody.getBytes();
+		exchange.getResponseHeaders().add("Content-Type", "application/json");
+		exchange.sendResponseHeaders(statusCode, responseBytes.length);
+		try (OutputStream outputStream = exchange.getResponseBody()) {
+			outputStream.write(responseBytes);
+		} finally {
+			exchange.close();
+		}
+	}
+}

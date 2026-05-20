@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -12,11 +11,13 @@ import org.springframework.web.util.UriComponentsBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import team.po.common.redis.RedisService;
+import team.po.config.GithubAppProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.projectgroup.domain.GroupRole;
 import team.po.feature.teamspace.domain.GithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
+import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
@@ -30,17 +31,15 @@ import team.po.feature.user.domain.Users;
 public class TeamspaceService {
 	private static final String GITHUB_APP_INSTALLATION_STATE_PREFIX = "github-app-install-state:";
 	private static final String GITHUB_APP_INSTALLATION_BASE_URL = "https://github.com/apps";
+	private static final String GITHUB_APP_INSTALLATION_STATE_DELIMITER = "|";
+	private static final String GITHUB_APP_SETUP_ACTION_INSTALL = "install";
 
 	private final ProjectGroupMemberRepository projectGroupMemberRepository;
 	private final ProjectGroupGithubInstallationRepository projectGroupGithubInstallationRepository;
 	private final ProjectGroupGithubRepositoryRepository projectGroupGithubRepository;
 	private final RedisService redisService;
-
-	@Value("${github.app.slug:}")
-	private String githubAppSlug;
-
-	@Value("${github.app.installation-state-ttl:PT5M}")
-	private Duration githubAppInstallationStateTtl;
+	private final GithubAppProperties githubAppProperties;
+	private final GithubAppClient githubAppClient;
 
 	@Transactional(readOnly = true)
 	public GetGithubInstallationStatusResponse getGithubInstallationStatus(Long projectGroupId, Long requesterUserId) {
@@ -79,16 +78,21 @@ public class TeamspaceService {
 		}
 
 		String state = UUID.randomUUID().toString();
-		String statePayload = createGithubAppInstallationStatePayload(projectGroupId, user.getId(), state);
+		String statePayload = new GithubAppInstallationState(
+			projectGroupId,
+			user.getId(),
+			Instant.now(),
+			state
+		).serialize();
 		redisService.setValue(
 			createGithubAppInstallationStateKey(state),
 			statePayload,
-			githubAppInstallationStateTtl
+			githubAppProperties.installationStateTtl()
 		);
 
 		String installUrl = UriComponentsBuilder
 			.fromUriString(GITHUB_APP_INSTALLATION_BASE_URL)
-			.pathSegment(githubAppSlug, "installations", "new")
+			.pathSegment(githubAppProperties.slug(), "installations", "new")
 			.queryParam("state", state)
 			.build()
 			.toUriString();
@@ -96,8 +100,54 @@ public class TeamspaceService {
 		return new CreateGithubAppInstallationUrlResponse(installUrl);
 	}
 
-	private String createGithubAppInstallationStatePayload(Long projectGroupId, Long requesterUserId, String nonce) {
-		return projectGroupId + ":" + requesterUserId + ":" + Instant.now() + ":" + nonce;
+	public void completeGithubAppInstallation(
+		CompleteGithubAppInstallationRequest request,
+		Long projectGroupId,
+		Long requesterUserId
+	) {
+		validateGithubAppSetupAction(request.setupAction());
+
+		String statePayload = redisService.getAndDeleteStringValue(createGithubAppInstallationStateKey(request.state()));
+		GithubAppInstallationState installationState = GithubAppInstallationState.deserialize(statePayload);
+		validateGithubAppInstallationState(installationState, projectGroupId, requesterUserId, request.state());
+
+		GithubAppClient.GithubAppInstallationInfo installationInfo = githubAppClient.getInstallation(request.installationId());
+		validateGithubAppInstallationAccount(installationInfo);
+	}
+
+	private void validateGithubAppInstallationAccount(GithubAppClient.GithubAppInstallationInfo installationInfo) {
+		if (GithubInstallation.ORGANIZATION_ACCOUNT_TYPE.equals(installationInfo.accountType())) {
+			return;
+		}
+
+		throw new ApplicationException(
+			ErrorCode.INVALID_GITHUB_APP_INSTALLATION_ACCOUNT,
+			"개인 계정이 아닌 GitHub Organization에 TeamPo GitHub App을 설치해야 합니다."
+		);
+	}
+
+	private void validateGithubAppSetupAction(String setupAction) {
+		if (GITHUB_APP_SETUP_ACTION_INSTALL.equals(setupAction)) {
+			return;
+		}
+
+		throw new ApplicationException(
+			ErrorCode.INVALID_GITHUB_APP_SETUP_ACTION,
+			"GitHub App 최초 설치 완료 요청은 install 작업만 허용됩니다."
+		);
+	}
+
+	private void validateGithubAppInstallationState(
+		GithubAppInstallationState installationState,
+		Long projectGroupId,
+		Long requesterUserId,
+		String state
+	) {
+		if (!installationState.projectGroupId().equals(projectGroupId)
+			|| !installationState.requesterUserId().equals(requesterUserId)
+			|| !installationState.nonce().equals(state)) {
+			throwInvalidGithubAppInstallationState();
+		}
 	}
 
 	private String createGithubAppInstallationStateKey(String state) {
@@ -130,6 +180,50 @@ public class TeamspaceService {
 				ErrorCode.PROJECT_GROUP_PERMISSION_DENIED,
 				"팀 스페이스 호스트만 GitHub Organization 연결을 진행할 수 있습니다."
 			);
+		}
+	}
+
+	private static void throwInvalidGithubAppInstallationState() {
+		throw new ApplicationException(ErrorCode.INVALID_GITHUB_APP_INSTALLATION_STATE);
+	}
+
+	private record GithubAppInstallationState(
+		Long projectGroupId,
+		Long requesterUserId,
+		Instant issuedAt,
+		String nonce
+	) {
+		private String serialize() {
+			return projectGroupId
+				+ GITHUB_APP_INSTALLATION_STATE_DELIMITER
+				+ requesterUserId
+				+ GITHUB_APP_INSTALLATION_STATE_DELIMITER
+				+ issuedAt
+				+ GITHUB_APP_INSTALLATION_STATE_DELIMITER
+				+ nonce;
+		}
+
+		private static GithubAppInstallationState deserialize(String value) {
+			if (value == null || value.isBlank()) {
+				throwInvalidGithubAppInstallationState();
+			}
+
+			String[] tokens = value.split("\\|", -1);
+			if (tokens.length != 4) {
+				throwInvalidGithubAppInstallationState();
+			}
+
+			try {
+				return new GithubAppInstallationState(
+					Long.parseLong(tokens[0]),
+					Long.parseLong(tokens[1]),
+					Instant.parse(tokens[2]),
+					tokens[3]
+				);
+			} catch (RuntimeException exception) {
+				throwInvalidGithubAppInstallationState();
+				return null;
+			}
 		}
 	}
 }
