@@ -1,4 +1,4 @@
-package team.po.feature.projectgroup.domain;
+package team.po.feature.teamspace.domain;
 
 import java.time.Instant;
 
@@ -14,12 +14,14 @@ import jakarta.persistence.Table;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import team.po.feature.projectgroup.domain.ProjectGroup;
+import team.po.feature.user.domain.Users;
 
 @Entity
-@Table(name = "project_group_github_repository")
+@Table(name = "project_group_github_installation")
 @NoArgsConstructor
 @Getter
-public class ProjectGroupGithubRepository {
+public class ProjectGroupGithubInstallation {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -33,23 +35,9 @@ public class ProjectGroupGithubRepository {
 	@JoinColumn(name = "github_installation_id", nullable = false)
 	private GithubInstallation githubInstallation;
 
-	@Column(name = "github_repository_id", nullable = false)
-	private Long githubRepositoryId;
-
-	@Column(name = "owner", nullable = false)
-	private String owner;
-
-	@Column(name = "repo_name", nullable = false)
-	private String repoName;
-
-	@Column(name = "full_name", nullable = false)
-	private String fullName;
-
-	@Column(name = "default_branch")
-	private String defaultBranch;
-
-	@Column(name = "is_private", nullable = false)
-	private boolean privateRepository;
+	@ManyToOne(fetch = FetchType.LAZY, optional = false)
+	@JoinColumn(name = "connected_by", nullable = false)
+	private Users connectedBy;
 
 	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
 	private Instant createdAt;
@@ -58,24 +46,14 @@ public class ProjectGroupGithubRepository {
 	private Instant deletedAt;
 
 	@Builder
-	public ProjectGroupGithubRepository(
+	public ProjectGroupGithubInstallation(
 		ProjectGroup projectGroup,
 		GithubInstallation githubInstallation,
-		Long githubRepositoryId,
-		String owner,
-		String repoName,
-		String fullName,
-		String defaultBranch,
-		boolean privateRepository
+		Users connectedBy
 	) {
 		this.projectGroup = projectGroup;
 		this.githubInstallation = githubInstallation;
-		this.githubRepositoryId = githubRepositoryId;
-		this.owner = owner;
-		this.repoName = repoName;
-		this.fullName = fullName;
-		this.defaultBranch = defaultBranch;
-		this.privateRepository = privateRepository;
+		this.connectedBy = connectedBy;
 	}
 
 	public void softDelete(Instant deletedAt) {

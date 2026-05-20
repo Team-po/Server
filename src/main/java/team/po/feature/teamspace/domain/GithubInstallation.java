@@ -1,4 +1,4 @@
-package team.po.feature.projectgroup.domain;
+package team.po.feature.teamspace.domain;
 
 import java.time.Instant;
 
