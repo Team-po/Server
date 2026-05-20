@@ -15,15 +15,19 @@ import team.po.config.GithubAppProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.projectgroup.domain.GroupRole;
+import team.po.feature.projectgroup.domain.ProjectGroup;
+import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.teamspace.domain.GithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
+import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.repository.UserRepository;
 
 @Slf4j
 @Service
@@ -36,7 +40,10 @@ public class TeamspaceService {
 
 	private final ProjectGroupMemberRepository projectGroupMemberRepository;
 	private final ProjectGroupGithubInstallationRepository projectGroupGithubInstallationRepository;
-	private final ProjectGroupGithubRepositoryRepository projectGroupGithubRepository;
+	private final ProjectGroupGithubRepositoryRepository projectGroupGithubRepositoryRepository;
+	private final GithubInstallationRepository githubInstallationRepository;
+	private final ProjectGroupRepository projectGroupRepository;
+	private final UserRepository userRepository;
 	private final RedisService redisService;
 	private final GithubAppProperties githubAppProperties;
 	private final GithubAppClient githubAppClient;
@@ -54,7 +61,7 @@ public class TeamspaceService {
 		}
 
 		GithubInstallation installation = githubConnection.getGithubInstallation();
-		long repositoryCount = projectGroupGithubRepository.countByProjectGroup_IdAndDeletedAtIsNull(projectGroupId);
+		long repositoryCount = projectGroupGithubRepositoryRepository.countByProjectGroup_IdAndDeletedAtIsNull(projectGroupId);
 
 		GetGithubInstallationStatusResponse response = GetGithubInstallationStatusResponse.connected(
 			installation.getAccountLogin(),
@@ -100,6 +107,7 @@ public class TeamspaceService {
 		return new CreateGithubAppInstallationUrlResponse(installUrl);
 	}
 
+	@Transactional
 	public void completeGithubAppInstallation(
 		CompleteGithubAppInstallationRequest request,
 		Long projectGroupId,
@@ -113,6 +121,58 @@ public class TeamspaceService {
 
 		GithubAppClient.GithubAppInstallationInfo installationInfo = githubAppClient.getInstallation(request.installationId());
 		validateGithubAppInstallationAccount(installationInfo);
+
+		validateGithubAppInstallationNotConnected(projectGroupId);
+		GithubInstallation githubInstallation = saveGithubInstallation(installationInfo);
+		saveProjectGroupGithubInstallation(projectGroupId, requesterUserId, githubInstallation);
+	}
+
+	private void validateGithubAppInstallationNotConnected(Long projectGroupId) {
+		boolean alreadyConnected = projectGroupGithubInstallationRepository
+			.existsByProjectGroup_IdAndDeletedAtIsNull(projectGroupId);
+		if (!alreadyConnected) {
+			return;
+		}
+
+		throw new ApplicationException(
+			ErrorCode.GITHUB_APP_INSTALLATION_ALREADY_EXISTS,
+			"이미 GitHub Organization이 연결된 팀 스페이스입니다."
+		);
+	}
+
+	private GithubInstallation saveGithubInstallation(GithubAppClient.GithubAppInstallationInfo installationInfo) {
+		return githubInstallationRepository.findByInstallationIdAndDeletedAtIsNull(installationInfo.installationId())
+			.map(githubInstallation -> {
+				githubInstallation.updateAccount(
+					installationInfo.accountId(),
+					installationInfo.accountLogin(),
+					installationInfo.accountType()
+				);
+				return githubInstallation;
+			})
+			.orElseGet(() -> githubInstallationRepository.save(GithubInstallation.builder()
+				.installationId(installationInfo.installationId())
+				.accountId(installationInfo.accountId())
+				.accountLogin(installationInfo.accountLogin())
+				.accountType(installationInfo.accountType())
+				.build()));
+	}
+
+	private void saveProjectGroupGithubInstallation(
+		Long projectGroupId,
+		Long requesterUserId,
+		GithubInstallation githubInstallation
+	) {
+		ProjectGroup projectGroup = projectGroupRepository.findById(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
+		Users connectedBy = userRepository.findByIdAndDeletedAtIsNull(requesterUserId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
+
+		projectGroupGithubInstallationRepository.save(ProjectGroupGithubInstallation.builder()
+			.projectGroup(projectGroup)
+			.githubInstallation(githubInstallation)
+			.connectedBy(connectedBy)
+			.build());
 	}
 
 	private void validateGithubAppInstallationAccount(GithubAppClient.GithubAppInstallationInfo installationInfo) {

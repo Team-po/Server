@@ -61,7 +61,8 @@ public class GithubInstallation {
 		return ORGANIZATION_ACCOUNT_TYPE.equals(accountType);
 	}
 
-	public void updateAccount(String accountLogin, String accountType) {
+	public void updateAccount(Long accountId, String accountLogin, String accountType) {
+		this.accountId = accountId;
 		this.accountLogin = accountLogin;
 		this.accountType = accountType;
 	}

@@ -2,6 +2,7 @@ package team.po.feature.teamspace.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -27,14 +28,17 @@ import team.po.feature.projectgroup.domain.GroupRole;
 import team.po.feature.projectgroup.domain.ProjectGroup;
 import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
+import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.domain.GithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
 class TeamspaceServiceTest {
@@ -46,7 +50,16 @@ class TeamspaceServiceTest {
 	private ProjectGroupGithubInstallationRepository projectGroupGithubInstallationRepository;
 
 	@Mock
-	private ProjectGroupGithubRepositoryRepository projectGroupGithubRepository;
+	private ProjectGroupGithubRepositoryRepository projectGroupGithubRepositoryRepository;
+
+	@Mock
+	private GithubInstallationRepository githubInstallationRepository;
+
+	@Mock
+	private ProjectGroupRepository projectGroupRepository;
+
+	@Mock
+	private UserRepository userRepository;
 
 	@Mock
 	private RedisService redisService;
@@ -68,7 +81,10 @@ class TeamspaceServiceTest {
 		teamspaceService = new TeamspaceService(
 			projectGroupMemberRepository,
 			projectGroupGithubInstallationRepository,
-			projectGroupGithubRepository,
+			projectGroupGithubRepositoryRepository,
+			githubInstallationRepository,
+			projectGroupRepository,
+			userRepository,
 			redisService,
 			githubAppProperties,
 			githubAppClient
@@ -86,7 +102,7 @@ class TeamspaceServiceTest {
 		assertThat(response.connected()).isFalse();
 		assertThat(response.organizationLogin()).isNull();
 		assertThat(response.repositoryCount()).isZero();
-		verify(projectGroupGithubRepository, never()).countByProjectGroup_IdAndDeletedAtIsNull(10L);
+		verify(projectGroupGithubRepositoryRepository, never()).countByProjectGroup_IdAndDeletedAtIsNull(10L);
 	}
 
 	@Test
@@ -100,7 +116,7 @@ class TeamspaceServiceTest {
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
 		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
 			.thenReturn(Optional.of(githubConnection));
-		when(projectGroupGithubRepository.countByProjectGroup_IdAndDeletedAtIsNull(10L)).thenReturn(2L);
+		when(projectGroupGithubRepositoryRepository.countByProjectGroup_IdAndDeletedAtIsNull(10L)).thenReturn(2L);
 
 		GetGithubInstallationStatusResponse response = teamspaceService.getGithubInstallationStatus(10L, 1L);
 
@@ -119,7 +135,7 @@ class TeamspaceServiceTest {
 			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
 
 		verify(projectGroupGithubInstallationRepository, never()).findByProjectGroup_IdAndDeletedAtIsNull(10L);
-		verify(projectGroupGithubRepository, never()).countByProjectGroup_IdAndDeletedAtIsNull(10L);
+		verify(projectGroupGithubRepositoryRepository, never()).countByProjectGroup_IdAndDeletedAtIsNull(10L);
 	}
 
 	@Test
@@ -176,11 +192,21 @@ class TeamspaceServiceTest {
 			.thenReturn("10|1|2026-05-20T00:00:00Z|test-state");
 		when(githubAppClient.getInstallation(12345L))
 			.thenReturn(organizationInstallationInfo());
+		GithubInstallation savedGithubInstallation = githubInstallation();
+		when(projectGroupGithubInstallationRepository.existsByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(false);
+		when(githubInstallationRepository.findByInstallationIdAndDeletedAtIsNull(12345L))
+			.thenReturn(Optional.empty());
+		when(githubInstallationRepository.save(any(GithubInstallation.class))).thenReturn(savedGithubInstallation);
+		when(projectGroupRepository.findById(10L)).thenReturn(Optional.of(projectGroup()));
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user()));
 
 		teamspaceService.completeGithubAppInstallation(request, 10L, 1L);
 
 		verify(redisService).getAndDeleteStringValue("github-app-install-state:test-state");
 		verify(githubAppClient).getInstallation(12345L);
+		verify(githubInstallationRepository).save(any(GithubInstallation.class));
+		verify(projectGroupGithubInstallationRepository).save(any(ProjectGroupGithubInstallation.class));
 	}
 
 	@Test
@@ -204,6 +230,61 @@ class TeamspaceServiceTest {
 			.isInstanceOf(ApplicationException.class)
 			.extracting("code")
 			.isEqualTo(ErrorCode.INVALID_GITHUB_APP_INSTALLATION_ACCOUNT.getCode());
+	}
+
+	@Test
+	void completeGithubAppInstallation_updatesGithubInstallation_whenInstallationAlreadyExists() {
+		CompleteGithubAppInstallationRequest request = new CompleteGithubAppInstallationRequest(
+			12345L,
+			"install",
+			"test-state"
+		);
+		GithubInstallation githubInstallation = GithubInstallation.builder()
+			.installationId(12345L)
+			.accountId(11111L)
+			.accountLogin("old-org")
+			.accountType(GithubInstallation.ORGANIZATION_ACCOUNT_TYPE)
+			.build();
+		when(redisService.getAndDeleteStringValue("github-app-install-state:test-state"))
+			.thenReturn("10|1|2026-05-20T00:00:00Z|test-state");
+		when(githubAppClient.getInstallation(12345L))
+			.thenReturn(organizationInstallationInfo());
+		when(projectGroupGithubInstallationRepository.existsByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(false);
+		when(githubInstallationRepository.findByInstallationIdAndDeletedAtIsNull(12345L))
+			.thenReturn(Optional.of(githubInstallation));
+		when(projectGroupRepository.findById(10L)).thenReturn(Optional.of(projectGroup()));
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user()));
+
+		teamspaceService.completeGithubAppInstallation(request, 10L, 1L);
+
+		assertThat(githubInstallation.getAccountId()).isEqualTo(98765L);
+		assertThat(githubInstallation.getAccountLogin()).isEqualTo("student-team-org");
+		verify(githubInstallationRepository, never()).save(any(GithubInstallation.class));
+		verify(projectGroupGithubInstallationRepository).save(any(ProjectGroupGithubInstallation.class));
+	}
+
+	@Test
+	void completeGithubAppInstallation_throwsConflict_whenProjectGroupAlreadyConnected() {
+		CompleteGithubAppInstallationRequest request = new CompleteGithubAppInstallationRequest(
+			12345L,
+			"install",
+			"test-state"
+		);
+		when(redisService.getAndDeleteStringValue("github-app-install-state:test-state"))
+			.thenReturn("10|1|2026-05-20T00:00:00Z|test-state");
+		when(githubAppClient.getInstallation(12345L))
+			.thenReturn(organizationInstallationInfo());
+		when(projectGroupGithubInstallationRepository.existsByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(true);
+
+		assertThatThrownBy(() -> teamspaceService.completeGithubAppInstallation(request, 10L, 1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GITHUB_APP_INSTALLATION_ALREADY_EXISTS.getCode());
+
+		verify(githubInstallationRepository, never()).save(any(GithubInstallation.class));
+		verify(projectGroupGithubInstallationRepository, never()).save(any(ProjectGroupGithubInstallation.class));
 	}
 
 	@Test
