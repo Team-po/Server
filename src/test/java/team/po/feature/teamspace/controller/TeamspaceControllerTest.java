@@ -3,6 +3,7 @@ package team.po.feature.teamspace.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -25,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import team.po.common.auth.LoginUserArgumentResolver;
 import team.po.common.jwt.UserPrincipal;
 import team.po.exception.CustomExceptionHandler;
+import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.service.TeamspaceService;
 import team.po.feature.user.domain.Users;
@@ -78,5 +80,18 @@ class TeamspaceControllerTest {
 			.andExpect(jsonPath("$.connected").value(true))
 			.andExpect(jsonPath("$.organizationLogin").value("student-team-org"))
 			.andExpect(jsonPath("$.repositoryCount").value(2));
+	}
+
+	@Test
+	void createGithubAppInstallationUrl_returnsOk() throws Exception {
+		when(teamspaceService.createGithubAppInstallationUrl(mockUser, 10L))
+			.thenReturn(new CreateGithubAppInstallationUrlResponse(
+				"https://github.com/apps/teampo-dev/installations/new?state=test-state"
+			));
+
+		mockMvc.perform(post("/api/team-space/10/github/install-url"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.installUrl")
+				.value("https://github.com/apps/teampo-dev/installations/new?state=test-state"));
 	}
 }

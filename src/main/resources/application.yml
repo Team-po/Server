@@ -81,6 +81,9 @@ github:
     rest-client:
       connect-timeout: ${GITHUB_OAUTH_REST_CLIENT_CONNECT_TIMEOUT:PT3S}
       read-timeout: ${GITHUB_OAUTH_REST_CLIENT_READ_TIMEOUT:PT5S}
+  app:
+    slug: ${GITHUB_APP_SLUG}
+    installation-state-ttl: ${GITHUB_APP_INSTALLATION_STATE_TTL:PT5M}
 
 logging:
   level:
