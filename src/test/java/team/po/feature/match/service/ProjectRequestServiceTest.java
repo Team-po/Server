@@ -15,11 +15,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
 import team.po.feature.match.dto.ProjectRequestDto;
 import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
 import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
+import team.po.feature.projectgroup.domain.ProjectGroupMember;
+import team.po.feature.projectgroup.domain.ProjectGroupStatus;
+import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
+import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.repository.UserRepository;
 
@@ -35,6 +40,9 @@ class ProjectRequestServiceTest {
 	@Mock
 	private MatchingMemberRepository matchingMemberRepository;
 
+	@Mock
+	private ProjectGroupRepository projectGroupRepository;
+
 	@InjectMocks
 	private ProjectRequestService projectRequestService;
 
@@ -45,6 +53,8 @@ class ProjectRequestServiceTest {
 	}
 
 	// ========== createProjectRequest ==========
+	@Mock
+	private ProjectGroupMemberRepository projectGroupMemberRepository;
 
 	@Test
 	void createProjectRequest_success_asHost() {
@@ -53,6 +63,8 @@ class ProjectRequestServiceTest {
 
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(anyLong(), anyList())).thenReturn(false);
+		when(projectGroupMemberRepository.findByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
+			.thenReturn(Optional.empty());
 
 		projectRequestService.createProjectRequest(user, dto);
 
@@ -66,6 +78,8 @@ class ProjectRequestServiceTest {
 
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(anyLong(), anyList())).thenReturn(false);
+		when(projectGroupMemberRepository.findByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
+			.thenReturn(Optional.empty());
 
 		projectRequestService.createProjectRequest(user, dto);
 
@@ -83,6 +97,23 @@ class ProjectRequestServiceTest {
 
 		assertThatThrownBy(() -> projectRequestService.createProjectRequest(user, dto))
 			.isInstanceOf(ApplicationException.class)
-			.hasMessage("이미 진행 중인 매칭 요청이 있습니다.");
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.PROJECT_REQUEST_ALREADY_EXISTS);
+	}
+
+	@Test
+	void createProjectRequest_throwsWhenProjectInProgress() {
+		Users user = createUser(1L);
+		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
+
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(projectRequestRepository.existsByUserIdAndStatusIn(anyLong(), anyList())).thenReturn(false);
+		when(projectGroupMemberRepository.findByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
+			.thenReturn(Optional.of(mock(ProjectGroupMember.class)));
+
+		assertThatThrownBy(() -> projectRequestService.createProjectRequest(user, dto))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("errorCode")
+			.isEqualTo(ErrorCode.PROJECT_ALREADY_IN_PROGRESS);
 	}
 }
