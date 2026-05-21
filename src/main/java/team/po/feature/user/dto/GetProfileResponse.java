@@ -4,5 +4,6 @@ import lombok.Builder;
 
 @Builder
 public record GetProfileResponse(String email, String profileImage, String description,
-								 String nickname, Integer temperature, Integer level) {
+								 String nickname, Integer temperature, Integer level,
+								 boolean isGithubLogin, boolean isGithubLinked, String githubUsername) {
 }

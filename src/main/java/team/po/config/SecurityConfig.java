@@ -28,6 +28,7 @@ import team.po.common.jwt.JwtAuthenticationFilter;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.exception.ErrorCode;
 import team.po.exception.ExceptionResponse;
+import team.po.feature.user.oauth.GithubOAuthAuthorizationRequestRepository;
 import team.po.feature.user.oauth.GithubOAuthSuccessHandler;
 
 @Configuration
@@ -39,7 +40,8 @@ public class SecurityConfig {
 	public SecurityFilterChain filterChain(
 		HttpSecurity http,
 		JwtTokenProvider jwtTokenProvider,
-		GithubOAuthSuccessHandler githubOAuthSuccessHandler
+		GithubOAuthSuccessHandler githubOAuthSuccessHandler,
+		GithubOAuthAuthorizationRequestRepository githubOAuthAuthorizationRequestRepository
 	) throws Exception {
 		http
 			.httpBasic(AbstractHttpConfigurer::disable)
@@ -64,6 +66,8 @@ public class SecurityConfig {
 					.anyRequest().authenticated()
 				)
 			.oauth2Login(oauth2 -> oauth2
+						.authorizationEndpoint(authorization -> authorization
+							.authorizationRequestRepository(githubOAuthAuthorizationRequestRepository))
 						.redirectionEndpoint(redirection -> redirection.baseUri("/api/auth/github/callback"))
 						.successHandler(githubOAuthSuccessHandler)
 					)

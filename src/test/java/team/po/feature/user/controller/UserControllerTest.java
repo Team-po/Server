@@ -246,6 +246,9 @@ class UserControllerTest {
 				.nickname("tester")
 				.temperature(50)
 				.level(3)
+				.isGithubLogin(false)
+				.isGithubLinked(true)
+				.githubUsername("octocat")
 				.build());
 
 		mockMvc.perform(get("/api/users/me"))
@@ -255,7 +258,10 @@ class UserControllerTest {
 			.andExpect(jsonPath("$.description").value("hello"))
 			.andExpect(jsonPath("$.nickname").value("tester"))
 			.andExpect(jsonPath("$.temperature").value(50))
-			.andExpect(jsonPath("$.level").value(3));
+			.andExpect(jsonPath("$.level").value(3))
+			.andExpect(jsonPath("$.isGithubLogin").value(false))
+			.andExpect(jsonPath("$.isGithubLinked").value(true))
+			.andExpect(jsonPath("$.githubUsername").value("octocat"));
 	}
 
 	@Test
