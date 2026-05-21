@@ -401,6 +401,7 @@ public class MatchService {
 		members.forEach(mm -> mm.getProjectRequest().complete());
 
 		// 6. 매칭 세션 비활성화
+		members.forEach(MatchingMember::delete);
 		session.delete();
 
 		// 7. 매칭 완료 이벤트 발행
