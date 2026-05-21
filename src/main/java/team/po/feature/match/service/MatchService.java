@@ -269,7 +269,7 @@ public class MatchService {
 		// 1. 활성 매칭 요청 조회 (WAITING or MATCHING)
 		ProjectRequest myPr = projectRequestRepository
 			.findByUserIdAndStatusIn(loginUser.getId(), List.of(Status.WAITING, Status.MATCHING))
-			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_MEMBER_NOT_FOUND));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
 
 		// 2. WAITING: 단순 취소
 		if (myPr.getStatus() == Status.WAITING) {
