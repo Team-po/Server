@@ -21,7 +21,6 @@ import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
 import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
-import team.po.feature.projectgroup.domain.ProjectGroupMember;
 import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
@@ -63,8 +62,8 @@ class ProjectRequestServiceTest {
 
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(anyLong(), anyList())).thenReturn(false);
-		when(projectGroupMemberRepository.findByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
-			.thenReturn(Optional.empty());
+		when(projectGroupMemberRepository.existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
+			.thenReturn(false);
 
 		projectRequestService.createProjectRequest(user, dto);
 
@@ -78,8 +77,8 @@ class ProjectRequestServiceTest {
 
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(anyLong(), anyList())).thenReturn(false);
-		when(projectGroupMemberRepository.findByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
-			.thenReturn(Optional.empty());
+		when(projectGroupMemberRepository.existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
+			.thenReturn(false);
 
 		projectRequestService.createProjectRequest(user, dto);
 
@@ -108,8 +107,8 @@ class ProjectRequestServiceTest {
 
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(anyLong(), anyList())).thenReturn(false);
-		when(projectGroupMemberRepository.findByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
-			.thenReturn(Optional.of(mock(ProjectGroupMember.class)));
+		when(projectGroupMemberRepository.existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
+			.thenReturn(true);
 
 		assertThatThrownBy(() -> projectRequestService.createProjectRequest(user, dto))
 			.isInstanceOf(ApplicationException.class)

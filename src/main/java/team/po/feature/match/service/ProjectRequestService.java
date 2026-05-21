@@ -42,10 +42,11 @@ public class ProjectRequestService {
 			throw new ApplicationException(ErrorCode.PROJECT_REQUEST_ALREADY_EXISTS);
 		}
 
-		boolean projectInProgress = projectGroupMemberRepository.findByUser_IdAndProjectGroup_Status(
+		// 진행 중인 프로젝트가 있으면 매칭 요청 불가
+		boolean projectInProgress = projectGroupMemberRepository.existsByUser_IdAndProjectGroup_Status(
 			user.getId(),
 			ProjectGroupStatus.ACTIVE
-		).isPresent();
+		);
 		if (projectInProgress) {
 			throw new ApplicationException(ErrorCode.PROJECT_ALREADY_IN_PROGRESS);
 		}
