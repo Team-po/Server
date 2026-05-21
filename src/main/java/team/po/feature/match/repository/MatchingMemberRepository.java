@@ -24,6 +24,7 @@ public interface MatchingMemberRepository extends JpaRepository<MatchingMember, 
 	@Query("""
 		SELECT mm.projectRequest.user.id FROM MatchingMember mm
 		WHERE mm.matchingSession.id = :sessionId
+		  AND mm.deletedAt IS NULL
 		  AND mm.isAccepted = false
 		""")
 	List<Long> findRejectedUserIdsBySessionId(@Param("sessionId") Long sessionId);
