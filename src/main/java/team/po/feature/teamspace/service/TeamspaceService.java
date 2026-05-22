@@ -57,23 +57,18 @@ public class TeamspaceService {
 	public GetGithubInstallationStatusResponse getGithubInstallationStatus(Long projectGroupId, Long requesterUserId) {
 		validateProjectGroupMember(projectGroupId, requesterUserId);
 
-		ProjectGroupGithubInstallation githubConnection = projectGroupGithubInstallationRepository
+		return projectGroupGithubInstallationRepository
 			.findByProjectGroup_IdAndDeletedAtIsNull(projectGroupId)
-			.orElse(null);
-
-		if (githubConnection == null) {
-			return GetGithubInstallationStatusResponse.disconnected();
-		}
-
-		GithubInstallation installation = githubConnection.getGithubInstallation();
-		long repositoryCount = projectGroupGithubRepositoryRepository.countByProjectGroup_IdAndDeletedAtIsNull(projectGroupId);
-
-		GetGithubInstallationStatusResponse response = GetGithubInstallationStatusResponse.connected(
-			installation.getAccountLogin(),
-			repositoryCount
-		);
-
-		return response;
+			.map(githubConnection -> {
+				GithubInstallation installation = githubConnection.getGithubInstallation();
+				long repositoryCount = projectGroupGithubRepositoryRepository
+					.countByProjectGroup_IdAndDeletedAtIsNull(projectGroupId);
+				return GetGithubInstallationStatusResponse.connected(
+					installation.getAccountLogin(),
+					repositoryCount
+				);
+			})
+			.orElseGet(GetGithubInstallationStatusResponse::disconnected);
 	}
 
 	public CreateGithubAppInstallationUrlResponse createGithubAppInstallationUrl(Users user, Long projectGroupId) {
@@ -85,7 +80,7 @@ public class TeamspaceService {
 		if (isAlreadyGithubAppInstallation) {
 			throw new ApplicationException(
 				ErrorCode.GITHUB_APP_INSTALLATION_ALREADY_EXISTS,
-				"이미 GitHub Organization이 연결된 팀 스페이스입니다."
+				"이미 Github Organization이 연결된 팀 스페이스입니다."
 			);
 		}
 
@@ -137,13 +132,13 @@ public class TeamspaceService {
 		GithubAccount githubAccount = githubAccountRepository.findByUserIdAndDeletedAtIsNull(requesterUserId)
 			.orElseThrow(() -> new ApplicationException(
 				ErrorCode.GITHUB_ACCOUNT_NOT_LINKED,
-				"GitHub Organization 연결을 위해 GitHub 계정 연동이 필요합니다."
+				"Github Organization 연결을 위해 Github 계정 연동이 필요합니다."
 			));
 		String accessToken = githubTokenEncryptor.decrypt(githubAccount.getAccessTokenCiphertext());
 		if (accessToken == null || accessToken.isBlank()) {
 			throw new ApplicationException(
 				ErrorCode.GITHUB_ACCOUNT_NOT_LINKED,
-				"GitHub Organization 연결을 위해 GitHub 계정 연동이 필요합니다."
+				"Github Organization 연결을 위해 Github 계정 연동이 필요합니다."
 			);
 		}
 
@@ -159,7 +154,7 @@ public class TeamspaceService {
 
 		throw new ApplicationException(
 			ErrorCode.GITHUB_APP_INSTALLATION_ALREADY_EXISTS,
-			"이미 GitHub Organization이 연결된 팀 스페이스입니다."
+			"이미 Github Organization이 연결된 팀 스페이스입니다."
 		);
 	}
 
@@ -205,7 +200,7 @@ public class TeamspaceService {
 
 		throw new ApplicationException(
 			ErrorCode.INVALID_GITHUB_APP_INSTALLATION_ACCOUNT,
-			"개인 계정이 아닌 GitHub Organization에 TeamPo GitHub App을 설치해야 합니다."
+			"개인 계정이 아닌 Github Organization에 TeamPo Github App을 설치해야 합니다."
 		);
 	}
 
@@ -216,7 +211,7 @@ public class TeamspaceService {
 
 		throw new ApplicationException(
 			ErrorCode.INVALID_GITHUB_APP_SETUP_ACTION,
-			"GitHub App 최초 설치 완료 요청은 install 작업만 허용됩니다."
+			"Github App 최초 설치 완료 요청은 install 작업만 허용됩니다."
 		);
 	}
 
@@ -246,7 +241,7 @@ public class TeamspaceService {
 		if (!exists) {
 			throw new ApplicationException(
 				ErrorCode.PROJECT_GROUP_PERMISSION_DENIED,
-				"팀 스페이스 멤버만 GitHub 연동 상태를 조회할 수 있습니다."
+				"팀 스페이스 멤버만 Github 연동 상태를 조회할 수 있습니다."
 			);
 		}
 	}
@@ -261,7 +256,7 @@ public class TeamspaceService {
 		if (!exists) {
 			throw new ApplicationException(
 				ErrorCode.PROJECT_GROUP_PERMISSION_DENIED,
-				"팀 스페이스 호스트만 GitHub Organization 연결을 진행할 수 있습니다."
+				"팀 스페이스 호스트만 Github Organization 연결을 진행할 수 있습니다."
 			);
 		}
 	}

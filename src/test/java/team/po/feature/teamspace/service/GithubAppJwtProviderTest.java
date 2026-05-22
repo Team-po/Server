@@ -71,7 +71,7 @@ class GithubAppJwtProviderTest {
 
 		assertThatThrownBy(provider::generateJwt)
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessage("GitHub App private key is invalid.");
+			.hasMessage("Github App private key is invalid.");
 	}
 
 	private KeyPair generateRsaKeyPair() throws Exception {

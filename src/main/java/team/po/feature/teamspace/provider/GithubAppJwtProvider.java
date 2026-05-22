@@ -60,7 +60,7 @@ public class GithubAppJwtProvider {
 			}
 			return parsePkcs8PrivateKey(normalizedPrivateKey);
 		} catch (Exception exception) {
-			throw new IllegalArgumentException("GitHub App private key is invalid.", exception);
+			throw new IllegalArgumentException("Github App private key is invalid.", exception);
 		}
 	}
 

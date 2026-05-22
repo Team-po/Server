@@ -8,11 +8,13 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import lombok.RequiredArgsConstructor;
 import team.po.config.GithubAppProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.teamspace.provider.GithubAppJwtProvider;
 
+@RequiredArgsConstructor
 @Component
 public class GithubAppClient {
 	private static final String GITHUB_API_VERSION = "2022-11-28";
@@ -22,16 +24,6 @@ public class GithubAppClient {
 	private final RestClient restClient;
 	private final GithubAppJwtProvider githubAppJwtProvider;
 	private final GithubAppProperties githubAppProperties;
-
-	public GithubAppClient(
-		RestClient restClient,
-		GithubAppJwtProvider githubAppJwtProvider,
-		GithubAppProperties githubAppProperties
-	) {
-		this.restClient = restClient;
-		this.githubAppJwtProvider = githubAppJwtProvider;
-		this.githubAppProperties = githubAppProperties;
-	}
 
 	public GithubAppInstallationInfo getInstallation(Long installationId) {
 		try {

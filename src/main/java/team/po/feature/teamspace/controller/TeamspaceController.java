@@ -26,7 +26,7 @@ public class TeamspaceController {
 
 	private final TeamspaceService teamspaceService;
 
-	@Operation(summary = "팀 스페이스 GitHub App 설치 상태 조회 API")
+	@Operation(summary = "팀 스페이스 Github App 설치 상태 조회 API")
 	@GetMapping("/{projectGroupId}/github/status")
 	public ResponseEntity<GetGithubInstallationStatusResponse> getGithubInstallationStatus(
 		@Parameter(hidden = true) @LoginUser Users user,
@@ -48,7 +48,7 @@ public class TeamspaceController {
 		return ResponseEntity.ok(response);
 	}
 
-	@Operation(summary = "GitHub 설치 완료 API")
+	@Operation(summary = "Github 설치 완료 API")
 	@PostMapping("/{projectGroupId}/github/installations/complete")
 	public ResponseEntity<Void> completeGithubAppInstallation(
 		@Parameter(hidden = true) @LoginUser Users user,
