@@ -178,7 +178,7 @@ class ProjectChecklistServiceTest {
 		assertThat(response.aiAdvice()).isNull();
 		assertThat(checklist.getAiAdvice()).isNull();
 		assertThat(response.status()).isEqualTo(ProjectChecklistStatus.DONE);
-		assertThat(response.assigneeNickname()).isEqualTo("ALL");
+		assertThat(response.assigneeNickname()).isNull();
 	}
 
 	@Test

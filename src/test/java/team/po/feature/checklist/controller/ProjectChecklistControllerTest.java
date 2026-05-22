@@ -119,7 +119,7 @@ class ProjectChecklistControllerTest {
 			1L,
 			"tester",
 			null,
-			"ALL",
+			null,
 			null
 		);
 		when(projectChecklistService.updateProjectChecklist(eq(10L), eq(100L), any(Users.class), any()))
@@ -132,7 +132,7 @@ class ProjectChecklistControllerTest {
 					"""))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.status").value("DONE"))
-			.andExpect(jsonPath("$.assigneeNickname").value("ALL"))
+			.andExpect(jsonPath("$.assigneeNickname").value(Matchers.nullValue()))
 			.andExpect(jsonPath("$.aiAdvice").value(Matchers.nullValue()));
 	}
 

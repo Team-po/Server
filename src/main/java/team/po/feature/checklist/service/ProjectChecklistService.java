@@ -217,7 +217,7 @@ public class ProjectChecklistService {
 			checklist.getCreatedBy().getId(),
 			checklist.getCreatedBy().getNickname(),
 			checklist.getAssignee() == null ? null : checklist.getAssignee().getId(),
-			checklist.getAssignee() == null ? "ALL" : checklist.getAssignee().getNickname(),
+			checklist.getAssignee() == null ? null : checklist.getAssignee().getNickname(),
 			this.deserializeAdvice(checklist)
 		);
 	}
