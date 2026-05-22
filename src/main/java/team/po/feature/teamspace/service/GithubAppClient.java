@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import team.po.config.GithubAppProperties;
 import team.po.exception.ApplicationException;
@@ -15,6 +16,8 @@ import team.po.feature.teamspace.provider.GithubAppJwtProvider;
 @Component
 public class GithubAppClient {
 	private static final String GITHUB_API_VERSION = "2022-11-28";
+	private static final String ORGANIZATION_MEMBERSHIP_ACTIVE_STATE = "active";
+	private static final String ORGANIZATION_MEMBERSHIP_ADMIN_ROLE = "admin";
 
 	private final RestClient restClient;
 	private final GithubAppJwtProvider githubAppJwtProvider;
@@ -62,6 +65,43 @@ public class GithubAppClient {
 		}
 	}
 
+	public void validateOrganizationAdmin(String accessToken, String organizationLogin) {
+		try {
+			GithubOrganizationMembershipResponse response = restClient.get()
+				.uri(UriComponentsBuilder
+					.fromUriString(githubAppProperties.apiBaseUrl())
+					.pathSegment("user", "memberships", "orgs", organizationLogin)
+					.build()
+					.toUriString())
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+				.header(HttpHeaders.ACCEPT, "application/vnd.github+json")
+				.header("X-GitHub-Api-Version", GITHUB_API_VERSION)
+				.retrieve()
+				.body(GithubOrganizationMembershipResponse.class);
+
+			if (response == null) {
+				throw new ApplicationException(ErrorCode.GITHUB_API_REQUEST_FAILED);
+			}
+			if (ORGANIZATION_MEMBERSHIP_ACTIVE_STATE.equals(response.state())
+				&& ORGANIZATION_MEMBERSHIP_ADMIN_ROLE.equals(response.role())) {
+				return;
+			}
+
+			throw new ApplicationException(ErrorCode.GITHUB_ORGANIZATION_PERMISSION_DENIED);
+		} catch (ApplicationException exception) {
+			throw exception;
+		} catch (HttpClientErrorException exception) {
+			if (exception.getStatusCode() == HttpStatus.NOT_FOUND
+				|| exception.getStatusCode() == HttpStatus.FORBIDDEN
+				|| exception.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+				throw new ApplicationException(ErrorCode.GITHUB_ORGANIZATION_PERMISSION_DENIED, exception);
+			}
+			throw new ApplicationException(ErrorCode.GITHUB_API_REQUEST_FAILED, exception);
+		} catch (RestClientException exception) {
+			throw new ApplicationException(ErrorCode.GITHUB_API_REQUEST_FAILED, exception);
+		}
+	}
+
 	public record GithubAppInstallationInfo(
 		Long installationId,
 		Long accountId,
@@ -80,6 +120,12 @@ public class GithubAppClient {
 		Long id,
 		String login,
 		String type
+	) {
+	}
+
+	private record GithubOrganizationMembershipResponse(
+		String state,
+		String role
 	) {
 	}
 }

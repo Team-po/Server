@@ -103,6 +103,78 @@ class GithubAppClientTest {
 		}
 	}
 
+	@Test
+	void validateOrganizationAdmin_passesWhenMembershipIsActiveAdmin() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/user/memberships/orgs/student-team-org", exchange -> {
+			assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isEqualTo("Bearer github-user-token");
+			assertThat(exchange.getRequestHeaders().getFirst("Accept")).isEqualTo("application/vnd.github+json");
+			assertThat(exchange.getRequestHeaders().getFirst("X-GitHub-Api-Version")).isEqualTo("2022-11-28");
+			writeResponse(exchange, 200, """
+				{
+				  "state": "active",
+				  "role": "admin"
+				}
+				""");
+		});
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			client.validateOrganizationAdmin("github-user-token", "student-team-org");
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	void validateOrganizationAdmin_throwsForbiddenWhenMembershipIsNotAdmin() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/user/memberships/orgs/student-team-org", exchange -> writeResponse(exchange, 200, """
+			{
+			  "state": "active",
+			  "role": "member"
+			}
+			"""));
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			assertThatThrownBy(() -> client.validateOrganizationAdmin("github-user-token", "student-team-org"))
+				.isInstanceOf(ApplicationException.class)
+				.extracting("code")
+				.isEqualTo(ErrorCode.GITHUB_ORGANIZATION_PERMISSION_DENIED.getCode());
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	void validateOrganizationAdmin_throwsForbiddenWhenMembershipIsNotFound() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/user/memberships/orgs/student-team-org", exchange -> writeResponse(exchange, 404, "{}"));
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			assertThatThrownBy(() -> client.validateOrganizationAdmin("github-user-token", "student-team-org"))
+				.isInstanceOf(ApplicationException.class)
+				.extracting("code")
+				.isEqualTo(ErrorCode.GITHUB_ORGANIZATION_PERMISSION_DENIED.getCode());
+		} finally {
+			server.stop(0);
+		}
+	}
+
 	private GithubAppClient githubAppClient(HttpServer server, GithubAppJwtProvider jwtProvider) {
 		String apiBaseUrl = "http://localhost:" + server.getAddress().getPort();
 		GithubAppProperties properties = new GithubAppProperties(

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,8 +38,11 @@ import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
+import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.repository.GithubAccountRepository;
 import team.po.feature.user.repository.UserRepository;
+import team.po.feature.user.service.GithubTokenEncryptor;
 
 @ExtendWith(MockitoExtension.class)
 class TeamspaceServiceTest {
@@ -62,10 +66,16 @@ class TeamspaceServiceTest {
 	private UserRepository userRepository;
 
 	@Mock
+	private GithubAccountRepository githubAccountRepository;
+
+	@Mock
 	private RedisService redisService;
 
 	@Mock
 	private GithubAppClient githubAppClient;
+
+	@Mock
+	private GithubTokenEncryptor githubTokenEncryptor;
 
 	private TeamspaceService teamspaceService;
 
@@ -85,9 +95,11 @@ class TeamspaceServiceTest {
 			githubInstallationRepository,
 			projectGroupRepository,
 			userRepository,
+			githubAccountRepository,
 			redisService,
 			githubAppProperties,
-			githubAppClient
+			githubAppClient,
+			githubTokenEncryptor
 		);
 	}
 
@@ -195,6 +207,8 @@ class TeamspaceServiceTest {
 		GithubInstallation savedGithubInstallation = githubInstallation();
 		when(projectGroupGithubInstallationRepository.existsByProjectGroup_IdAndDeletedAtIsNull(10L))
 			.thenReturn(false);
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(githubAccount()));
+		when(githubTokenEncryptor.decrypt("encrypted-token")).thenReturn("github-access-token");
 		when(githubInstallationRepository.findByInstallationIdAndDeletedAtIsNull(12345L))
 			.thenReturn(Optional.empty());
 		when(githubInstallationRepository.save(any(GithubInstallation.class))).thenReturn(savedGithubInstallation);
@@ -205,6 +219,7 @@ class TeamspaceServiceTest {
 
 		verify(redisService).getAndDeleteStringValue("github-app-install-state:test-state");
 		verify(githubAppClient).getInstallation(12345L);
+		verify(githubAppClient).validateOrganizationAdmin("github-access-token", "student-team-org");
 		verify(githubInstallationRepository).save(any(GithubInstallation.class));
 		verify(projectGroupGithubInstallationRepository).save(any(ProjectGroupGithubInstallation.class));
 	}
@@ -251,6 +266,8 @@ class TeamspaceServiceTest {
 			.thenReturn(organizationInstallationInfo());
 		when(projectGroupGithubInstallationRepository.existsByProjectGroup_IdAndDeletedAtIsNull(10L))
 			.thenReturn(false);
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(githubAccount()));
+		when(githubTokenEncryptor.decrypt("encrypted-token")).thenReturn("github-access-token");
 		when(githubInstallationRepository.findByInstallationIdAndDeletedAtIsNull(12345L))
 			.thenReturn(Optional.of(githubInstallation));
 		when(projectGroupRepository.findById(10L)).thenReturn(Optional.of(projectGroup()));
@@ -260,8 +277,61 @@ class TeamspaceServiceTest {
 
 		assertThat(githubInstallation.getAccountId()).isEqualTo(98765L);
 		assertThat(githubInstallation.getAccountLogin()).isEqualTo("student-team-org");
+		verify(githubAppClient).validateOrganizationAdmin("github-access-token", "student-team-org");
 		verify(githubInstallationRepository, never()).save(any(GithubInstallation.class));
 		verify(projectGroupGithubInstallationRepository).save(any(ProjectGroupGithubInstallation.class));
+	}
+
+	@Test
+	void completeGithubAppInstallation_throwsNotFound_whenRequesterHasNoGithubAccount() {
+		CompleteGithubAppInstallationRequest request = new CompleteGithubAppInstallationRequest(
+			12345L,
+			"install",
+			"test-state"
+		);
+		when(redisService.getAndDeleteStringValue("github-app-install-state:test-state"))
+			.thenReturn("10|1|2026-05-20T00:00:00Z|test-state");
+		when(githubAppClient.getInstallation(12345L))
+			.thenReturn(organizationInstallationInfo());
+		when(projectGroupGithubInstallationRepository.existsByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(false);
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> teamspaceService.completeGithubAppInstallation(request, 10L, 1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GITHUB_ACCOUNT_NOT_LINKED.getCode());
+
+		verify(githubAppClient, never()).validateOrganizationAdmin(anyString(), anyString());
+		verify(githubInstallationRepository, never()).save(any(GithubInstallation.class));
+		verify(projectGroupGithubInstallationRepository, never()).save(any(ProjectGroupGithubInstallation.class));
+	}
+
+	@Test
+	void completeGithubAppInstallation_throwsForbidden_whenRequesterIsNotOrganizationAdmin() {
+		CompleteGithubAppInstallationRequest request = new CompleteGithubAppInstallationRequest(
+			12345L,
+			"install",
+			"test-state"
+		);
+		when(redisService.getAndDeleteStringValue("github-app-install-state:test-state"))
+			.thenReturn("10|1|2026-05-20T00:00:00Z|test-state");
+		when(githubAppClient.getInstallation(12345L))
+			.thenReturn(organizationInstallationInfo());
+		when(projectGroupGithubInstallationRepository.existsByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(false);
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(githubAccount()));
+		when(githubTokenEncryptor.decrypt("encrypted-token")).thenReturn("github-access-token");
+		doThrow(new ApplicationException(ErrorCode.GITHUB_ORGANIZATION_PERMISSION_DENIED))
+			.when(githubAppClient).validateOrganizationAdmin("github-access-token", "student-team-org");
+
+		assertThatThrownBy(() -> teamspaceService.completeGithubAppInstallation(request, 10L, 1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GITHUB_ORGANIZATION_PERMISSION_DENIED.getCode());
+
+		verify(githubInstallationRepository, never()).save(any(GithubInstallation.class));
+		verify(projectGroupGithubInstallationRepository, never()).save(any(ProjectGroupGithubInstallation.class));
 	}
 
 	@Test
@@ -364,6 +434,17 @@ class TeamspaceServiceTest {
 			.accountId(98765L)
 			.accountLogin("student-team-org")
 			.accountType(GithubInstallation.ORGANIZATION_ACCOUNT_TYPE)
+			.build();
+	}
+
+	private GithubAccount githubAccount() {
+		return GithubAccount.builder()
+			.user(user())
+			.githubUserId(123L)
+			.githubUsername("octocat")
+			.accessTokenCiphertext("encrypted-token")
+			.tokenType("Bearer")
+			.githubScopes("read:user,user:email,read:org")
 			.build();
 	}
 

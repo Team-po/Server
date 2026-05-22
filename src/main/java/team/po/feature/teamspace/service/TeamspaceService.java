@@ -16,18 +16,21 @@ import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.projectgroup.domain.GroupRole;
 import team.po.feature.projectgroup.domain.ProjectGroup;
+import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.teamspace.domain.GithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
+import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
-import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
-import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.repository.GithubAccountRepository;
 import team.po.feature.user.repository.UserRepository;
+import team.po.feature.user.service.GithubTokenEncryptor;
 
 @Slf4j
 @Service
@@ -44,9 +47,11 @@ public class TeamspaceService {
 	private final GithubInstallationRepository githubInstallationRepository;
 	private final ProjectGroupRepository projectGroupRepository;
 	private final UserRepository userRepository;
+	private final GithubAccountRepository githubAccountRepository;
 	private final RedisService redisService;
 	private final GithubAppProperties githubAppProperties;
 	private final GithubAppClient githubAppClient;
+	private final GithubTokenEncryptor githubTokenEncryptor;
 
 	@Transactional(readOnly = true)
 	public GetGithubInstallationStatusResponse getGithubInstallationStatus(Long projectGroupId, Long requesterUserId) {
@@ -121,10 +126,28 @@ public class TeamspaceService {
 
 		GithubAppClient.GithubAppInstallationInfo installationInfo = githubAppClient.getInstallation(request.installationId());
 		validateGithubAppInstallationAccount(installationInfo);
-
 		validateGithubAppInstallationNotConnected(projectGroupId);
+		validateRequesterCanConnectOrganization(requesterUserId, installationInfo.accountLogin());
+
 		GithubInstallation githubInstallation = saveGithubInstallation(installationInfo);
 		saveProjectGroupGithubInstallation(projectGroupId, requesterUserId, githubInstallation);
+	}
+
+	private void validateRequesterCanConnectOrganization(Long requesterUserId, String organizationLogin) {
+		GithubAccount githubAccount = githubAccountRepository.findByUserIdAndDeletedAtIsNull(requesterUserId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.GITHUB_ACCOUNT_NOT_LINKED,
+				"GitHub Organization 연결을 위해 GitHub 계정 연동이 필요합니다."
+			));
+		String accessToken = githubTokenEncryptor.decrypt(githubAccount.getAccessTokenCiphertext());
+		if (accessToken == null || accessToken.isBlank()) {
+			throw new ApplicationException(
+				ErrorCode.GITHUB_ACCOUNT_NOT_LINKED,
+				"GitHub Organization 연결을 위해 GitHub 계정 연동이 필요합니다."
+			);
+		}
+
+		githubAppClient.validateOrganizationAdmin(accessToken, organizationLogin);
 	}
 
 	private void validateGithubAppInstallationNotConnected(Long projectGroupId) {

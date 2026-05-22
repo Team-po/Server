@@ -54,6 +54,7 @@ spring:
             scope:
               - read:user
               - user:email
+              - read:org
 
 cloud:
   aws:
