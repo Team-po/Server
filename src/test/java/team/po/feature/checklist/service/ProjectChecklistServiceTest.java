@@ -25,7 +25,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import team.po.common.ai.client.GeminiClient;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
-import team.po.feature.checklist.ai.ChecklistAdvicePromptBuilder;
 import team.po.feature.checklist.domain.ProjectChecklist;
 import team.po.feature.checklist.domain.ProjectChecklistStatus;
 import team.po.feature.checklist.dto.ChecklistAiAdviceResponse;
@@ -52,23 +51,24 @@ class ProjectChecklistServiceTest {
 	private ProjectGroupMemberRepository projectGroupMemberRepository;
 
 	@Mock
-	private GeminiClient geminiClient;
+	private ProjectChecklistAdviceTxService projectChecklistAdviceTxService;
 
-	private final ChecklistAdvicePromptBuilder checklistAdvicePromptBuilder = new ChecklistAdvicePromptBuilder();
+	@Mock
+	private GeminiClient geminiClient;
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	private ProjectChecklistService projectChecklistService;
 
 	@BeforeEach
-		void setUp() {
-			projectChecklistService = new ProjectChecklistService(
-				projectChecklistRepository,
-				projectGroupMemberRepository,
-				checklistAdvicePromptBuilder,
-				geminiClient,
-				objectMapper
-			);
-		}
+	void setUp() {
+		projectChecklistService = new ProjectChecklistService(
+			projectChecklistRepository,
+			projectGroupMemberRepository,
+			projectChecklistAdviceTxService,
+			geminiClient,
+			objectMapper
+		);
+	}
 
 	@Test
 	void getProjectChecklists_returnsChecklistWithAiAdvice() throws Exception {
@@ -119,6 +119,9 @@ class ProjectChecklistServiceTest {
 		);
 
 		assertThat(response.status()).isEqualTo(ProjectChecklistStatus.TODO);
+		assertThat(response.createdAt()).isEqualTo(Instant.parse("2026-05-17T10:00:00Z"));
+		assertThat(response.createdByUserId()).isEqualTo(1L);
+		assertThat(response.createdByNickname()).isEqualTo("user1");
 		assertThat(response.aiAdvice()).isNull();
 		assertThat(response.assigneeUserId()).isEqualTo(1L);
 		assertThat(response.assigneeNickname()).isEqualTo("user1");
@@ -204,14 +207,8 @@ class ProjectChecklistServiceTest {
 	@Test
 	void generateChecklistAdvice_updatesStoredAdvice() {
 		Users requester = mockUser(1L);
-		ProjectGroup projectGroup = mockProjectGroup(10L, ProjectGroupStatus.ACTIVE);
-		ProjectGroupMember member = new ProjectGroupMember(projectGroup, requester, MemberRole.BACKEND, GroupRole.MEMBER);
-		ProjectChecklist checklist = mockChecklist(projectGroup, requester);
-
-		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
-			.thenReturn(Optional.of(member));
-		when(projectChecklistRepository.findByIdAndProjectGroup_Id(20L, 10L))
-			.thenReturn(Optional.of(checklist));
+		when(projectChecklistAdviceTxService.prepareChecklistAdviceGeneration(10L, 20L, 1L))
+			.thenReturn(new ProjectChecklistAdviceTxService.AdviceGenerationContext(20L, "prompt"));
 		when(geminiClient.generateStructuredJson(any(), any())).thenReturn("""
 			{
 			  "summary": "핵심 포인트",
@@ -225,21 +222,15 @@ class ProjectChecklistServiceTest {
 
 		assertThat(response.aiAdvice()).isNotNull();
 		assertThat(response.aiAdvice().recommendedFlow()).hasSize(3);
-		assertThat(checklist.getAiAdvice()).isNotBlank();
 		assertThat(response.checklistId()).isEqualTo(20L);
+		verify(projectChecklistAdviceTxService).persistChecklistAdvice(eq(10L), eq(20L), eq(1L), any());
 	}
 
 	@Test
 	void generateChecklistAdvice_throwsInternalServerError_whenGeminiResponseInvalid() {
 		Users requester = mockUser(1L);
-		ProjectGroup projectGroup = mockProjectGroup(10L, ProjectGroupStatus.ACTIVE);
-		ProjectGroupMember member = new ProjectGroupMember(projectGroup, requester, MemberRole.BACKEND, GroupRole.MEMBER);
-		ProjectChecklist checklist = mockChecklist(projectGroup, requester);
-
-		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
-			.thenReturn(Optional.of(member));
-		when(projectChecklistRepository.findByIdAndProjectGroup_Id(20L, 10L))
-			.thenReturn(Optional.of(checklist));
+		when(projectChecklistAdviceTxService.prepareChecklistAdviceGeneration(10L, 20L, 1L))
+			.thenReturn(new ProjectChecklistAdviceTxService.AdviceGenerationContext(20L, "prompt"));
 		when(geminiClient.generateStructuredJson(any(), any())).thenReturn("""
 			{
 			  "summary": "핵심 포인트",
@@ -253,6 +244,7 @@ class ProjectChecklistServiceTest {
 			.isInstanceOf(ApplicationException.class)
 			.extracting(exception -> ((ApplicationException)exception).getErrorCode())
 			.isEqualTo(ErrorCode.GEMINI_INVALID_RESPONSE);
+		verify(projectChecklistAdviceTxService, never()).persistChecklistAdvice(any(), any(), any(), any());
 	}
 
 	@Test
@@ -277,28 +269,15 @@ class ProjectChecklistServiceTest {
 	@Test
 	void generateChecklistAdvice_throwsBadRequest_whenDescriptionMissing() {
 		Users requester = mockUser(1L);
-		ProjectGroup projectGroup = mockProjectGroup(10L, ProjectGroupStatus.ACTIVE);
-		ProjectGroupMember member = new ProjectGroupMember(projectGroup, requester, MemberRole.BACKEND, GroupRole.MEMBER);
-		ProjectChecklist checklist = ProjectChecklist.builder()
-			.projectGroup(projectGroup)
-			.title("예외 처리 정리")
-			.description(null)
-			.status(ProjectChecklistStatus.TODO)
-			.createdBy(requester)
-			.build();
-		ReflectionTestUtils.setField(checklist, "id", 21L);
-		ReflectionTestUtils.setField(checklist, "createdAt", Instant.parse("2026-05-17T10:00:00Z"));
-
-		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
-			.thenReturn(Optional.of(member));
-		when(projectChecklistRepository.findByIdAndProjectGroup_Id(21L, 10L))
-			.thenReturn(Optional.of(checklist));
+		when(projectChecklistAdviceTxService.prepareChecklistAdviceGeneration(10L, 21L, 1L))
+			.thenThrow(new ApplicationException(ErrorCode.PROJECT_CHECKLIST_DESCRIPTION_REQUIRED_FOR_AI));
 
 		assertThatThrownBy(() -> projectChecklistService.generateChecklistAdvice(10L, 21L, requester))
 			.isInstanceOf(ApplicationException.class)
 			.extracting(exception -> ((ApplicationException)exception).getErrorCode())
 			.isEqualTo(ErrorCode.PROJECT_CHECKLIST_DESCRIPTION_REQUIRED_FOR_AI);
 		verify(geminiClient, never()).generateStructuredJson(any(), any());
+		verify(projectChecklistAdviceTxService, never()).persistChecklistAdvice(any(), any(), any(), any());
 	}
 
 	private Users mockUser(Long userId) {

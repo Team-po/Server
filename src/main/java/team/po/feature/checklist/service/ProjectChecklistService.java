@@ -14,7 +14,6 @@ import lombok.extern.slf4j.Slf4j;
 import team.po.common.ai.client.GeminiClient;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
-import team.po.feature.checklist.ai.ChecklistAdvicePromptBuilder;
 import team.po.feature.checklist.ai.ChecklistAdviceSchema;
 import team.po.feature.checklist.domain.ProjectChecklist;
 import team.po.feature.checklist.domain.ProjectChecklistStatus;
@@ -37,7 +36,7 @@ public class ProjectChecklistService {
 
 	private final ProjectChecklistRepository projectChecklistRepository;
 	private final ProjectGroupMemberRepository projectGroupMemberRepository;
-	private final ChecklistAdvicePromptBuilder checklistAdvicePromptBuilder;
+	private final ProjectChecklistAdviceTxService projectChecklistAdviceTxService;
 	private final GeminiClient geminiClient;
 	private final ObjectMapper objectMapper;
 
@@ -106,27 +105,19 @@ public class ProjectChecklistService {
 		projectChecklistRepository.delete(checklist);
 	}
 
-	@Transactional
 	public GenerateChecklistAdviceResponse generateChecklistAdvice(Long projectGroupId, Long checklistId,
 		Users requester) {
-		this.getRequesterMembership(projectGroupId, requester.getId());
-		ProjectChecklist checklist = this.getChecklist(projectGroupId, checklistId);
-		this.assertChecklistWritable(checklist.getProjectGroup());
-
-		if (!StringUtils.hasText(checklist.getDescription())) {
-			throw new ApplicationException(ErrorCode.PROJECT_CHECKLIST_DESCRIPTION_REQUIRED_FOR_AI);
-		}
-
-		String prompt = checklistAdvicePromptBuilder.build(
-			checklist.getTitle(),
-			checklist.getDescription(),
-			checklist.getDueDate()
+		ProjectChecklistAdviceTxService.AdviceGenerationContext context =
+			projectChecklistAdviceTxService.prepareChecklistAdviceGeneration(projectGroupId, checklistId, requester.getId());
+		String adviceJson = geminiClient.generateStructuredJson(context.prompt(), ChecklistAdviceSchema.RESPONSE_SCHEMA);
+		ChecklistAiAdviceResponse aiAdvice = this.parseGeneratedAdvice(adviceJson, context.checklistId());
+		projectChecklistAdviceTxService.persistChecklistAdvice(
+			projectGroupId,
+			checklistId,
+			requester.getId(),
+			this.serializeAdvice(aiAdvice, context.checklistId())
 		);
-		String adviceJson = geminiClient.generateStructuredJson(prompt, ChecklistAdviceSchema.RESPONSE_SCHEMA);
-		ChecklistAiAdviceResponse aiAdvice = this.parseGeneratedAdvice(adviceJson, checklist.getId());
-		checklist.updateAiAdvice(this.serializeAdvice(aiAdvice, checklist.getId()));
-
-		return new GenerateChecklistAdviceResponse(checklist.getId(), aiAdvice);
+		return new GenerateChecklistAdviceResponse(context.checklistId(), aiAdvice);
 	}
 
 	private ProjectGroupMember getRequesterMembership(Long projectGroupId, Long requesterUserId) {
@@ -222,6 +213,9 @@ public class ProjectChecklistService {
 			checklist.getDescription(),
 			checklist.getStatus(),
 			checklist.getDueDate(),
+			checklist.getCreatedAt(),
+			checklist.getCreatedBy().getId(),
+			checklist.getCreatedBy().getNickname(),
 			checklist.getAssignee() == null ? null : checklist.getAssignee().getId(),
 			checklist.getAssignee() == null ? "ALL" : checklist.getAssignee().getNickname(),
 			this.deserializeAdvice(checklist)

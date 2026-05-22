@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -114,6 +115,9 @@ class ProjectChecklistControllerTest {
 			"새 설명",
 			ProjectChecklistStatus.DONE,
 			LocalDate.parse("2026-05-21"),
+			Instant.parse("2026-05-17T10:00:00Z"),
+			1L,
+			"tester",
 			null,
 			"ALL",
 			null
@@ -187,6 +191,9 @@ class ProjectChecklistControllerTest {
 			"설명",
 			ProjectChecklistStatus.TODO,
 			LocalDate.parse("2026-05-20"),
+			Instant.parse("2026-05-17T10:00:00Z"),
+			1L,
+			"tester",
 			1L,
 			"tester",
 			new ChecklistAiAdviceResponse(
