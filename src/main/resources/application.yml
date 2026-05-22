@@ -82,6 +82,15 @@ github:
       connect-timeout: ${GITHUB_OAUTH_REST_CLIENT_CONNECT_TIMEOUT:PT3S}
       read-timeout: ${GITHUB_OAUTH_REST_CLIENT_READ_TIMEOUT:PT5S}
 
+gemini:
+  api-key: ${GEMINI_API_KEY:}
+  base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+  model: ${GEMINI_MODEL:}
+  connect-timeout: ${GEMINI_CONNECT_TIMEOUT:PT5S}
+  read-timeout: ${GEMINI_READ_TIMEOUT:PT30S}
+  max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:2048}
+  temperature: ${GEMINI_TEMPERATURE:0.3}
+
 logging:
   level:
     org.springframework: info
