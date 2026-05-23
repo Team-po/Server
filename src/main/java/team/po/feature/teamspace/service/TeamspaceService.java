@@ -115,6 +115,8 @@ public class TeamspaceService {
 	) {
 		validateGithubAppSetupAction(request.setupAction());
 
+		// Replay 방지를 위해 state는 먼저 소비한다. 이후 처리에 실패하면 기존 state로 재시도하지 않고
+		// 설치 URL을 다시 발급받아야 한다.
 		String statePayload = redisService.getAndDeleteStringValue(createGithubAppInstallationStateKey(request.state()));
 		GithubAppInstallationState installationState = GithubAppInstallationState.deserialize(statePayload);
 		validateGithubAppInstallationState(installationState, projectGroupId, requesterUserId, request.state());
