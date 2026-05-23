@@ -18,11 +18,12 @@ public interface ProjectRequestRepository extends JpaRepository<ProjectRequest, 
 	public Optional<ProjectRequest> findByUserIdAndStatusIn(Long userId, List<Status> statuses);
 
 	// MATCHING
-	// Host 대기자 조회 (오래된 순): WAITING && isHost
+	// Host 대기자 조회: WAITING && isHost
 	@Query("""
 		SELECT pr FROM ProjectRequest pr
-		JOIN FETCH pr.user
+		JOIN FETCH pr.user u
 		WHERE pr.status = team.po.feature.match.enums.Status.WAITING
+		  AND u.deletedAt IS NULL
 		  AND pr.projectTitle IS NOT NULL AND TRIM(pr.projectTitle) != ''
 		  AND pr.projectDescription IS NOT NULL AND TRIM(pr.projectDescription) != ''
 		  AND pr.projectMvp IS NOT NULL AND TRIM(pr.projectMvp) != ''
@@ -32,8 +33,9 @@ public interface ProjectRequestRepository extends JpaRepository<ProjectRequest, 
 	// Member 대기자 조회: WAITING && !isHost && 특정 Role
 	@Query("""
 		SELECT pr FROM ProjectRequest pr
-		JOIN FETCH pr.user
+		JOIN FETCH pr.user u
 		WHERE pr.status = team.po.feature.match.enums.Status.WAITING
+		  AND u.deletedAt IS NULL
 		  AND pr.role = :role
 		  AND (TRIM(COALESCE(pr.projectTitle, '')) = ''
 		   		OR TRIM(COALESCE(pr.projectDescription, '')) = ''

@@ -12,6 +12,8 @@ import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 public interface ProjectGroupMemberRepository extends JpaRepository<ProjectGroupMember, Long> {
 	boolean existsByUser_IdInAndProjectGroup_Status(List<Long> userIds, ProjectGroupStatus status);
 
+	boolean existsByUser_IdAndProjectGroup_Status(Long userId, ProjectGroupStatus status);
+
 	Optional<ProjectGroupMember> findByProjectGroup_IdAndGroupRole(Long projectGroupId, GroupRole groupRole);
 
 	Optional<ProjectGroupMember> findByProjectGroup_IdAndUser_Id(Long projectGroupId, Long userId);
