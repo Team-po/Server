@@ -43,6 +43,7 @@ config/*-secret.yml
 config/*.local.yml
 deploy/*.env
 !deploy/*.env.example
+src/test/stest.json
 
 # Terraform
 .terraform/
