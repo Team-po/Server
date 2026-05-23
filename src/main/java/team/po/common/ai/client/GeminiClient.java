@@ -17,7 +17,7 @@ import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 
 @Slf4j
-@Component
+@Component("checklistGeminiClient")
 public class GeminiClient {
 
 	private final RestClient geminiRestClient;

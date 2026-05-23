@@ -19,7 +19,7 @@ import team.po.feature.devguide.dto.GeminiRequest;
 import team.po.feature.devguide.dto.GeminiResponse;
 
 @Slf4j
-@Component
+@Component("devGuideGeminiClient")
 public class GeminiClient {
 	private final RestClient geminiRestClient;
 	private final GeminiProperties properties;

@@ -38,7 +38,7 @@ public class ProjectChecklistService {
 	private final ProjectGroupMemberRepository projectGroupMemberRepository;
 	private final ProjectChecklistAdviceTxService projectChecklistAdviceTxService;
 	private final GeminiClient geminiClient;
-	private final ObjectMapper objectMapper;
+	private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
 	// 체크리스트 목록 조회
 	@Transactional(readOnly = true)

@@ -65,8 +65,7 @@ class ProjectChecklistServiceTest {
 			projectChecklistRepository,
 			projectGroupMemberRepository,
 			projectChecklistAdviceTxService,
-			geminiClient,
-			objectMapper
+			geminiClient
 		);
 	}
 
