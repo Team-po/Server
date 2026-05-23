@@ -54,6 +54,7 @@ spring:
             scope:
               - read:user
               - user:email
+              - read:org
 
 cloud:
   aws:
@@ -78,18 +79,16 @@ github:
   oauth:
     success-redirect-uri: ${GITHUB_OAUTH_SUCCESS_REDIRECT_URI}
     authorization-code-ttl: ${GITHUB_OAUTH_AUTHORIZATION_CODE_TTL:PT3M}
+    token-encryption-secret: ${GITHUB_OAUTH_TOKEN_ENCRYPTION_SECRET}
     rest-client:
       connect-timeout: ${GITHUB_OAUTH_REST_CLIENT_CONNECT_TIMEOUT:PT3S}
       read-timeout: ${GITHUB_OAUTH_REST_CLIENT_READ_TIMEOUT:PT5S}
-
-gemini:
-  api-key: ${GEMINI_API_KEY:}
-  base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
-  model: ${GEMINI_MODEL:}
-  connect-timeout: ${GEMINI_CONNECT_TIMEOUT:PT5S}
-  read-timeout: ${GEMINI_READ_TIMEOUT:PT30S}
-  max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:2048}
-  temperature: ${GEMINI_TEMPERATURE:0.3}
+  app:
+    id: ${GITHUB_APP_ID:}
+    slug: ${GITHUB_APP_SLUG:}
+    private-key: ${GITHUB_APP_PRIVATE_KEY:}
+    installation-state-ttl: ${GITHUB_APP_INSTALLATION_STATE_TTL:PT5M}
+    api-base-url: ${GITHUB_APP_API_BASE_URL:https://api.github.com}
 
 logging:
   level:
@@ -98,3 +97,12 @@ logging:
 
 server:
   port: ${SERVER_PORT:8080}
+
+gemini:
+  api-key: ${GEMINI_API_KEY:}
+  base-url: https://generativelanguage.googleapis.com/v1beta
+  model: gemini-2.5-flash
+  connect-timeout-seconds: 5
+  read-timeout-seconds: 90
+  max-output-tokens: 8192
+  temperature: 0.7

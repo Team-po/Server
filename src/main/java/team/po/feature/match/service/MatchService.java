@@ -49,8 +49,18 @@ public class MatchService {
 
 	// 신규 매칭 세션 생성
 	@Transactional
-	public void createMatchingSession(ProjectRequest host, List<ProjectRequest> members) {
-		// 1. 매칭 세션 생성 및 저장
+	public void createMatchingSession(Long hostRequestId, List<Long> memberRequestIds) {
+		// 1-1. ProjectRequest 재조회 (managed 상태)
+		ProjectRequest host = projectRequestRepository.findById(hostRequestId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
+		List<ProjectRequest> members = projectRequestRepository.findAllById(memberRequestIds);
+
+		if (members.size() != memberRequestIds.size()) {
+			log.error("매칭 멤버 ProjectRequest 조회 누락");
+			throw new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND);
+		}
+
+		// 1-2. 매칭 세션 생성 및 저장
 		MatchingSession session = matchingSessionRepository.save(MatchingSession.create());
 
 		// 2. Host 정보 등록 및 요청 상태 변경 (WAITING -> MATCHING)
@@ -81,11 +91,15 @@ public class MatchService {
 
 	// 기존 매칭 세션의 빈자리 채우기
 	@Transactional
-	public void fillVacancy(Long sessionId, Role role, ProjectRequest candidate) {
+	public void fillVacancy(Long sessionId, Role role, Long candidateRequestId) {
 		// Session: PESSIMISTIC_LOCK
 		MatchingSession session = matchingSessionRepository
 			.findByIdWithLock(sessionId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
+
+		// ProjectRequest 재조회 (managed 상태)
+		ProjectRequest candidate = projectRequestRepository.findById(candidateRequestId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
 
 		if (candidate.getStatus() != Status.WAITING) {
 			log.debug("후보 상태 변경됨 - 빈자리 충원 스킵: sessionId={}, candidateUserId={}",
@@ -255,7 +269,7 @@ public class MatchService {
 		// 1. 활성 매칭 요청 조회 (WAITING or MATCHING)
 		ProjectRequest myPr = projectRequestRepository
 			.findByUserIdAndStatusIn(loginUser.getId(), List.of(Status.WAITING, Status.MATCHING))
-			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_MEMBER_NOT_FOUND));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
 
 		// 2. WAITING: 단순 취소
 		if (myPr.getStatus() == Status.WAITING) {
@@ -387,6 +401,7 @@ public class MatchService {
 		members.forEach(mm -> mm.getProjectRequest().complete());
 
 		// 6. 매칭 세션 비활성화
+		members.forEach(MatchingMember::delete);
 		session.delete();
 
 		// 7. 매칭 완료 이벤트 발행

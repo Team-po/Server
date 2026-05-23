@@ -1,35 +1,40 @@
 package team.po.config;
 
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import java.net.http.HttpClient;
+import java.time.Duration;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import lombok.RequiredArgsConstructor;
 
 @Configuration
 @RequiredArgsConstructor
-@EnableConfigurationProperties(GeminiProperties.class)
 public class GeminiClientConfig {
-
-	private final GeminiProperties geminiProperties;
+	private final GeminiProperties properties;
 
 	@Bean
-	@Qualifier("geminiRestClient")
 	public RestClient geminiRestClient() {
-		SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-		requestFactory.setConnectTimeout(geminiProperties.connectTimeout());
-		requestFactory.setReadTimeout(geminiProperties.readTimeout());
-
 		return RestClient.builder()
-			.baseUrl(geminiProperties.baseUrl())
-			.defaultHeader("x-goog-api-key", geminiProperties.apiKey())
+			.baseUrl(properties.baseUrl())
+			.defaultHeader("x-goog-api-key", properties.apiKey())
 			.defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-			.requestFactory(requestFactory)
+			.requestFactory(clientHttpRequestFactory())
 			.build();
+	}
+
+	private ClientHttpRequestFactory clientHttpRequestFactory() {
+		HttpClient httpClient = HttpClient.newBuilder()
+			.connectTimeout(Duration.ofSeconds(properties.connectTimeoutSeconds()))
+			.build();
+
+		JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
+		factory.setReadTimeout(Duration.ofSeconds(properties.readTimeoutSeconds()));
+		return factory;
 	}
 }

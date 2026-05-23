@@ -90,6 +90,11 @@ public class MatchingMember {
 		this.deletedAt = Instant.now();
 	}
 
+	// 매칭 세션 종료 시 delete
+	public void delete() {
+		this.deletedAt = Instant.now();
+	}
+
 	public boolean isDeleted() {
 		return this.deletedAt != null;
 	}

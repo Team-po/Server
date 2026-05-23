@@ -10,4 +10,8 @@ public interface GithubAccountRepository extends JpaRepository<GithubAccount, Lo
 	Optional<GithubAccount> findByGithubUserIdAndDeletedAtIsNull(Long githubUserId);
 
 	Optional<GithubAccount> findByUserIdAndDeletedAtIsNull(Long userId);
+
+	boolean existsByGithubUserIdAndDeletedAtIsNull(Long githubUserId);
+
+	boolean existsByUser_IdAndDeletedAtIsNull(Long userId);
 }

@@ -16,6 +16,8 @@ import team.po.feature.match.dto.ProjectRequestStatusResponse;
 import team.po.feature.match.enums.Status;
 import team.po.feature.match.repository.MatchingMemberRepository;
 import team.po.feature.match.repository.ProjectRequestRepository;
+import team.po.feature.projectgroup.domain.ProjectGroupStatus;
+import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.repository.UserRepository;
 
@@ -26,6 +28,7 @@ public class ProjectRequestService {
 	private final ProjectRequestRepository projectRequestRepository;
 	private final UserRepository userRepository;
 	private final MatchingMemberRepository matchingMemberRepository;
+	private final ProjectGroupMemberRepository projectGroupMemberRepository;
 
 	@Transactional
 	public void createProjectRequest(Users loginUser, ProjectRequestDto request) {
@@ -39,18 +42,14 @@ public class ProjectRequestService {
 			throw new ApplicationException(ErrorCode.PROJECT_REQUEST_ALREADY_EXISTS);
 		}
 
-		// TODO: ProjectGroup 구현 후 추가
-		// ProjectGroup.status - 프로젝트 진행 중 -> X
-		//        boolean projectInProgress = projectGroupRepository.existsByUserIdAndStatus(
-		//                user.getId(),
-		//                ProjectGroupStatus.IN_PROGRESS);
-		//        if (projectInProgress) {
-		//            throw new ProjectAlreadyInProgressException(
-		//                    HttpStatus.CONFLICT,
-		//                    ErrorCode.PROJECT_ALREADY_IN_PROGRESS,
-		//                    "이미 진행 중인 프로젝트가 있습니다."
-		//            )
-		//        }
+		// 진행 중인 프로젝트가 있으면 매칭 요청 불가
+		boolean projectInProgress = projectGroupMemberRepository.existsByUser_IdAndProjectGroup_Status(
+			user.getId(),
+			ProjectGroupStatus.ACTIVE
+		);
+		if (projectInProgress) {
+			throw new ApplicationException(ErrorCode.PROJECT_ALREADY_IN_PROGRESS);
+		}
 
 		try {
 			ProjectRequest projectRequest = ProjectRequest.builder()
@@ -61,6 +60,8 @@ public class ProjectRequestService {
 				.projectMvp(request.projectMvp())
 				.build();
 			projectRequestRepository.save(projectRequest);
+			log.info("매칭 요청 생성 완료. userId: {}, projectRequestId: {}, role: {}",
+				user.getId(), projectRequest.getId(), projectRequest.getRole());
 		} catch (DataIntegrityViolationException e) { // 동시 요청 Race Condition
 			throw new ApplicationException(ErrorCode.PROJECT_REQUEST_ALREADY_EXISTS);
 		}
