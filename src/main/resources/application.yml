@@ -54,6 +54,7 @@ spring:
             scope:
               - read:user
               - user:email
+              - read:org
 
 cloud:
   aws:
@@ -82,6 +83,12 @@ github:
     rest-client:
       connect-timeout: ${GITHUB_OAUTH_REST_CLIENT_CONNECT_TIMEOUT:PT3S}
       read-timeout: ${GITHUB_OAUTH_REST_CLIENT_READ_TIMEOUT:PT5S}
+  app:
+    id: ${GITHUB_APP_ID:}
+    slug: ${GITHUB_APP_SLUG:}
+    private-key: ${GITHUB_APP_PRIVATE_KEY:}
+    installation-state-ttl: ${GITHUB_APP_INSTALLATION_STATE_TTL:PT5M}
+    api-base-url: ${GITHUB_APP_API_BASE_URL:https://api.github.com}
 
 logging:
   level:

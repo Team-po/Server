@@ -58,6 +58,30 @@ public class GithubTokenEncryptor {
 		}
 	}
 
+	public String decrypt(String ciphertext) {
+		if (!StringUtils.hasText(ciphertext)) {
+			return null;
+		}
+		if (!StringUtils.hasText(encryptionSecret)) {
+			throw new ApplicationException(ErrorCode.GITHUB_TOKEN_DECRYPTION_FAILED, "GitHub 토큰 암호화 키가 설정되지 않았습니다.");
+		}
+
+		try {
+			byte[] encryptedBytes = Base64.getUrlDecoder().decode(ciphertext);
+			ByteBuffer byteBuffer = ByteBuffer.wrap(encryptedBytes);
+			byte[] iv = new byte[IV_LENGTH_BYTES];
+			byteBuffer.get(iv);
+			byte[] tokenBytes = new byte[byteBuffer.remaining()];
+			byteBuffer.get(tokenBytes);
+
+			Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+			cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(createKey(), ALGORITHM), new GCMParameterSpec(TAG_LENGTH_BITS, iv));
+			return new String(cipher.doFinal(tokenBytes), StandardCharsets.UTF_8);
+		} catch (RuntimeException | GeneralSecurityException exception) {
+			throw new ApplicationException(ErrorCode.GITHUB_TOKEN_DECRYPTION_FAILED, "GitHub 토큰 복호화에 실패했습니다.", exception);
+		}
+	}
+
 	private byte[] createKey() throws GeneralSecurityException {
 		byte[] secretBytes = decodeSecret();
 		return MessageDigest.getInstance("SHA-256").digest(secretBytes);
