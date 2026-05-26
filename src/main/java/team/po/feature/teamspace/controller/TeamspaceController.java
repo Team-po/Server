@@ -62,7 +62,7 @@ public class TeamspaceController {
 	}
 
 	@Operation(summary = "Github App 접근 가능 Repository 목록 조회")
-	@GetMapping("/{projectGroupId}/github/repositories")
+	@GetMapping("/{projectGroupId}/github/availiable-repositories")
 	public ResponseEntity<GetAvailiableGithubRepositoryList> getAvailiableGithubRepositoryList(
 		@Parameter(hidden = true) @LoginUser Users user,
 		@PathVariable Long projectGroupId
