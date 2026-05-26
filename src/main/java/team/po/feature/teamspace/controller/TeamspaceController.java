@@ -74,7 +74,7 @@ public class TeamspaceController {
 		return ResponseEntity.ok(response);
 	}
 
-	@Operation(summary = "Repository 목록 교체 API")
+	@Operation(summary = "Repository 목록 설정 API")
 	@PutMapping("/{projectGroupId}/github/repositories")
 	public ResponseEntity<Void> setGithubRepositoryList(
 		@Parameter(hidden = true) @LoginUser Users user,
