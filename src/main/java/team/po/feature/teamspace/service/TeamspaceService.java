@@ -1,7 +1,7 @@
 package team.po.feature.teamspace.service;
 
-import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -23,6 +23,7 @@ import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
@@ -128,6 +129,30 @@ public class TeamspaceService {
 
 		GithubInstallation githubInstallation = saveGithubInstallation(installationInfo);
 		saveProjectGroupGithubInstallation(projectGroupId, requesterUserId, githubInstallation);
+	}
+
+	@Transactional(readOnly = true)
+	public GetGithubRepositoryListResponse getGithubRepositoryList(Users user, Long projectGroupId) {
+		validateProjectGroupMember(projectGroupId, user.getId());
+
+		ProjectGroupGithubInstallation connection = projectGroupGithubInstallationRepository
+			.findByProjectGroup_IdAndDeletedAtIsNull(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.GITHUB_APP_INSTALLATION_NOT_CONNECTED,
+				"Github Organization이 연결되지 않은 팀 스페이스입니다."
+			));
+
+		GithubInstallation installation = connection.getGithubInstallation();
+		List<GithubAppClient.GithubRepositoryInfo> repositories = githubAppClient
+			.getInstallationRepositories(installation.getInstallationId());
+
+		return new GetGithubRepositoryListResponse(repositories.stream()
+			.map(repository -> new GetGithubRepositoryListResponse.RepositoryResponse(
+				repository.githubRepositoryId(),
+				repository.repoName(),
+				repository.fullName()
+			))
+			.toList());
 	}
 
 	private void validateRequesterCanConnectOrganization(Long requesterUserId, String organizationLogin) {

@@ -31,6 +31,7 @@ import team.po.exception.CustomExceptionHandler;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.service.TeamspaceService;
 import team.po.feature.user.domain.Users;
 
@@ -116,5 +117,23 @@ class TeamspaceControllerTest {
 			10L,
 			1L
 		);
+	}
+
+	@Test
+	void getGithubRepositoryList_returnsOk() throws Exception {
+		when(teamspaceService.getGithubRepositoryList(mockUser, 10L))
+			.thenReturn(new GetGithubRepositoryListResponse(List.of(
+				new GetGithubRepositoryListResponse.RepositoryResponse(
+					100L,
+					"backend",
+					"student-team-org/backend"
+				)
+			)));
+
+		mockMvc.perform(get("/api/team-space/10/github/repositories"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.repositories[0].githubRepositoryId").value(100))
+			.andExpect(jsonPath("$.repositories[0].repoName").value("backend"))
+			.andExpect(jsonPath("$.repositories[0].fullName").value("student-team-org/backend"));
 	}
 }

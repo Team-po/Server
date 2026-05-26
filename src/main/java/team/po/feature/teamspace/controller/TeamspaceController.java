@@ -16,6 +16,7 @@ import team.po.common.auth.LoginUser;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.service.TeamspaceService;
 import team.po.feature.user.domain.Users;
 
@@ -59,4 +60,17 @@ public class TeamspaceController {
 		teamspaceService.completeGithubAppInstallation(request, projectGroupId, user.getId());
 		return ResponseEntity.ok().build();
 	}
+
+	@Operation(summary = "연동된 Github Repository 목록 조회")
+	@GetMapping("/{projectGroupId}/github/repositories")
+	public ResponseEntity<GetGithubRepositoryListResponse> getGithubRepositoryList(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId
+	) {
+		GetGithubRepositoryListResponse response = teamspaceService.getGithubRepositoryList(user, projectGroupId);
+
+		return ResponseEntity.ok(response);
+	}
+
+
 }

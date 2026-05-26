@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -148,6 +149,46 @@ class TeamspaceServiceTest {
 
 		verify(projectGroupGithubInstallationRepository, never()).findByProjectGroup_IdAndDeletedAtIsNull(10L);
 		verify(projectGroupGithubRepositoryRepository, never()).countByProjectGroup_IdAndDeletedAtIsNull(10L);
+	}
+
+	@Test
+	void getGithubRepositoryList_returnsGithubRepositories_whenGithubInstallationIsConnected() {
+		Users requester = user();
+		ProjectGroupGithubInstallation githubConnection = ProjectGroupGithubInstallation.builder()
+			.projectGroup(projectGroup())
+			.githubInstallation(githubInstallation())
+			.connectedBy(requester)
+			.build();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(Optional.of(githubConnection));
+		when(githubAppClient.getInstallationRepositories(12345L)).thenReturn(List.of(
+			new GithubAppClient.GithubRepositoryInfo(100L, "backend", "student-team-org/backend"),
+			new GithubAppClient.GithubRepositoryInfo(200L, "frontend", "student-team-org/frontend")
+		));
+
+		var response = teamspaceService.getGithubRepositoryList(requester, 10L);
+
+		assertThat(response.repositories()).hasSize(2);
+		assertThat(response.repositories().get(0).githubRepositoryId()).isEqualTo(100L);
+		assertThat(response.repositories().get(0).repoName()).isEqualTo("backend");
+		assertThat(response.repositories().get(0).fullName()).isEqualTo("student-team-org/backend");
+		verify(githubAppClient).getInstallationRepositories(12345L);
+	}
+
+	@Test
+	void getGithubRepositoryList_throwsNotFound_whenGithubInstallationIsNotConnected() {
+		Users requester = user();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> teamspaceService.getGithubRepositoryList(requester, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GITHUB_APP_INSTALLATION_NOT_CONNECTED.getCode());
+
+		verify(githubAppClient, never()).getInstallationRepositories(any());
 	}
 
 	@Test
