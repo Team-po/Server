@@ -30,6 +30,7 @@ import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetAvailiableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
@@ -150,6 +151,22 @@ public class TeamspaceService {
 				repository.githubRepositoryId(),
 				repository.repoName(),
 				repository.fullName()
+			))
+			.toList());
+	}
+
+	@Transactional(readOnly = true)
+	public GetGithubRepositoryListResponse getGithubRepositoryList(Users user, Long projectGroupId) {
+		validateProjectGroupMember(projectGroupId, user.getId());
+
+		List<ProjectGroupGithubRepository> repositories = projectGroupGithubRepositoryRepository
+			.findAllByProjectGroup_IdAndDeletedAtIsNull(projectGroupId);
+
+		return new GetGithubRepositoryListResponse(repositories.stream()
+			.map(repository -> new GetGithubRepositoryListResponse.RepositoryResponse(
+				repository.getGithubRepositoryId(),
+				repository.getRepoName(),
+				repository.getFullName()
 			))
 			.toList());
 	}

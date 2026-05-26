@@ -16,8 +16,9 @@ import lombok.RequiredArgsConstructor;
 import team.po.common.auth.LoginUser;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
-import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetAvailiableGithubRepositoryList;
+import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.service.TeamspaceService;
 import team.po.feature.user.domain.Users;
@@ -84,5 +85,16 @@ public class TeamspaceController {
 		teamspaceService.setGithubRepositoryList(user, projectGroupId, request);
 
 		return ResponseEntity.ok().build();
+	}
+
+	@Operation(summary = "등록된 Repository 목록 조회 API")
+	@GetMapping("/{projectGroupId}/github/repositories")
+	public ResponseEntity<GetGithubRepositoryListResponse> getGithubRepositoryList(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId
+	) {
+		GetGithubRepositoryListResponse response = teamspaceService.getGithubRepositoryList(user, projectGroupId);
+
+		return ResponseEntity.ok(response);
 	}
 }

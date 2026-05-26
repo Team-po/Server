@@ -37,6 +37,7 @@ import team.po.feature.teamspace.domain.ProjectGroupGithubRepository;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
@@ -193,6 +194,58 @@ class TeamspaceServiceTest {
 			.isEqualTo(ErrorCode.GITHUB_APP_INSTALLATION_NOT_CONNECTED.getCode());
 
 		verify(githubAppClient, never()).getInstallationRepositories(any());
+	}
+
+	@Test
+	void getGithubRepositoryList_returnsRegisteredRepositories_whenRequesterIsProjectGroupMember() {
+		Users requester = user();
+		ProjectGroup projectGroup = projectGroup();
+		GithubInstallation githubInstallation = githubInstallation();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupGithubRepositoryRepository.findAllByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(List.of(
+				ProjectGroupGithubRepository.builder()
+					.projectGroup(projectGroup)
+					.githubInstallation(githubInstallation)
+					.githubRepositoryId(100L)
+					.owner("student-team-org")
+					.repoName("backend")
+					.fullName("student-team-org/backend")
+					.defaultBranch("main")
+					.privateRepository(true)
+					.build(),
+				ProjectGroupGithubRepository.builder()
+					.projectGroup(projectGroup)
+					.githubInstallation(githubInstallation)
+					.githubRepositoryId(200L)
+					.owner("student-team-org")
+					.repoName("frontend")
+					.fullName("student-team-org/frontend")
+					.defaultBranch("develop")
+					.privateRepository(false)
+					.build()
+			));
+
+		GetGithubRepositoryListResponse response = teamspaceService.getGithubRepositoryList(requester, 10L);
+
+		assertThat(response.repositories()).hasSize(2);
+		assertThat(response.repositories().get(0).githubRepositoryId()).isEqualTo(100L);
+		assertThat(response.repositories().get(0).repoName()).isEqualTo("backend");
+		assertThat(response.repositories().get(0).fullName()).isEqualTo("student-team-org/backend");
+		assertThat(response.repositories().get(1).githubRepositoryId()).isEqualTo(200L);
+	}
+
+	@Test
+	void getGithubRepositoryList_throwsForbidden_whenRequesterIsNotProjectGroupMember() {
+		Users requester = user();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(false);
+
+		assertThatThrownBy(() -> teamspaceService.getGithubRepositoryList(requester, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
+
+		verify(projectGroupGithubRepositoryRepository, never()).findAllByProjectGroup_IdAndDeletedAtIsNull(10L);
 	}
 
 	@Test
