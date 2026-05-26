@@ -152,7 +152,7 @@ class TeamspaceServiceTest {
 	}
 
 	@Test
-	void getGithubRepositoryList_returnsGithubRepositories_whenGithubInstallationIsConnected() {
+	void getAvailiableGithubRepositoryList_returnsGithubRepositories_whenGithubInstallationIsConnected() {
 		Users requester = user();
 		ProjectGroupGithubInstallation githubConnection = ProjectGroupGithubInstallation.builder()
 			.projectGroup(projectGroup())
@@ -167,7 +167,7 @@ class TeamspaceServiceTest {
 			new GithubAppClient.GithubRepositoryInfo(200L, "frontend", "student-team-org/frontend")
 		));
 
-		var response = teamspaceService.getGithubRepositoryList(requester, 10L);
+		var response = teamspaceService.getAvailiableGithubRepositoryList(requester, 10L);
 
 		assertThat(response.repositories()).hasSize(2);
 		assertThat(response.repositories().get(0).githubRepositoryId()).isEqualTo(100L);
@@ -177,13 +177,13 @@ class TeamspaceServiceTest {
 	}
 
 	@Test
-	void getGithubRepositoryList_throwsNotFound_whenGithubInstallationIsNotConnected() {
+	void getAvailiableGithubRepositoryList_throwsNotFound_whenGithubInstallationIsNotConnected() {
 		Users requester = user();
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
 		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
 			.thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> teamspaceService.getGithubRepositoryList(requester, 10L))
+		assertThatThrownBy(() -> teamspaceService.getAvailiableGithubRepositoryList(requester, 10L))
 			.isInstanceOf(ApplicationException.class)
 			.extracting("code")
 			.isEqualTo(ErrorCode.GITHUB_APP_INSTALLATION_NOT_CONNECTED.getCode());

@@ -31,7 +31,7 @@ import team.po.exception.CustomExceptionHandler;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
-import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
+import team.po.feature.teamspace.dto.GetAvailiableGithubRepositoryList;
 import team.po.feature.teamspace.service.TeamspaceService;
 import team.po.feature.user.domain.Users;
 
@@ -121,9 +121,9 @@ class TeamspaceControllerTest {
 
 	@Test
 	void getGithubRepositoryList_returnsOk() throws Exception {
-		when(teamspaceService.getGithubRepositoryList(mockUser, 10L))
-			.thenReturn(new GetGithubRepositoryListResponse(List.of(
-				new GetGithubRepositoryListResponse.RepositoryResponse(
+		when(teamspaceService.getAvailiableGithubRepositoryList(mockUser, 10L))
+			.thenReturn(new GetAvailiableGithubRepositoryList(List.of(
+				new GetAvailiableGithubRepositoryList.RepositoryResponse(
 					100L,
 					"backend",
 					"student-team-org/backend"
