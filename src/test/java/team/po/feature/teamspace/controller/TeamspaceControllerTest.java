@@ -5,6 +5,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -30,8 +31,9 @@ import team.po.common.jwt.UserPrincipal;
 import team.po.exception.CustomExceptionHandler;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
-import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetAvailiableGithubRepositoryList;
+import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.service.TeamspaceService;
 import team.po.feature.user.domain.Users;
 
@@ -130,10 +132,40 @@ class TeamspaceControllerTest {
 				)
 			)));
 
-		mockMvc.perform(get("/api/team-space/10/github/repositories"))
+		mockMvc.perform(get("/api/team-space/10/github/availiable-repositories"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.repositories[0].githubRepositoryId").value(100))
 			.andExpect(jsonPath("$.repositories[0].repoName").value("backend"))
 			.andExpect(jsonPath("$.repositories[0].fullName").value("student-team-org/backend"));
+	}
+
+	@Test
+	void setGithubRepositoryList_returnsOk() throws Exception {
+		mockMvc.perform(put("/api/team-space/10/github/repositories")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "githubRepositoryIds": [100, 200]
+					}
+					"""))
+			.andExpect(status().isOk());
+
+		verify(teamspaceService).setGithubRepositoryList(
+			mockUser,
+			10L,
+			new SetGithubRepositoryListRequest(List.of(100L, 200L))
+		);
+	}
+
+	@Test
+	void setGithubRepositoryList_returnsBadRequest_whenRepositoryIdsAreEmpty() throws Exception {
+		mockMvc.perform(put("/api/team-space/10/github/repositories")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "githubRepositoryIds": []
+					}
+					"""))
+			.andExpect(status().isBadRequest());
 	}
 }

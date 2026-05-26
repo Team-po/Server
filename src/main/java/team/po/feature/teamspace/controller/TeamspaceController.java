@@ -4,6 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,6 +18,7 @@ import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetAvailiableGithubRepositoryList;
+import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.service.TeamspaceService;
 import team.po.feature.user.domain.Users;
 
@@ -72,5 +74,15 @@ public class TeamspaceController {
 		return ResponseEntity.ok(response);
 	}
 
+	@Operation(summary = "Repository 목록 교체 API")
+	@PutMapping("/{projectGroupId}/github/repositories")
+	public ResponseEntity<Void> setGithubRepositoryList(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId,
+		@Valid @RequestBody SetGithubRepositoryListRequest request
+	) {
+		teamspaceService.setGithubRepositoryList(user, projectGroupId, request);
 
+		return ResponseEntity.ok().build();
+	}
 }

@@ -1,8 +1,13 @@
 package team.po.feature.teamspace.service;
 
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,10 +25,12 @@ import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.teamspace.domain.GithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
+import team.po.feature.teamspace.domain.ProjectGroupGithubRepository;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
-import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetAvailiableGithubRepositoryList;
+import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
@@ -131,20 +138,12 @@ public class TeamspaceService {
 		saveProjectGroupGithubInstallation(projectGroupId, requesterUserId, githubInstallation);
 	}
 
-	@Transactional(readOnly = true)
 	public GetAvailiableGithubRepositoryList getAvailiableGithubRepositoryList(Users user, Long projectGroupId) {
 		validateProjectGroupMember(projectGroupId, user.getId());
+		ConnectedGithubInstallationIds installation = getConnectedGithubInstallationIds(projectGroupId);
 
-		ProjectGroupGithubInstallation connection = projectGroupGithubInstallationRepository
-			.findByProjectGroup_IdAndDeletedAtIsNull(projectGroupId)
-			.orElseThrow(() -> new ApplicationException(
-				ErrorCode.GITHUB_APP_INSTALLATION_NOT_CONNECTED,
-				"Github Organization이 연결되지 않은 팀 스페이스입니다."
-			));
-
-		GithubInstallation installation = connection.getGithubInstallation();
 		List<GithubAppClient.GithubRepositoryInfo> repositories = githubAppClient
-			.getInstallationRepositories(installation.getInstallationId());
+			.getInstallationRepositories(installation.installationId());
 
 		return new GetAvailiableGithubRepositoryList(repositories.stream()
 			.map(repository -> new GetAvailiableGithubRepositoryList.RepositoryResponse(
@@ -153,6 +152,93 @@ public class TeamspaceService {
 				repository.fullName()
 			))
 			.toList());
+	}
+
+	@Transactional
+	public void setGithubRepositoryList(Users user, Long projectGroupId, SetGithubRepositoryListRequest request) {
+		validateProjectGroupHost(projectGroupId, user.getId());
+		ConnectedGithubInstallationIds installation = getConnectedGithubInstallationIds(projectGroupId);
+
+		List<GithubAppClient.GithubRepositoryInfo> repositories = githubAppClient
+			.getInstallationRepositories(installation.installationId());
+
+		Map<Long, GithubAppClient.GithubRepositoryInfo> accessibleRepositoryMap = repositories.stream()
+			.collect(Collectors.toMap(
+				GithubAppClient.GithubRepositoryInfo::githubRepositoryId,
+				Function.identity(),
+				(first, second) -> first
+			));
+		Set<Long> selectedGithubRepositoryIds = new LinkedHashSet<>(request.githubRepositoryIds());
+
+		boolean hasInaccessibleRepository = selectedGithubRepositoryIds.stream()
+			.anyMatch(repositoryId -> !accessibleRepositoryMap.containsKey(repositoryId));
+
+		if (hasInaccessibleRepository) {
+			throw new ApplicationException(
+				ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE,
+				"선택한 Github Repository에 접근할 수 없습니다."
+			);
+		}
+
+		Instant deletedAt = Instant.now();
+		List<ProjectGroupGithubRepository> activeRepositories = projectGroupGithubRepositoryRepository
+			.findAllByProjectGroup_IdAndDeletedAtIsNull(projectGroupId);
+		Map<Long, ProjectGroupGithubRepository> activeRepositoryMap = activeRepositories.stream()
+			.collect(Collectors.toMap(
+				ProjectGroupGithubRepository::getGithubRepositoryId,
+				Function.identity(),
+				(first, second) -> first
+			));
+
+		activeRepositories.forEach(repository -> {
+			Long githubRepositoryId = repository.getGithubRepositoryId();
+			if (!selectedGithubRepositoryIds.contains(githubRepositoryId)) {
+				repository.softDelete(deletedAt);
+				return;
+			}
+
+			GithubAppClient.GithubRepositoryInfo latestRepositoryInfo = accessibleRepositoryMap.get(githubRepositoryId);
+			repository.updateRepositoryInfo(
+				latestRepositoryInfo.owner(),
+				latestRepositoryInfo.repoName(),
+				latestRepositoryInfo.fullName(),
+				latestRepositoryInfo.defaultBranch(),
+				latestRepositoryInfo.privateRepository()
+			);
+		});
+
+		Set<Long> newGithubRepositoryIds = selectedGithubRepositoryIds.stream()
+			.filter(repositoryId -> !activeRepositoryMap.containsKey(repositoryId))
+			.collect(Collectors.toCollection(LinkedHashSet::new));
+
+		if (newGithubRepositoryIds.isEmpty()) {
+			return;
+		}
+
+		ProjectGroup projectGroup = projectGroupRepository.findById(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
+		GithubInstallation githubInstallation = githubInstallationRepository
+			.findByIdAndDeletedAtIsNull(installation.githubInstallationId())
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.GITHUB_APP_INSTALLATION_NOT_CONNECTED,
+				"Github Organization이 연결되지 않은 팀 스페이스입니다."
+			));
+
+		List<ProjectGroupGithubRepository> selectedRepositories = newGithubRepositoryIds.stream()
+			.map(accessibleRepositoryMap::get)
+			.map(repository -> ProjectGroupGithubRepository.builder()
+				.projectGroup(projectGroup)
+				.githubInstallation(githubInstallation)
+				.githubRepositoryId(repository.githubRepositoryId())
+				.owner(repository.owner())
+				.repoName(repository.repoName())
+				.fullName(repository.fullName())
+				.defaultBranch(repository.defaultBranch())
+				.privateRepository(repository.privateRepository())
+				.build())
+			.toList();
+
+		projectGroupGithubRepositoryRepository.saveAll(selectedRepositories);
 	}
 
 	private void validateRequesterCanConnectOrganization(Long requesterUserId, String organizationLogin) {
@@ -170,6 +256,21 @@ public class TeamspaceService {
 		}
 
 		githubAppClient.validateOrganizationAdmin(accessToken, organizationLogin);
+	}
+
+	private ConnectedGithubInstallationIds getConnectedGithubInstallationIds(Long projectGroupId) {
+		ProjectGroupGithubInstallation connection = projectGroupGithubInstallationRepository
+			.findByProjectGroup_IdAndDeletedAtIsNull(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.GITHUB_APP_INSTALLATION_NOT_CONNECTED,
+				"Github Organization이 연결되지 않은 팀 스페이스입니다."
+			));
+
+		GithubInstallation installation = connection.getGithubInstallation();
+		return new ConnectedGithubInstallationIds(
+			installation.getId(),
+			installation.getInstallationId()
+		);
 	}
 
 	private void validateGithubAppInstallationNotConnected(Long projectGroupId) {
@@ -330,5 +431,11 @@ public class TeamspaceService {
 				return null;
 			}
 		}
+	}
+
+	private record ConnectedGithubInstallationIds(
+		Long githubInstallationId,
+		Long installationId
+	) {
 	}
 }

@@ -77,8 +77,11 @@ public class GithubAppClient {
 			response.repositories().stream()
 				.map(repository -> new GithubRepositoryInfo(
 					repository.id(),
+					repository.owner().login(),
 					repository.name(),
-					repository.fullName()
+					repository.fullName(),
+					repository.defaultBranch(),
+					repository.privateRepository()
 				))
 				.forEach(repositories::add);
 
@@ -192,8 +195,11 @@ public class GithubAppClient {
 
 	public record GithubRepositoryInfo(
 		Long githubRepositoryId,
+		String owner,
 		String repoName,
-		String fullName
+		String fullName,
+		String defaultBranch,
+		boolean privateRepository
 	) {
 	}
 
@@ -230,7 +236,17 @@ public class GithubAppClient {
 		Long id,
 		String name,
 		@JsonProperty("full_name")
-		String fullName
+		String fullName,
+		@JsonProperty("default_branch")
+		String defaultBranch,
+		@JsonProperty("private")
+		boolean privateRepository,
+		GithubRepositoryOwnerResponse owner
+	) {
+	}
+
+	private record GithubRepositoryOwnerResponse(
+		String login
 	) {
 	}
 }

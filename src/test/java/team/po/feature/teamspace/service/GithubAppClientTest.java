@@ -159,12 +159,22 @@ class GithubAppClientTest {
 				    {
 				      "id": 123,
 				      "name": "backend",
-				      "full_name": "student-team-org/backend"
+				      "full_name": "student-team-org/backend",
+				      "private": true,
+				      "default_branch": "main",
+				      "owner": {
+				        "login": "student-team-org"
+				      }
 				    },
 				    {
 				      "id": 456,
 				      "name": "frontend",
-				      "full_name": "student-team-org/frontend"
+				      "full_name": "student-team-org/frontend",
+				      "private": false,
+				      "default_branch": "develop",
+				      "owner": {
+				        "login": "student-team-org"
+				      }
 				    }
 				  ]
 				}
@@ -179,8 +189,11 @@ class GithubAppClientTest {
 
 			assertThat(repositories).hasSize(2);
 			assertThat(repositories.get(0).githubRepositoryId()).isEqualTo(123L);
+			assertThat(repositories.get(0).owner()).isEqualTo("student-team-org");
 			assertThat(repositories.get(0).repoName()).isEqualTo("backend");
 			assertThat(repositories.get(0).fullName()).isEqualTo("student-team-org/backend");
+			assertThat(repositories.get(0).defaultBranch()).isEqualTo("main");
+			assertThat(repositories.get(0).privateRepository()).isTrue();
 		} finally {
 			server.stop(0);
 		}
