@@ -1,13 +1,8 @@
 package team.po.feature.projectgroup.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,6 +13,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import team.po.exception.ApplicationException;
@@ -50,11 +46,15 @@ class ProjectGroupServiceTest {
 	@InjectMocks
 	private ProjectGroupService projectGroupService;
 
+	@Mock
+	private ApplicationEventPublisher eventPublisher;
+
 	@Test
 	void createProjectGroup_savesGroupAndMembers_whenRequestIsValid() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
 		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
-		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE)))
+		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(),
+			eq(ProjectGroupStatus.ACTIVE)))
 			.thenReturn(false);
 		when(projectGroupRepository.save(any(ProjectGroup.class))).thenAnswer(invocation -> {
 			ProjectGroup saved = invocation.getArgument(0);
@@ -143,7 +143,8 @@ class ProjectGroupServiceTest {
 	void createProjectGroup_savesGroup_whenHostExists() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
 		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
-		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE)))
+		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(),
+			eq(ProjectGroupStatus.ACTIVE)))
 			.thenReturn(false);
 		when(projectGroupRepository.save(any(ProjectGroup.class))).thenAnswer(invocation -> {
 			ProjectGroup saved = invocation.getArgument(0);
@@ -171,7 +172,8 @@ class ProjectGroupServiceTest {
 	void createProjectGroup_throwsBadRequest_whenAnyMemberAlreadyBelongsToActiveTeam() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
 		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
-		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE)))
+		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(),
+			eq(ProjectGroupStatus.ACTIVE)))
 			.thenReturn(true);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(defaultRequest()))
@@ -184,7 +186,8 @@ class ProjectGroupServiceTest {
 	void createProjectGroup_checksMembershipAgainstActiveStatusOnly() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
 		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
-		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE)))
+		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(),
+			eq(ProjectGroupStatus.ACTIVE)))
 			.thenReturn(false);
 		when(projectGroupRepository.save(any(ProjectGroup.class))).thenAnswer(invocation -> {
 			ProjectGroup saved = invocation.getArgument(0);
@@ -206,8 +209,10 @@ class ProjectGroupServiceTest {
 			.projectTitle("주제 A")
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
-		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
-		ProjectGroupMember targetMember = new ProjectGroupMember(projectGroup, mockUser(2L), MemberRole.FRONTEND, GroupRole.MEMBER);
+		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND,
+			GroupRole.HOST);
+		ProjectGroupMember targetMember = new ProjectGroupMember(projectGroup, mockUser(2L), MemberRole.FRONTEND,
+			GroupRole.MEMBER);
 		assertThat(targetMember.isAdmin()).isFalse();
 
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndGroupRole(10L, GroupRole.HOST))
@@ -227,7 +232,8 @@ class ProjectGroupServiceTest {
 			.projectTitle("주제 A")
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
-		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
+		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND,
+			GroupRole.HOST);
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndGroupRole(20L, GroupRole.HOST))
 			.thenReturn(Optional.of(hostMember));
 
@@ -244,7 +250,8 @@ class ProjectGroupServiceTest {
 			.projectTitle("주제 A")
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
-		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
+		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND,
+			GroupRole.HOST);
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndGroupRole(30L, GroupRole.HOST))
 			.thenReturn(Optional.of(hostMember));
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(30L, 1L))
@@ -263,8 +270,10 @@ class ProjectGroupServiceTest {
 			.projectTitle("주제 A")
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
-		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
-		ProjectGroupMember targetMember = new ProjectGroupMember(projectGroup, mockUser(2L), MemberRole.FRONTEND, GroupRole.MEMBER);
+		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND,
+			GroupRole.HOST);
+		ProjectGroupMember targetMember = new ProjectGroupMember(projectGroup, mockUser(2L), MemberRole.FRONTEND,
+			GroupRole.MEMBER);
 		targetMember.grantAdmin();
 		assertThat(targetMember.isAdmin()).isTrue();
 
