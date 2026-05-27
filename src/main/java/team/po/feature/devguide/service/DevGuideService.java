@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.devguide.client.GeminiClient;
+import team.po.feature.devguide.domain.DevGuide;
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.prompt.DevGuideSchema;
@@ -43,5 +44,12 @@ public class DevGuideService {
 		);
 
 		devGuideCommandService.create(projectGroupId, content);
+	}
+
+	public DevGuideContent getDevGuide(Long projectGroupId) {
+		DevGuide devGuide = devGuideRepository.findByProjectGroup_Id(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND));
+
+		return devGuide.toContent();
 	}
 }
