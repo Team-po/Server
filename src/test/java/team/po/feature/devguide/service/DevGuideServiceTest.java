@@ -22,6 +22,7 @@ import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.repository.DevGuideRepository;
 import team.po.feature.projectgroup.domain.ProjectGroup;
 import team.po.feature.projectgroup.domain.ProjectGroupStatus;
+import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +42,9 @@ class DevGuideServiceTest {
 
 	@Mock
 	private DevGuideCommandService devGuideCommandService;
+
+	@Mock
+	private ProjectGroupMemberRepository projectGroupMemberRepository;
 
 	@InjectMocks
 	private DevGuideService devGuideService;
@@ -92,9 +96,11 @@ class DevGuideServiceTest {
 		DevGuideContent content = devGuideContent();
 		DevGuide devGuide = DevGuide.create(projectGroup, content);
 
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L))
+			.thenReturn(true);
 		when(devGuideRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(devGuide));
 
-		DevGuideContent result = devGuideService.getDevGuide(1L);
+		DevGuideContent result = devGuideService.getDevGuide(1L, 10L);
 
 		assertThat(result.overview()).isEqualTo("프로젝트 개요입니다.");
 		assertThat(result.techStack()).hasSize(5);
@@ -104,12 +110,27 @@ class DevGuideServiceTest {
 
 	@Test
 	void getDevGuide_throwsNotFound_whenDevGuideDoesNotExist() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L))
+			.thenReturn(true);
 		when(devGuideRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> devGuideService.getDevGuide(1L))
+		assertThatThrownBy(() -> devGuideService.getDevGuide(1L, 10L))
 			.isInstanceOf(ApplicationException.class)
 			.extracting("code")
 			.isEqualTo(ErrorCode.DEV_GUIDE_NOT_FOUND.getCode());
+	}
+
+	@Test
+	void getDevGuide_throwsAccessDenied_whenUserIsNotProjectGroupMember() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L))
+			.thenReturn(false);
+
+		assertThatThrownBy(() -> devGuideService.getDevGuide(1L, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode());
+
+		verify(devGuideRepository, never()).findByProjectGroup_Id(any());
 	}
 
 	private ProjectGroup projectGroup() {

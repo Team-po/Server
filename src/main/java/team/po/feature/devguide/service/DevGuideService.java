@@ -12,6 +12,7 @@ import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.prompt.DevGuideSchema;
 import team.po.feature.devguide.repository.DevGuideRepository;
 import team.po.feature.projectgroup.domain.ProjectGroup;
+import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 
 @Service
@@ -21,6 +22,7 @@ public class DevGuideService {
 	private final GeminiClient geminiClient;
 	private final DevGuidePromptBuilder promptBuilder;
 	private final ProjectGroupRepository projectGroupRepository;
+	private final ProjectGroupMemberRepository projectGroupMemberRepository;
 	private final DevGuideCommandService devGuideCommandService;
 
 	// Transaction 없이 Gemini API 호출
@@ -46,10 +48,19 @@ public class DevGuideService {
 		devGuideCommandService.create(projectGroupId, content);
 	}
 
-	public DevGuideContent getDevGuide(Long projectGroupId) {
+	public DevGuideContent getDevGuide(Long projectGroupId, Long userId) {
+		// 조회 가능한 유저인지 검증
+		validateProjectGroupMember(projectGroupId, userId);
+
 		DevGuide devGuide = devGuideRepository.findByProjectGroup_Id(projectGroupId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND));
 
 		return devGuide.toContent();
+	}
+
+	private void validateProjectGroupMember(Long projectGroupId, Long userId) {
+		if (!projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(projectGroupId, userId)) {
+			throw new ApplicationException(ErrorCode.PROJECT_GROUP_ACCESS_DENIED);
+		}
 	}
 }

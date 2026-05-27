@@ -1,23 +1,27 @@
 package team.po.feature.devguide.controller;
 
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import java.util.List;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import team.po.common.auth.LoginUserArgumentResolver;
 import team.po.exception.CustomExceptionHandler;
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.service.DevGuideService;
+import team.po.feature.user.domain.Users;
 
 @WebMvcTest(DevGuideController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -33,6 +37,22 @@ class DevGuideControllerTest {
 	@MockitoBean
 	private LoginUserArgumentResolver loginUserArgumentResolver;
 
+	private Users mockUser;
+
+	@BeforeEach
+	void setUp() throws Exception {
+		mockUser = Users.builder()
+			.email("tester@example.com")
+			.nickname("tester")
+			.level(1)
+			.temperature(50)
+			.build();
+		ReflectionTestUtils.setField(mockUser, "id", 1L);
+
+		when(loginUserArgumentResolver.supportsParameter(any())).thenReturn(true);
+		when(loginUserArgumentResolver.resolveArgument(any(), any(), any(), any())).thenReturn(mockUser);
+	}
+
 	@Test
 	void getDevGuide_returnsDevGuideContent() throws Exception {
 		DevGuideContent content = new DevGuideContent(
@@ -44,7 +64,7 @@ class DevGuideControllerTest {
 				new DevGuideContent.RoleTasks("백엔드 작업", "프론트 작업", "디자인 작업")))
 		);
 
-		when(devGuideService.getDevGuide(1L)).thenReturn(content);
+		when(devGuideService.getDevGuide(1L, 1L)).thenReturn(content);
 
 		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide", 1L))
 			.andExpect(status().isOk())

@@ -7,9 +7,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import lombok.RequiredArgsConstructor;
+import team.po.common.auth.LoginUser;
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.service.DevGuideService;
+import team.po.feature.user.domain.Users;
 
 @RestController
 @RequiredArgsConstructor
@@ -20,10 +23,11 @@ public class DevGuideController {
 	@Operation(summary = "팀 스페이스 개발 가이드라인 조회 API")
 	@GetMapping("/{projectGroupId}/dev-guide")
 	public ResponseEntity<DevGuideContent> getDevGuide(
+		@Parameter(hidden = true) @LoginUser Users user,
 		@PathVariable Long projectGroupId
 	) {
-		return ResponseEntity.ok(
-			devGuideService.getDevGuide(projectGroupId)
-		);
+		DevGuideContent response = devGuideService.getDevGuide(projectGroupId, user.getId());
+
+		return ResponseEntity.ok(response);
 	}
 }
