@@ -162,7 +162,8 @@ class TeamspaceServiceTest {
 			.githubInstallation(githubInstallation())
 			.connectedBy(requester)
 			.build();
-		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
+			.thenReturn(true);
 		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
 			.thenReturn(Optional.of(githubConnection));
 		when(githubAppClient.getInstallationRepositories(12345L)).thenReturn(List.of(
@@ -184,7 +185,8 @@ class TeamspaceServiceTest {
 	@Test
 	void getAvailiableGithubRepositoryList_throwsNotFound_whenGithubInstallationIsNotConnected() {
 		Users requester = user();
-		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
+			.thenReturn(true);
 		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
 			.thenReturn(Optional.empty());
 
@@ -193,6 +195,21 @@ class TeamspaceServiceTest {
 			.extracting("code")
 			.isEqualTo(ErrorCode.GITHUB_APP_INSTALLATION_NOT_CONNECTED.getCode());
 
+		verify(githubAppClient, never()).getInstallationRepositories(any());
+	}
+
+	@Test
+	void getAvailiableGithubRepositoryList_throwsForbidden_whenRequesterIsNotProjectGroupHost() {
+		Users requester = user();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
+			.thenReturn(false);
+
+		assertThatThrownBy(() -> teamspaceService.getAvailiableGithubRepositoryList(requester, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
+
+		verify(projectGroupGithubInstallationRepository, never()).findByProjectGroup_IdAndDeletedAtIsNull(10L);
 		verify(githubAppClient, never()).getInstallationRepositories(any());
 	}
 

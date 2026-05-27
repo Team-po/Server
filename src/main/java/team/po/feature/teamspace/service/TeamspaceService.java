@@ -140,7 +140,7 @@ public class TeamspaceService {
 	}
 
 	public GetAvailiableGithubRepositoryList getAvailiableGithubRepositoryList(Users user, Long projectGroupId) {
-		validateProjectGroupMember(projectGroupId, user.getId());
+		validateProjectGroupHost(projectGroupId, user.getId());
 		ConnectedGithubInstallationIds installation = getConnectedGithubInstallationIds(projectGroupId);
 
 		List<GithubAppClient.GithubRepositoryInfo> repositories = githubAppClient
