@@ -19,8 +19,14 @@ public class DevGuideEventHandler {
 	@Async
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	public void handle(ProjectGroupCreatedEvent event) {
-		log.info("개발 가이드라인 생성 이벤트 수신: projectGroupId={}", event.projectGroupId());
+		try {
+			log.info("개발 가이드라인 생성 이벤트 수신: projectGroupId={}", event.projectGroupId());
 
-		devGuideService.generate(event.projectGroupId());
+			devGuideService.generate(event.projectGroupId());
+
+			log.info("개발 가이드라인 생성 완료: projectGroupId={}", event.projectGroupId());
+		} catch (Exception e) {
+			log.error("개발 가이드라인 비동기 생성 실패: projectGroupId={}", event.projectGroupId());
+		}
 	}
 }
