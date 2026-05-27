@@ -1,5 +1,6 @@
 package team.po.feature.devguide.domain;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.hibernate.annotations.JdbcTypeCode;
@@ -13,6 +14,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -52,6 +55,14 @@ public class DevGuide {
 	@JdbcTypeCode(SqlTypes.JSON)
 	@Column(nullable = false, columnDefinition = "json")
 	private List<DevGuideContent.Milestone> milestones;
+
+	@Column(nullable = false, updatable = false)
+	private LocalDateTime createdAt;
+
+	@Column(nullable = false)
+	private LocalDateTime updatedAt;
+
+	private LocalDateTime deletedAt;
 
 	@Builder
 	private DevGuide(
@@ -93,6 +104,10 @@ public class DevGuide {
 		this.milestones = content.milestones();
 	}
 
+	public void delete() {
+		this.deletedAt = LocalDateTime.now();
+	}
+
 	public DevGuideContent toContent() {
 		return new DevGuideContent(
 			overview,
@@ -101,5 +116,17 @@ public class DevGuide {
 			decisionPoints,
 			milestones
 		);
+	}
+
+	@PrePersist
+	protected void onCreate() {
+		LocalDateTime now = LocalDateTime.now();
+		this.createdAt = now;
+		this.updatedAt = now;
+	}
+
+	@PreUpdate
+	protected void onUpdate() {
+		this.updatedAt = LocalDateTime.now();
 	}
 }
