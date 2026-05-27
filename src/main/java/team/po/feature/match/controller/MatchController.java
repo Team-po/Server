@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import lombok.RequiredArgsConstructor;
 import team.po.common.auth.LoginUser;
 import team.po.feature.match.dto.MatchMemberResponse;
@@ -25,7 +26,7 @@ public class MatchController {
 	@GetMapping("/{matchId}/members")
 	public ResponseEntity<MatchMemberResponse> getMatchMembers(
 		@PathVariable Long matchId,
-		@LoginUser Users user
+		@Parameter(hidden = true) @LoginUser Users user
 	) {
 		MatchMemberResponse response = matchService.getMatchMembers(matchId, user);
 		return ResponseEntity.ok().body(response);
@@ -35,7 +36,7 @@ public class MatchController {
 	@GetMapping("/{matchId}/project")
 	public ResponseEntity<MatchProjectResponse> getMatchProject(
 		@PathVariable Long matchId,
-		@LoginUser Users user
+		@Parameter(hidden = true) @LoginUser Users user
 	) {
 		MatchProjectResponse response = matchService.getMatchProject(matchId, user);
 		return ResponseEntity.ok().body(response);
@@ -45,7 +46,7 @@ public class MatchController {
 	@PostMapping("/{matchId}/accept")
 	public ResponseEntity<Void> accept(
 		@PathVariable Long matchId,
-		@LoginUser Users user
+		@Parameter(hidden = true) @LoginUser Users user
 	) {
 		matchService.accept(matchId, user);
 		return ResponseEntity.ok().build();
@@ -55,7 +56,7 @@ public class MatchController {
 	@PostMapping("/{matchId}/reject")
 	public ResponseEntity<Void> reject(
 		@PathVariable Long matchId,
-		@LoginUser Users user
+		@Parameter(hidden = true) @LoginUser Users user
 	) {
 		matchService.reject(matchId, user);
 		return ResponseEntity.ok().build();
@@ -63,7 +64,7 @@ public class MatchController {
 
 	@Operation(summary = "매칭 취소 API")
 	@PostMapping(value = "/cancel")
-	public ResponseEntity<Void> cancel(@LoginUser Users user) {
+	public ResponseEntity<Void> cancel(@Parameter(hidden = true) @LoginUser Users user) {
 		matchService.cancel(user);
 		return ResponseEntity.ok().build();
 	}
