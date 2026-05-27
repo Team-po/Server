@@ -38,6 +38,7 @@ import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
+import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
@@ -81,6 +82,9 @@ class TeamspaceServiceTest {
 	@Mock
 	private GithubTokenEncryptor githubTokenEncryptor;
 
+	@Mock
+	private TeamspacePersistenceTxService teamspacePersistenceTxService;
+
 	private TeamspaceService teamspaceService;
 
 	@BeforeEach
@@ -103,7 +107,8 @@ class TeamspaceServiceTest {
 			redisService,
 			githubAppProperties,
 			githubAppClient,
-			githubTokenEncryptor
+			githubTokenEncryptor,
+			teamspacePersistenceTxService
 		);
 	}
 
@@ -266,51 +271,18 @@ class TeamspaceServiceTest {
 	}
 
 	@Test
-	void setGithubRepositoryList_replacesRepositories_whenRequestIsValid() {
+	void setGithubRepositoryList_fetchesRepositoriesAndPersistsSetting_whenRequestIsValid() {
 		Users requester = user();
-		ProjectGroup projectGroup = projectGroup();
-		GithubInstallation githubInstallation = githubInstallation();
-		ProjectGroupGithubInstallation githubConnection = ProjectGroupGithubInstallation.builder()
-			.projectGroup(projectGroup)
-			.githubInstallation(githubInstallation)
-			.connectedBy(requester)
-			.build();
-		ProjectGroupGithubRepository retainedRepository = ProjectGroupGithubRepository.builder()
-			.projectGroup(projectGroup)
-			.githubInstallation(githubInstallation)
-			.githubRepositoryId(100L)
-			.owner("student-team-org")
-			.repoName("backend-old")
-			.fullName("student-team-org/backend-old")
-			.defaultBranch("develop")
-			.privateRepository(false)
-			.build();
-		ProjectGroupGithubRepository removedRepository = ProjectGroupGithubRepository.builder()
-			.projectGroup(projectGroup)
-			.githubInstallation(githubInstallation)
-			.githubRepositoryId(999L)
-			.owner("student-team-org")
-			.repoName("old")
-			.fullName("student-team-org/old")
-			.defaultBranch("main")
-			.privateRepository(true)
-			.build();
-		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
-			.thenReturn(true);
-		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
-			.thenReturn(Optional.of(githubConnection));
+		SetGithubRepositoryListRequest request = new SetGithubRepositoryListRequest(List.of(100L, 100L, 200L));
 		List<GithubAppClient.GithubRepositoryInfo> repositories = List.of(
 			new GithubAppClient.GithubRepositoryInfo(100L, "student-team-org", "backend",
 				"student-team-org/backend", "main", true),
 			new GithubAppClient.GithubRepositoryInfo(200L, "student-team-org", "frontend",
 				"student-team-org/frontend", "develop", false)
 		);
+		when(teamspacePersistenceTxService.prepareGithubRepositorySetting(10L, 1L))
+			.thenReturn(new GithubRepositorySettingContext(5L, 12345L));
 		when(githubAppClient.getInstallationRepositories(12345L)).thenReturn(repositories);
-		when(projectGroupRepository.findById(10L)).thenReturn(Optional.of(projectGroup));
-		when(githubInstallationRepository.findByIdAndDeletedAtIsNull(5L)).thenReturn(Optional.of(githubInstallation));
-		when(projectGroupGithubRepositoryRepository.findAllByProjectGroup_IdAndDeletedAtIsNull(10L))
-			.thenReturn(List.of(retainedRepository, removedRepository));
-		SetGithubRepositoryListRequest request = new SetGithubRepositoryListRequest(List.of(100L, 100L, 200L));
 
 		teamspaceService.setGithubRepositoryList(
 			requester,
@@ -319,41 +291,20 @@ class TeamspaceServiceTest {
 		);
 
 		verify(githubAppClient).getInstallationRepositories(12345L);
-		assertThat(retainedRepository.getDeletedAt()).isNull();
-		assertThat(retainedRepository.getRepoName()).isEqualTo("backend");
-		assertThat(retainedRepository.getFullName()).isEqualTo("student-team-org/backend");
-		assertThat(retainedRepository.getDefaultBranch()).isEqualTo("main");
-		assertThat(retainedRepository.isPrivateRepository()).isTrue();
-		assertThat(removedRepository.getDeletedAt()).isNotNull();
-		ArgumentCaptor<List<ProjectGroupGithubRepository>> repositoryCaptor = ArgumentCaptor.forClass(List.class);
-		verify(projectGroupGithubRepositoryRepository).saveAll(repositoryCaptor.capture());
-		assertThat(repositoryCaptor.getValue()).hasSize(1);
-		assertThat(repositoryCaptor.getValue().get(0).getGithubRepositoryId()).isEqualTo(200L);
-		assertThat(repositoryCaptor.getValue().get(0).getOwner()).isEqualTo("student-team-org");
-		assertThat(repositoryCaptor.getValue().get(0).getRepoName()).isEqualTo("frontend");
-		assertThat(repositoryCaptor.getValue().get(0).getFullName()).isEqualTo("student-team-org/frontend");
-		assertThat(repositoryCaptor.getValue().get(0).getDefaultBranch()).isEqualTo("develop");
-		assertThat(repositoryCaptor.getValue().get(0).isPrivateRepository()).isFalse();
+		verify(teamspacePersistenceTxService).persistGithubRepositorySetting(
+			10L,
+			5L,
+			request.githubRepositoryIds(),
+			repositories
+		);
 	}
 
 	@Test
-	void setGithubRepositoryList_throwsBadRequest_whenRepositoryIsNotAccessible() {
+	void setGithubRepositoryList_doesNotCallGithubApi_whenPrepareFails() {
 		Users requester = user();
-		ProjectGroupGithubInstallation githubConnection = ProjectGroupGithubInstallation.builder()
-			.projectGroup(projectGroup())
-			.githubInstallation(githubInstallation())
-			.connectedBy(requester)
-			.build();
-		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
-			.thenReturn(true);
-		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
-			.thenReturn(Optional.of(githubConnection));
-		List<GithubAppClient.GithubRepositoryInfo> repositories = List.of(
-			new GithubAppClient.GithubRepositoryInfo(100L, "student-team-org", "backend",
-				"student-team-org/backend", "main", true)
-		);
 		SetGithubRepositoryListRequest request = new SetGithubRepositoryListRequest(List.of(999L));
-		when(githubAppClient.getInstallationRepositories(12345L)).thenReturn(repositories);
+		when(teamspacePersistenceTxService.prepareGithubRepositorySetting(10L, 1L))
+			.thenThrow(new ApplicationException(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED));
 
 		assertThatThrownBy(() -> teamspaceService.setGithubRepositoryList(
 			requester,
@@ -362,57 +313,33 @@ class TeamspaceServiceTest {
 		))
 			.isInstanceOf(ApplicationException.class)
 			.extracting("code")
-			.isEqualTo(ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE.getCode());
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
 
-		verify(projectGroupRepository, never()).findById(any());
-		verify(projectGroupGithubRepositoryRepository, never()).saveAll(any());
+		verify(githubAppClient, never()).getInstallationRepositories(any());
+		verify(teamspacePersistenceTxService, never()).persistGithubRepositorySetting(any(), any(), any(), any());
 	}
 
 	@Test
-	void setGithubRepositoryList_keepsActiveRepository_whenSameRepositoryIsRequested() {
+	void setGithubRepositoryList_propagatesPersistException_whenRepositoryIsNotAccessible() {
 		Users requester = user();
-		ProjectGroup projectGroup = projectGroup();
-		GithubInstallation githubInstallation = githubInstallation();
-		ProjectGroupGithubInstallation githubConnection = ProjectGroupGithubInstallation.builder()
-			.projectGroup(projectGroup)
-			.githubInstallation(githubInstallation)
-			.connectedBy(requester)
-			.build();
-		ProjectGroupGithubRepository activeRepository = ProjectGroupGithubRepository.builder()
-			.projectGroup(projectGroup)
-			.githubInstallation(githubInstallation)
-			.githubRepositoryId(100L)
-			.owner("student-team-org")
-			.repoName("backend-old")
-			.fullName("student-team-org/backend-old")
-			.defaultBranch("develop")
-			.privateRepository(false)
-			.build();
-		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
-			.thenReturn(true);
-		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
-			.thenReturn(Optional.of(githubConnection));
-		when(githubAppClient.getInstallationRepositories(12345L)).thenReturn(List.of(
+		SetGithubRepositoryListRequest request = new SetGithubRepositoryListRequest(List.of(999L));
+		List<GithubAppClient.GithubRepositoryInfo> repositories = List.of(
 			new GithubAppClient.GithubRepositoryInfo(100L, "student-team-org", "backend",
 				"student-team-org/backend", "main", true)
-		));
-		when(projectGroupGithubRepositoryRepository.findAllByProjectGroup_IdAndDeletedAtIsNull(10L))
-			.thenReturn(List.of(activeRepository));
-
-		teamspaceService.setGithubRepositoryList(
-			requester,
-			10L,
-			new SetGithubRepositoryListRequest(List.of(100L))
 		);
+		when(teamspacePersistenceTxService.prepareGithubRepositorySetting(10L, 1L))
+			.thenReturn(new GithubRepositorySettingContext(5L, 12345L));
+		when(githubAppClient.getInstallationRepositories(12345L)).thenReturn(repositories);
+		doThrow(new ApplicationException(ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE))
+			.when(teamspacePersistenceTxService)
+			.persistGithubRepositorySetting(10L, 5L, request.githubRepositoryIds(), repositories);
 
-		assertThat(activeRepository.getDeletedAt()).isNull();
-		assertThat(activeRepository.getRepoName()).isEqualTo("backend");
-		assertThat(activeRepository.getFullName()).isEqualTo("student-team-org/backend");
-		assertThat(activeRepository.getDefaultBranch()).isEqualTo("main");
-		assertThat(activeRepository.isPrivateRepository()).isTrue();
-		verify(projectGroupRepository, never()).findById(any());
-		verify(githubInstallationRepository, never()).findByIdAndDeletedAtIsNull(any());
-		verify(projectGroupGithubRepositoryRepository, never()).saveAll(any());
+		assertThatThrownBy(() -> teamspaceService.setGithubRepositoryList(requester, 10L, request))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE.getCode());
+
+		verify(githubAppClient).getInstallationRepositories(12345L);
 	}
 
 	@Test
