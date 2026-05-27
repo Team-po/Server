@@ -83,17 +83,9 @@ public class ProjectRequestService {
 			List.of(Status.WAITING, Status.MATCHING)
 		).orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND, "진행 중인 매칭 요청이 없습니다."));
 
-		Long matchId = null;
-		// MATCHING: matchId 반환
-		if (projectRequest.getStatus() == Status.MATCHING) {
-			matchId = matchingMemberRepository
-				.findCurrentActiveByUserId(user.getId())
-				.map(m -> m.getMatchingSession().getId())
-				.orElseThrow(() -> {
-					log.error("활성 매칭 멤버 데이터 부정합: userId={}", user.getId());
-					return new ApplicationException(ErrorCode.MATCH_DATA_ERROR);
-				});
-		}
-		return new ProjectRequestStatusResponse(projectRequest.getStatus(), matchId);
+		return new ProjectRequestStatusResponse(
+			projectRequest.getStatus(),
+			projectRequest.getRole()
+		);
 	}
 }

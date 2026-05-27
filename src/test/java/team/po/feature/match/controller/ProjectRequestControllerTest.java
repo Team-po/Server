@@ -28,6 +28,7 @@ import team.po.exception.ApplicationException;
 import team.po.exception.CustomExceptionHandler;
 import team.po.exception.ErrorCode;
 import team.po.feature.match.dto.ProjectRequestStatusResponse;
+import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
 import team.po.feature.match.service.ProjectRequestService;
 import team.po.feature.user.domain.Users;
@@ -122,11 +123,12 @@ class ProjectRequestControllerTest {
 	@Test
 	void getProjectRequestStatus_returnsOk() throws Exception {
 		when(projectRequestService.getProjectRequestStatus(any(Users.class)))
-			.thenReturn(new ProjectRequestStatusResponse(Status.WAITING, null));
+			.thenReturn(new ProjectRequestStatusResponse(Status.WAITING, Role.BACKEND));
 
 		mockMvc.perform(get("/api/match/status"))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.status").value("WAITING"));
+			.andExpect(jsonPath("$.status").value("WAITING"))
+			.andExpect(jsonPath("$.role").value("BACKEND"));
 	}
 
 	@Test
