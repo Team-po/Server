@@ -230,6 +230,36 @@ class TeamspacePersistenceTxServiceTest {
 		verify(projectGroupGithubRepositoryRepository, never()).saveAll(any());
 	}
 
+	@Test
+	void persistGithubRepositorySetting_softDeletesAllActiveRepositories_whenRepositoryIdsAreEmpty() {
+		ProjectGroup projectGroup = projectGroup();
+		GithubInstallation githubInstallation = githubInstallation();
+		ProjectGroupGithubRepository activeRepository = ProjectGroupGithubRepository.builder()
+			.projectGroup(projectGroup)
+			.githubInstallation(githubInstallation)
+			.githubRepositoryId(100L)
+			.owner("student-team-org")
+			.repoName("backend")
+			.fullName("student-team-org/backend")
+			.defaultBranch("main")
+			.privateRepository(true)
+			.build();
+		when(projectGroupRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupGithubRepositoryRepository.findAllByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(List.of(activeRepository));
+
+		service.persistGithubRepositorySetting(
+			10L,
+			5L,
+			List.of(),
+			List.of()
+		);
+
+		assertThat(activeRepository.getDeletedAt()).isNotNull();
+		verify(githubInstallationRepository, never()).findByIdAndDeletedAtIsNull(any());
+		verify(projectGroupGithubRepositoryRepository, never()).saveAll(any());
+	}
+
 	private ProjectGroup projectGroup() {
 		return ProjectGroup.builder()
 			.projectName("TeamPo")

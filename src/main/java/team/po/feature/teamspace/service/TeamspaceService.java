@@ -173,6 +173,15 @@ public class TeamspaceService {
 			projectGroupId,
 			user.getId()
 		);
+		if (request.githubRepositoryIds().isEmpty()) {
+			teamspacePersistenceTxService.persistGithubRepositorySetting(
+				projectGroupId,
+				context.githubInstallationId(),
+				request.githubRepositoryIds(),
+				List.of()
+			);
+			return;
+		}
 
 		List<GithubAppClient.GithubRepositoryInfo> repositories = githubAppClient
 			.getInstallationRepositories(context.installationId());

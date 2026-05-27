@@ -320,6 +320,24 @@ class TeamspaceServiceTest {
 	}
 
 	@Test
+	void setGithubRepositoryList_persistsEmptyRepositoryListWithoutGithubApiCall_whenRepositoryIdsAreEmpty() {
+		Users requester = user();
+		SetGithubRepositoryListRequest request = new SetGithubRepositoryListRequest(List.of());
+		when(teamspacePersistenceTxService.prepareGithubRepositorySetting(10L, 1L))
+			.thenReturn(new GithubRepositorySettingContext(5L, 12345L));
+
+		teamspaceService.setGithubRepositoryList(requester, 10L, request);
+
+		verify(githubAppClient, never()).getInstallationRepositories(any());
+		verify(teamspacePersistenceTxService).persistGithubRepositorySetting(
+			10L,
+			5L,
+			request.githubRepositoryIds(),
+			List.of()
+		);
+	}
+
+	@Test
 	void setGithubRepositoryList_propagatesPersistException_whenRepositoryIsNotAccessible() {
 		Users requester = user();
 		SetGithubRepositoryListRequest request = new SetGithubRepositoryListRequest(List.of(999L));

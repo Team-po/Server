@@ -177,7 +177,7 @@ class TeamspaceControllerTest {
 	}
 
 	@Test
-	void setGithubRepositoryList_returnsBadRequest_whenRepositoryIdsAreEmpty() throws Exception {
+	void setGithubRepositoryList_returnsOk_whenRepositoryIdsAreEmpty() throws Exception {
 		mockMvc.perform(put("/api/team-space/10/github/repositories")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
@@ -185,6 +185,12 @@ class TeamspaceControllerTest {
 					  "githubRepositoryIds": []
 					}
 					"""))
-			.andExpect(status().isBadRequest());
+			.andExpect(status().isOk());
+
+		verify(teamspaceService).setGithubRepositoryList(
+			mockUser,
+			10L,
+			new SetGithubRepositoryListRequest(List.of())
+		);
 	}
 }
