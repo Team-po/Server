@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,7 @@ import team.po.feature.projectgroup.dto.CreateProjectGroupMemberRequest;
 import team.po.feature.projectgroup.dto.CreateProjectGroupRequest;
 import team.po.feature.projectgroup.dto.CreateProjectGroupResponse;
 import team.po.feature.projectgroup.dto.GetMyProjectGroupResponse;
+import team.po.feature.projectgroup.event.ProjectGroupCreatedEvent;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.user.domain.Users;
@@ -35,6 +37,8 @@ public class ProjectGroupService {
 	private final ProjectGroupRepository projectGroupRepository;
 	private final ProjectGroupMemberRepository projectGroupMemberRepository;
 	private final UserRepository userRepository;
+
+	private final ApplicationEventPublisher eventPublisher;
 
 	@Transactional
 	public CreateProjectGroupResponse createProjectGroup(CreateProjectGroupRequest request) {
@@ -86,6 +90,11 @@ public class ProjectGroupService {
 		projectGroupMemberRepository.saveAllAndFlush(members);
 
 		log.info("팀 스페이스 생성 완료: projectGroupId={}, memberCount={}", projectGroup.getId(), members.size());
+
+		// 팀 스페이스 생성 완료 이벤트 발행
+		eventPublisher.publishEvent(
+			new ProjectGroupCreatedEvent(projectGroup.getId())
+		);
 
 		return new CreateProjectGroupResponse(
 			projectGroup.getId(),
