@@ -2,7 +2,7 @@ package team.po.feature.teamspace.dto;
 
 import java.util.List;
 
-public record GetAvailiableGithubRepositoryList(
+public record GetAvailableGithubRepositoryList(
 	List<RepositoryResponse> repositories
 ) {
 	public record RepositoryResponse(

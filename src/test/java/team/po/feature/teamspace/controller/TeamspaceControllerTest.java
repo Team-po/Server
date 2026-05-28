@@ -31,7 +31,7 @@ import team.po.common.jwt.UserPrincipal;
 import team.po.exception.CustomExceptionHandler;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
-import team.po.feature.teamspace.dto.GetAvailiableGithubRepositoryList;
+import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
@@ -124,16 +124,16 @@ class TeamspaceControllerTest {
 
 	@Test
 	void getGithubRepositoryList_returnsOk() throws Exception {
-		when(teamspaceService.getAvailiableGithubRepositoryList(mockUser, 10L))
-			.thenReturn(new GetAvailiableGithubRepositoryList(List.of(
-				new GetAvailiableGithubRepositoryList.RepositoryResponse(
+		when(teamspaceService.getAvailableGithubRepositoryList(mockUser, 10L))
+			.thenReturn(new GetAvailableGithubRepositoryList(List.of(
+				new GetAvailableGithubRepositoryList.RepositoryResponse(
 					100L,
 					"backend",
 					"student-team-org/backend"
 				)
 			)));
 
-		mockMvc.perform(get("/api/team-space/10/github/availiable-repositories"))
+		mockMvc.perform(get("/api/team-space/10/github/available-repositories"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.repositories[0].githubRepositoryId").value(100))
 			.andExpect(jsonPath("$.repositories[0].repoName").value("backend"))

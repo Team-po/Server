@@ -16,7 +16,7 @@ import lombok.RequiredArgsConstructor;
 import team.po.common.auth.LoginUser;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
-import team.po.feature.teamspace.dto.GetAvailiableGithubRepositoryList;
+import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
@@ -65,12 +65,12 @@ public class TeamspaceController {
 	}
 
 	@Operation(summary = "Github App 접근 가능 Repository 목록 조회")
-	@GetMapping("/{projectGroupId}/github/availiable-repositories")
-	public ResponseEntity<GetAvailiableGithubRepositoryList> getAvailiableGithubRepositoryList(
+	@GetMapping("/{projectGroupId}/github/available-repositories")
+	public ResponseEntity<GetAvailableGithubRepositoryList> getAvailableGithubRepositoryList(
 		@Parameter(hidden = true) @LoginUser Users user,
 		@PathVariable Long projectGroupId
 	) {
-		GetAvailiableGithubRepositoryList response = teamspaceService.getAvailiableGithubRepositoryList(user, projectGroupId);
+		GetAvailableGithubRepositoryList response = teamspaceService.getAvailableGithubRepositoryList(user, projectGroupId);
 
 		return ResponseEntity.ok(response);
 	}

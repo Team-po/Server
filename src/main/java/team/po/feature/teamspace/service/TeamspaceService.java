@@ -23,7 +23,7 @@ import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubRepository;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
-import team.po.feature.teamspace.dto.GetAvailiableGithubRepositoryList;
+import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
@@ -136,15 +136,15 @@ public class TeamspaceService {
 		saveProjectGroupGithubInstallation(projectGroupId, requesterUserId, githubInstallation);
 	}
 
-	public GetAvailiableGithubRepositoryList getAvailiableGithubRepositoryList(Users user, Long projectGroupId) {
+	public GetAvailableGithubRepositoryList getAvailableGithubRepositoryList(Users user, Long projectGroupId) {
 		validateProjectGroupHost(projectGroupId, user.getId());
 		ConnectedGithubInstallationIds installation = getConnectedGithubInstallationIds(projectGroupId);
 
 		List<GithubAppClient.GithubRepositoryInfo> repositories = githubAppClient
 			.getInstallationRepositories(installation.installationId());
 
-		return new GetAvailiableGithubRepositoryList(repositories.stream()
-			.map(repository -> new GetAvailiableGithubRepositoryList.RepositoryResponse(
+		return new GetAvailableGithubRepositoryList(repositories.stream()
+			.map(repository -> new GetAvailableGithubRepositoryList.RepositoryResponse(
 				repository.githubRepositoryId(),
 				repository.repoName(),
 				repository.fullName()

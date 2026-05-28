@@ -160,7 +160,7 @@ class TeamspaceServiceTest {
 	}
 
 	@Test
-	void getAvailiableGithubRepositoryList_returnsGithubRepositories_whenGithubInstallationIsConnected() {
+	void getAvailableGithubRepositoryList_returnsGithubRepositories_whenGithubInstallationIsConnected() {
 		Users requester = user();
 		ProjectGroupGithubInstallation githubConnection = ProjectGroupGithubInstallation.builder()
 			.projectGroup(projectGroup())
@@ -178,7 +178,7 @@ class TeamspaceServiceTest {
 				"student-team-org/frontend", "main", true)
 		));
 
-		var response = teamspaceService.getAvailiableGithubRepositoryList(requester, 10L);
+		var response = teamspaceService.getAvailableGithubRepositoryList(requester, 10L);
 
 		assertThat(response.repositories()).hasSize(2);
 		assertThat(response.repositories().get(0).githubRepositoryId()).isEqualTo(100L);
@@ -188,14 +188,14 @@ class TeamspaceServiceTest {
 	}
 
 	@Test
-	void getAvailiableGithubRepositoryList_throwsNotFound_whenGithubInstallationIsNotConnected() {
+	void getAvailableGithubRepositoryList_throwsNotFound_whenGithubInstallationIsNotConnected() {
 		Users requester = user();
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
 			.thenReturn(true);
 		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
 			.thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> teamspaceService.getAvailiableGithubRepositoryList(requester, 10L))
+		assertThatThrownBy(() -> teamspaceService.getAvailableGithubRepositoryList(requester, 10L))
 			.isInstanceOf(ApplicationException.class)
 			.extracting("code")
 			.isEqualTo(ErrorCode.GITHUB_APP_INSTALLATION_NOT_CONNECTED.getCode());
@@ -204,12 +204,12 @@ class TeamspaceServiceTest {
 	}
 
 	@Test
-	void getAvailiableGithubRepositoryList_throwsForbidden_whenRequesterIsNotProjectGroupHost() {
+	void getAvailableGithubRepositoryList_throwsForbidden_whenRequesterIsNotProjectGroupHost() {
 		Users requester = user();
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
 			.thenReturn(false);
 
-		assertThatThrownBy(() -> teamspaceService.getAvailiableGithubRepositoryList(requester, 10L))
+		assertThatThrownBy(() -> teamspaceService.getAvailableGithubRepositoryList(requester, 10L))
 			.isInstanceOf(ApplicationException.class)
 			.extracting("code")
 			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
