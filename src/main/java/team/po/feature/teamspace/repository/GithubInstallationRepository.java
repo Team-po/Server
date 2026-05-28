@@ -8,4 +8,6 @@ import team.po.feature.teamspace.domain.GithubInstallation;
 
 public interface GithubInstallationRepository extends JpaRepository<GithubInstallation, Long> {
 	Optional<GithubInstallation> findByInstallationIdAndDeletedAtIsNull(Long installationId);
+
+	Optional<GithubInstallation> findByIdAndDeletedAtIsNull(Long id);
 }

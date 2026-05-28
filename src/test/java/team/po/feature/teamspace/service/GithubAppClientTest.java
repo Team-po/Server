@@ -131,6 +131,75 @@ class GithubAppClientTest {
 	}
 
 	@Test
+	void getInstallationRepositories_returnsAccessibleRepositories() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/12345/access_tokens", exchange -> {
+			assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+			assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isEqualTo("Bearer github-app-jwt");
+			assertThat(exchange.getRequestHeaders().getFirst("Accept")).isEqualTo("application/vnd.github+json");
+			assertThat(exchange.getRequestHeaders().getFirst("X-GitHub-Api-Version")).isEqualTo("2022-11-28");
+			writeResponse(exchange, 201, """
+				{
+				  "token": "github-installation-token"
+				}
+				""");
+		});
+		server.createContext("/installation/repositories", exchange -> {
+			assertThat(exchange.getRequestHeaders().getFirst("Authorization"))
+				.isEqualTo("Bearer github-installation-token");
+			assertThat(exchange.getRequestHeaders().getFirst("Accept")).isEqualTo("application/vnd.github+json");
+			assertThat(exchange.getRequestHeaders().getFirst("X-GitHub-Api-Version")).isEqualTo("2022-11-28");
+			assertThat(exchange.getRequestURI().getQuery()).contains("per_page=100", "page=1");
+			writeResponse(exchange, 200, """
+				{
+				  "repositories": [
+				    {
+				      "id": 123,
+				      "name": "backend",
+				      "full_name": "student-team-org/backend",
+				      "private": true,
+				      "default_branch": "main",
+				      "owner": {
+				        "login": "student-team-org"
+				      }
+				    },
+				    {
+				      "id": 456,
+				      "name": "frontend",
+				      "full_name": "student-team-org/frontend",
+				      "private": false,
+				      "default_branch": "develop",
+				      "owner": {
+				        "login": "student-team-org"
+				      }
+				    }
+				  ]
+				}
+				""");
+		});
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			var repositories = client.getInstallationRepositories(12345L);
+
+			assertThat(repositories).hasSize(2);
+			assertThat(repositories.get(0).githubRepositoryId()).isEqualTo(123L);
+			assertThat(repositories.get(0).owner()).isEqualTo("student-team-org");
+			assertThat(repositories.get(0).repoName()).isEqualTo("backend");
+			assertThat(repositories.get(0).fullName()).isEqualTo("student-team-org/backend");
+			assertThat(repositories.get(0).defaultBranch()).isEqualTo("main");
+			assertThat(repositories.get(0).privateRepository()).isTrue();
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
 	void validateOrganizationAdmin_throwsForbiddenWhenMembershipIsNotAdmin() throws Exception {
 		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
 

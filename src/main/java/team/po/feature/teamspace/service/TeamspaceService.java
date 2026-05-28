@@ -1,7 +1,7 @@
 package team.po.feature.teamspace.service;
 
-import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -20,9 +20,14 @@ import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.teamspace.domain.GithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
+import team.po.feature.teamspace.domain.ProjectGroupGithubRepository;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
+import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
+import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
+import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
@@ -52,6 +57,7 @@ public class TeamspaceService {
 	private final GithubAppProperties githubAppProperties;
 	private final GithubAppClient githubAppClient;
 	private final GithubTokenEncryptor githubTokenEncryptor;
+	private final TeamspacePersistenceTxService teamspacePersistenceTxService;
 
 	@Transactional(readOnly = true)
 	public GetGithubInstallationStatusResponse getGithubInstallationStatus(Long projectGroupId, Long requesterUserId) {
@@ -130,6 +136,64 @@ public class TeamspaceService {
 		saveProjectGroupGithubInstallation(projectGroupId, requesterUserId, githubInstallation);
 	}
 
+	public GetAvailableGithubRepositoryList getAvailableGithubRepositoryList(Users user, Long projectGroupId) {
+		validateProjectGroupHost(projectGroupId, user.getId());
+		ConnectedGithubInstallationIds installation = getConnectedGithubInstallationIds(projectGroupId);
+
+		List<GithubAppClient.GithubRepositoryInfo> repositories = githubAppClient
+			.getInstallationRepositories(installation.installationId());
+
+		return new GetAvailableGithubRepositoryList(repositories.stream()
+			.map(repository -> new GetAvailableGithubRepositoryList.RepositoryResponse(
+				repository.githubRepositoryId(),
+				repository.repoName(),
+				repository.fullName()
+			))
+			.toList());
+	}
+
+	@Transactional(readOnly = true)
+	public GetGithubRepositoryListResponse getGithubRepositoryList(Users user, Long projectGroupId) {
+		validateProjectGroupMember(projectGroupId, user.getId());
+
+		List<ProjectGroupGithubRepository> repositories = projectGroupGithubRepositoryRepository
+			.findAllByProjectGroup_IdAndDeletedAtIsNull(projectGroupId);
+
+		return new GetGithubRepositoryListResponse(repositories.stream()
+			.map(repository -> new GetGithubRepositoryListResponse.RepositoryResponse(
+				repository.getGithubRepositoryId(),
+				repository.getRepoName(),
+				repository.getFullName()
+			))
+			.toList());
+	}
+
+	public void setGithubRepositoryList(Users user, Long projectGroupId, SetGithubRepositoryListRequest request) {
+		GithubRepositorySettingContext context = teamspacePersistenceTxService.prepareGithubRepositorySetting(
+			projectGroupId,
+			user.getId()
+		);
+		if (request.githubRepositoryIds().isEmpty()) {
+			teamspacePersistenceTxService.persistGithubRepositorySetting(
+				projectGroupId,
+				context.githubInstallationId(),
+				request.githubRepositoryIds(),
+				List.of()
+			);
+			return;
+		}
+
+		List<GithubAppClient.GithubRepositoryInfo> repositories = githubAppClient
+			.getInstallationRepositories(context.installationId());
+
+		teamspacePersistenceTxService.persistGithubRepositorySetting(
+			projectGroupId,
+			context.githubInstallationId(),
+			request.githubRepositoryIds(),
+			repositories
+		);
+	}
+
 	private void validateRequesterCanConnectOrganization(Long requesterUserId, String organizationLogin) {
 		GithubAccount githubAccount = githubAccountRepository.findByUserIdAndDeletedAtIsNull(requesterUserId)
 			.orElseThrow(() -> new ApplicationException(
@@ -145,6 +209,21 @@ public class TeamspaceService {
 		}
 
 		githubAppClient.validateOrganizationAdmin(accessToken, organizationLogin);
+	}
+
+	private ConnectedGithubInstallationIds getConnectedGithubInstallationIds(Long projectGroupId) {
+		ProjectGroupGithubInstallation connection = projectGroupGithubInstallationRepository
+			.findByProjectGroup_IdAndDeletedAtIsNull(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.GITHUB_APP_INSTALLATION_NOT_CONNECTED,
+				"Github Organization이 연결되지 않은 팀 스페이스입니다."
+			));
+
+		GithubInstallation installation = connection.getGithubInstallation();
+		return new ConnectedGithubInstallationIds(
+			installation.getId(),
+			installation.getInstallationId()
+		);
 	}
 
 	private void validateGithubAppInstallationNotConnected(Long projectGroupId) {
@@ -305,5 +384,11 @@ public class TeamspaceService {
 				return null;
 			}
 		}
+	}
+
+	private record ConnectedGithubInstallationIds(
+		Long githubInstallationId,
+		Long installationId
+	) {
 	}
 }

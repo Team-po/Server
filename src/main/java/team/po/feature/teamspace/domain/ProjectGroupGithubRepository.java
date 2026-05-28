@@ -82,4 +82,18 @@ public class ProjectGroupGithubRepository {
 	public void softDelete(Instant deletedAt) {
 		this.deletedAt = deletedAt;
 	}
+
+	public void updateRepositoryInfo(
+		String owner,
+		String repoName,
+		String fullName,
+		String defaultBranch,
+		boolean privateRepository
+	) {
+		this.owner = owner;
+		this.repoName = repoName;
+		this.fullName = fullName;
+		this.defaultBranch = defaultBranch;
+		this.privateRepository = privateRepository;
+	}
 }

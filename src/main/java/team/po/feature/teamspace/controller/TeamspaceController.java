@@ -4,6 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,7 +16,10 @@ import lombok.RequiredArgsConstructor;
 import team.po.common.auth.LoginUser;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
+import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
+import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.service.TeamspaceService;
 import team.po.feature.user.domain.Users;
 
@@ -58,5 +62,39 @@ public class TeamspaceController {
 
 		teamspaceService.completeGithubAppInstallation(request, projectGroupId, user.getId());
 		return ResponseEntity.ok().build();
+	}
+
+	@Operation(summary = "Github App 접근 가능 Repository 목록 조회")
+	@GetMapping("/{projectGroupId}/github/available-repositories")
+	public ResponseEntity<GetAvailableGithubRepositoryList> getAvailableGithubRepositoryList(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId
+	) {
+		GetAvailableGithubRepositoryList response = teamspaceService.getAvailableGithubRepositoryList(user, projectGroupId);
+
+		return ResponseEntity.ok(response);
+	}
+
+	@Operation(summary = "Repository 목록 설정 API")
+	@PutMapping("/{projectGroupId}/github/repositories")
+	public ResponseEntity<Void> setGithubRepositoryList(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId,
+		@Valid @RequestBody SetGithubRepositoryListRequest request
+	) {
+		teamspaceService.setGithubRepositoryList(user, projectGroupId, request);
+
+		return ResponseEntity.ok().build();
+	}
+
+	@Operation(summary = "등록된 Repository 목록 조회 API")
+	@GetMapping("/{projectGroupId}/github/repositories")
+	public ResponseEntity<GetGithubRepositoryListResponse> getGithubRepositoryList(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId
+	) {
+		GetGithubRepositoryListResponse response = teamspaceService.getGithubRepositoryList(user, projectGroupId);
+
+		return ResponseEntity.ok(response);
 	}
 }
