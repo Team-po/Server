@@ -190,19 +190,25 @@ public class MatchService {
 
 	@Transactional
 	public void accept(Users loginUser) {
-		// 0. 현재 활성 매칭 멤버 조회
-		MatchingMember me = matchingMemberRepository
+		// 0. 현재 활성 매칭 멤버 조회 (세션 ID 확보용)
+		MatchingMember preMe = matchingMemberRepository
 			.findCurrentActiveByUserId(loginUser.getId())
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
 		// Session: PESSIMISTIC_LOCK
 		MatchingSession session = matchingSessionRepository
-			.findByIdWithLock(me.getMatchingSession().getId())
+			.findByIdWithLock(preMe.getMatchingSession().getId())
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
 		// 1. 세션 전체 멤버 조회
 		List<MatchingMember> members = matchingMemberRepository
 			.findAllActiveBySessionIdWithFetch(session.getId());
+
+		// 락 대기 중 cancel이 커밋됐을 수 있으므로 me를 재조회
+		MatchingMember me = members.stream()
+			.filter(m -> m.getUser().getId().equals(loginUser.getId()))
+			.findFirst()
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
 		// 2. 호스트 여부 확인 - 호스트는 수락할 수 없음
 		validateNotHost(me);
@@ -230,19 +236,25 @@ public class MatchService {
 
 	@Transactional
 	public void reject(Users loginUser) {
-		// 0. 현재 활성 매칭 멤버 조회
-		MatchingMember me = matchingMemberRepository
+		// 0. 현재 활성 매칭 멤버 조회 (세션 ID 확보용)
+		MatchingMember preMe = matchingMemberRepository
 			.findCurrentActiveByUserId(loginUser.getId())
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
 		// Session: PESSIMISTIC_LOCK
 		MatchingSession session = matchingSessionRepository
-			.findByIdWithLock(me.getMatchingSession().getId())
+			.findByIdWithLock(preMe.getMatchingSession().getId())
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
 		// 1. 세션 전체 멤버 조회
 		List<MatchingMember> members = matchingMemberRepository
 			.findAllActiveBySessionIdWithFetch(session.getId());
+
+		// 락 대기 중 cancel이 커밋됐을 수 있으므로 me를 재조회
+		MatchingMember me = members.stream()
+			.filter(m -> m.getUser().getId().equals(loginUser.getId()))
+			.findFirst()
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
 		// 2. 호스트 여부 조회: 호스트는 거절 불가
 		validateNotHost(me);
