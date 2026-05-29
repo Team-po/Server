@@ -32,12 +32,11 @@ public class MatchController {
 	}
 
 	@Operation(summary = "매칭 프로젝트 정보 조회 API")
-	@GetMapping("/{matchId}/project")
+	@GetMapping("/project")
 	public ResponseEntity<MatchProjectResponse> getMatchProject(
-		@PathVariable Long matchId,
 		@Parameter(hidden = true) @LoginUser Users user
 	) {
-		MatchProjectResponse response = matchService.getMatchProject(matchId, user);
+		MatchProjectResponse response = matchService.getMatchProject(user);
 		return ResponseEntity.ok().body(response);
 	}
 

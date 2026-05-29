@@ -105,42 +105,31 @@ class MatchControllerTest {
 
 	@Test
 	void getMatchProject_returnsOk() throws Exception {
-		MatchProjectResponse response = new MatchProjectResponse(42L, "팀포", "설명", "MVP");
-		when(matchService.getMatchProject(eq(42L), any(Users.class))).thenReturn(response);
+		MatchProjectResponse response = new MatchProjectResponse("팀포", "설명", "MVP");
+		when(matchService.getMatchProject(any(Users.class))).thenReturn(response);
 
-		mockMvc.perform(get("/api/match/42/project"))
+		mockMvc.perform(get("/api/match/project"))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.matchId").value(42))
 			.andExpect(jsonPath("$.projectTitle").value("팀포"));
 	}
 
 	@Test
 	void getMatchProject_returnsNotFound_whenSessionNotExists() throws Exception {
 		doThrow(new ApplicationException(ErrorCode.MATCH_NOT_FOUND))
-			.when(matchService).getMatchProject(eq(42L), any(Users.class));
+			.when(matchService).getMatchProject(any(Users.class));
 
-		mockMvc.perform(get("/api/match/42/project"))
+		mockMvc.perform(get("/api/match/project"))
 			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("MATCH_NOT_FOUND"))
 			.andExpect(jsonPath("$.message").value("이미 완료되었거나 존재하지 않는 매칭 세션입니다."));
 	}
 
 	@Test
-	void getMatchProject_returnsBadRequest_whenNotMember() throws Exception {
-		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
-			.when(matchService).getMatchProject(eq(42L), any(Users.class));
-
-		mockMvc.perform(get("/api/match/42/project"))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value("MATCH_ACCESS_DENIED"));
-	}
-
-	@Test
 	void getMatchProject_returnsInternalServerError_whenDataIntegrity() throws Exception {
 		doThrow(new ApplicationException(ErrorCode.MATCH_DATA_ERROR))
-			.when(matchService).getMatchProject(eq(42L), any(Users.class));
+			.when(matchService).getMatchProject(any(Users.class));
 
-		mockMvc.perform(get("/api/match/42/project"))
+		mockMvc.perform(get("/api/match/project"))
 			.andExpect(status().isInternalServerError())
 			.andExpect(jsonPath("$.code").value("MATCH_DATA_ERROR"));
 	}
