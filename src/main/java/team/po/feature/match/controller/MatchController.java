@@ -23,12 +23,11 @@ public class MatchController {
 	private final MatchService matchService;
 
 	@Operation(summary = "매칭 멤버 조회 API")
-	@GetMapping("/{matchId}/members")
+	@GetMapping("/members")
 	public ResponseEntity<MatchMemberResponse> getMatchMembers(
-		@PathVariable Long matchId,
 		@Parameter(hidden = true) @LoginUser Users user
 	) {
-		MatchMemberResponse response = matchService.getMatchMembers(matchId, user);
+		MatchMemberResponse response = matchService.getMatchMembers(user);
 		return ResponseEntity.ok().body(response);
 	}
 

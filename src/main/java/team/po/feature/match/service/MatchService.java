@@ -124,14 +124,15 @@ public class MatchService {
 
 	// 매칭 세션 멤버 목록 조회
 	@Transactional(readOnly = true)
-	public MatchMemberResponse getMatchMembers(Long matchId, Users loginUser) {
-		// 0. 이미 완료된 매칭 세션인지 검증
-		MatchingSession session = matchingSessionRepository
-			.findByIdAndDeletedAtIsNull(matchId)
+	public MatchMemberResponse getMatchMembers(Users loginUser) {
+		// 0. 현재 활성 매칭 멤버 조회
+		MatchingMember me = matchingMemberRepository
+			.findCurrentActiveByUserId(loginUser.getId())
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
-		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
-		List<MatchingMember> members = validateMatchAccessAndGetMembers(session, loginUser.getId());
+		// 1. 세션 전체 멤버 조회
+		List<MatchingMember> members = matchingMemberRepository
+			.findAllActiveBySessionIdWithFetch(me.getMatchingSession().getId());
 
 		// 2. MatchingMember dto
 		List<MatchMemberResponse.MemberDto> memberDtos = members.stream()
@@ -147,7 +148,7 @@ public class MatchService {
 			))
 			.toList();
 
-		return new MatchMemberResponse(matchId, memberDtos);
+		return new MatchMemberResponse(memberDtos);
 	}
 
 	// 매칭 세션 프로젝트 정보 조회

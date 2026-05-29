@@ -79,39 +79,26 @@ class MatchControllerTest {
 	@Test
 	void getMatchMembers_returnsOk() throws Exception {
 		MatchMemberResponse response = new MatchMemberResponse(
-			42L,
 			List.of(new MatchMemberResponse.MemberDto(
 				1L, "tester", Role.BACKEND, 1, 50, null, true, true
 			))
 		);
-		when(matchService.getMatchMembers(eq(42L), any(Users.class))).thenReturn(response);
+		when(matchService.getMatchMembers(any(Users.class))).thenReturn(response);
 
-		mockMvc.perform(get("/api/match/42/members"))
+		mockMvc.perform(get("/api/match/members"))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.matchId").value(42))
 			.andExpect(jsonPath("$.members[0].nickname").value("tester"));
 	}
 
 	@Test
 	void getMatchMembers_returnsNotFound_whenSessionNotExists() throws Exception {
 		doThrow(new ApplicationException(ErrorCode.MATCH_NOT_FOUND))
-			.when(matchService).getMatchMembers(eq(42L), any(Users.class));
+			.when(matchService).getMatchMembers(any(Users.class));
 
-		mockMvc.perform(get("/api/match/42/members"))
+		mockMvc.perform(get("/api/match/members"))
 			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("MATCH_NOT_FOUND"))
 			.andExpect(jsonPath("$.message").value("이미 완료되었거나 존재하지 않는 매칭 세션입니다."));
-	}
-
-	@Test
-	void getMatchMembers_returnsForbidden_whenNotMember() throws Exception {
-		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
-			.when(matchService).getMatchMembers(eq(42L), any(Users.class));
-
-		// MATCH_ACCESS_DENIED는 BAD_REQUEST로 정의됨
-		mockMvc.perform(get("/api/match/42/members"))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value("MATCH_ACCESS_DENIED"));
 	}
 
 	// ===== getMatchProject =====

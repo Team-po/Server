@@ -104,38 +104,22 @@ class MatchServiceTest {
 		ReflectionTestUtils.setField(hostPr, "id", 1L);
 		MatchingMember hostMember = createHostMember(session, hostPr);
 
-		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findCurrentActiveByUserId(1L)).thenReturn(Optional.of(hostMember));
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L)).thenReturn(List.of(hostMember));
 
-		MatchMemberResponse response = matchService.getMatchMembers(42L, loginUser);
+		MatchMemberResponse response = matchService.getMatchMembers(loginUser);
 
-		assertThat(response.matchId()).isEqualTo(42L);
 		assertThat(response.members()).hasSize(1);
 		assertThat(response.members().get(0).nickname()).isEqualTo("tester1");
 		assertThat(response.members().get(0).isHost()).isTrue();
 	}
 
 	@Test
-	void getMatchMembers_throwsNotFound_whenSessionNotExists() {
+	void getMatchMembers_throwsNotFound_whenNoActiveSession() {
 		Users loginUser = createUser(1L);
-		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.empty());
+		when(matchingMemberRepository.findCurrentActiveByUserId(1L)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> matchService.getMatchMembers(42L, loginUser))
-			.isInstanceOf(ApplicationException.class);
-	}
-
-	@Test
-	void getMatchMembers_throwsForbidden_whenNotMember() {
-		Users loginUser = createUser(2L);
-		Users otherUser = createUser(1L);
-		MatchingSession session = createSession(42L);
-		ProjectRequest hostPr = createHostRequest(otherUser);
-		MatchingMember hostMember = createHostMember(session, hostPr);
-
-		when(matchingSessionRepository.findByIdAndDeletedAtIsNull(42L)).thenReturn(Optional.of(session));
-		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L)).thenReturn(List.of(hostMember));
-
-		assertThatThrownBy(() -> matchService.getMatchMembers(42L, loginUser))
+		assertThatThrownBy(() -> matchService.getMatchMembers(loginUser))
 			.isInstanceOf(ApplicationException.class);
 	}
 
