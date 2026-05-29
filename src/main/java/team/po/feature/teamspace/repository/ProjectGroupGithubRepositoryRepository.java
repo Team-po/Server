@@ -1,6 +1,7 @@
 package team.po.feature.teamspace.repository;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -10,4 +11,9 @@ public interface ProjectGroupGithubRepositoryRepository extends JpaRepository<Pr
 	long countByProjectGroup_IdAndDeletedAtIsNull(Long projectGroupId);
 
 	List<ProjectGroupGithubRepository> findAllByProjectGroup_IdAndDeletedAtIsNull(Long projectGroupId);
+
+	Optional<ProjectGroupGithubRepository> findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+		Long projectGroupId,
+		Long githubRepositoryId
+	);
 }

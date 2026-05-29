@@ -193,4 +193,14 @@ class TeamspaceControllerTest {
 			new SetGithubRepositoryListRequest(List.of())
 		);
 	}
+
+	@Test
+	void syncGithubPullRequestContributions_returnsOk() throws Exception {
+		mockMvc.perform(post(
+				"/api/team-space/10/github/repositories/100/pull-request-contributions/sync"
+			))
+			.andExpect(status().isOk());
+
+		verify(teamspaceService).syncGithubPullRequestContributions(mockUser, 10L, 100L);
+	}
 }

@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -38,6 +39,8 @@ import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
+import team.po.feature.teamspace.dto.GithubPullRequestInfo;
+import team.po.feature.teamspace.dto.GithubPullRequestSummary;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
@@ -358,6 +361,138 @@ class TeamspaceServiceTest {
 			.isEqualTo(ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE.getCode());
 
 		verify(githubAppClient).getInstallationRepositories(12345L);
+	}
+
+	@Test
+	void syncGithubPullRequestContributions_fetchesMergedPullRequestDetailsAndPersists() {
+		ProjectGroupGithubRepository repository = ProjectGroupGithubRepository.builder()
+			.projectGroup(projectGroup())
+			.githubInstallation(githubInstallation())
+			.githubRepositoryId(100L)
+			.owner("student-team-org")
+			.repoName("backend")
+			.fullName("student-team-org/backend")
+			.defaultBranch("main")
+			.privateRepository(true)
+			.build();
+		Instant mergedAt = Instant.parse("2026-05-02T10:00:00Z");
+		GithubPullRequestSummary mergedPullRequest = new GithubPullRequestSummary(
+			1001L,
+			10L,
+			"Add contribution sync",
+			501L,
+			"dev-a",
+			"closed",
+			mergedAt,
+			"https://github.com/student-team-org/backend/pull/10"
+		);
+		GithubPullRequestSummary closedUnmergedPullRequest = new GithubPullRequestSummary(
+			1002L,
+			11L,
+			"Close stale PR",
+			502L,
+			"dev-b",
+			"closed",
+			null,
+			"https://github.com/student-team-org/backend/pull/11"
+		);
+		GithubPullRequestInfo pullRequestDetail = new GithubPullRequestInfo(
+			1001L,
+			10L,
+			"Add contribution sync",
+			501L,
+			"dev-a",
+			"closed",
+			mergedAt,
+			120,
+			15,
+			8,
+			"https://github.com/student-team-org/backend/pull/10"
+		);
+		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+			10L,
+			100L
+		)).thenReturn(Optional.of(repository));
+		when(githubAppClient.getClosedPullRequests(12345L, "student-team-org", "backend"))
+			.thenReturn(List.of(mergedPullRequest, closedUnmergedPullRequest));
+		when(githubAppClient.getPullRequest(12345L, "student-team-org", "backend", 10L))
+			.thenReturn(pullRequestDetail);
+
+		teamspaceService.syncGithubPullRequestContributions(10L, 100L);
+
+		verify(githubAppClient).getClosedPullRequests(12345L, "student-team-org", "backend");
+		verify(githubAppClient).getPullRequest(12345L, "student-team-org", "backend", 10L);
+		verify(githubAppClient, never()).getPullRequest(12345L, "student-team-org", "backend", 11L);
+		verify(teamspacePersistenceTxService).persistGithubPullRequestContributions(
+			10L,
+			100L,
+			List.of(pullRequestDetail)
+		);
+	}
+
+	@Test
+	void syncGithubPullRequestContributions_throwsBadRequest_whenRepositoryIsNotRegistered() {
+		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+			10L,
+			999L
+		)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> teamspaceService.syncGithubPullRequestContributions(10L, 999L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE.getCode());
+
+		verify(githubAppClient, never()).getClosedPullRequests(any(), anyString(), anyString());
+		verify(teamspacePersistenceTxService, never()).persistGithubPullRequestContributions(any(), any(), any());
+	}
+
+	@Test
+	void syncGithubPullRequestContributions_withUser_validatesHostAndSyncsRepository() {
+		Users requester = user();
+		ProjectGroupGithubRepository repository = ProjectGroupGithubRepository.builder()
+			.projectGroup(projectGroup())
+			.githubInstallation(githubInstallation())
+			.githubRepositoryId(100L)
+			.owner("student-team-org")
+			.repoName("backend")
+			.fullName("student-team-org/backend")
+			.defaultBranch("main")
+			.privateRepository(true)
+			.build();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
+			.thenReturn(true);
+		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+			10L,
+			100L
+		)).thenReturn(Optional.of(repository));
+		when(githubAppClient.getClosedPullRequests(12345L, "student-team-org", "backend"))
+			.thenReturn(List.of());
+
+		teamspaceService.syncGithubPullRequestContributions(requester, 10L, 100L);
+
+		verify(projectGroupMemberRepository).existsByProjectGroup_IdAndUser_IdAndGroupRole(
+			10L,
+			1L,
+			GroupRole.HOST
+		);
+		verify(teamspacePersistenceTxService).persistGithubPullRequestContributions(10L, 100L, List.of());
+	}
+
+	@Test
+	void syncGithubPullRequestContributions_withUser_throwsForbidden_whenRequesterIsNotHost() {
+		Users requester = user();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
+			.thenReturn(false);
+
+		assertThatThrownBy(() -> teamspaceService.syncGithubPullRequestContributions(requester, 10L, 100L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
+
+		verify(projectGroupGithubRepositoryRepository, never())
+			.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(any(), any());
+		verify(githubAppClient, never()).getClosedPullRequests(any(), anyString(), anyString());
+		verify(teamspacePersistenceTxService, never()).persistGithubPullRequestContributions(any(), any(), any());
 	}
 
 	@Test

@@ -97,4 +97,16 @@ public class TeamspaceController {
 
 		return ResponseEntity.ok(response);
 	}
+
+	@Operation(summary = "Repository Pull Request 기여도 수동 동기화 API")
+	@PostMapping("/{projectGroupId}/github/repositories/{githubRepositoryId}/pull-request-contributions/sync")
+	public ResponseEntity<Void> syncGithubPullRequestContributions(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId,
+		@PathVariable Long githubRepositoryId
+	) {
+		teamspaceService.syncGithubPullRequestContributions(user, projectGroupId, githubRepositoryId);
+
+		return ResponseEntity.ok().build();
+	}
 }

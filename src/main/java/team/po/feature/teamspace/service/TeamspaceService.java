@@ -27,6 +27,8 @@ import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
+import team.po.feature.teamspace.dto.GithubPullRequestInfo;
+import team.po.feature.teamspace.dto.GithubPullRequestSummary;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
@@ -191,6 +193,47 @@ public class TeamspaceService {
 			context.githubInstallationId(),
 			request.githubRepositoryIds(),
 			repositories
+		);
+	}
+
+	public void syncGithubPullRequestContributions(Long projectGroupId, Long githubRepositoryId) {
+		ProjectGroupGithubRepository repository = projectGroupGithubRepositoryRepository
+			.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(projectGroupId, githubRepositoryId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE,
+				"팀 스페이스에 등록된 Github Repository가 아닙니다."
+			));
+
+		Long installationId = repository.getGithubInstallation().getInstallationId();
+		List<GithubPullRequestInfo> mergedPullRequests = githubAppClient
+			.getClosedPullRequests(installationId, repository.getOwner(), repository.getRepoName())
+			.stream()
+			.filter(pullRequest -> pullRequest.mergedAt() != null)
+			.map(pullRequest -> getPullRequestDetail(installationId, repository, pullRequest))
+			.toList();
+
+		teamspacePersistenceTxService.persistGithubPullRequestContributions(
+			projectGroupId,
+			githubRepositoryId,
+			mergedPullRequests
+		);
+	}
+
+	public void syncGithubPullRequestContributions(Users user, Long projectGroupId, Long githubRepositoryId) {
+		validateProjectGroupHost(projectGroupId, user.getId());
+		syncGithubPullRequestContributions(projectGroupId, githubRepositoryId);
+	}
+
+	private GithubPullRequestInfo getPullRequestDetail(
+		Long installationId,
+		ProjectGroupGithubRepository repository,
+		GithubPullRequestSummary pullRequest
+	) {
+		return githubAppClient.getPullRequest(
+			installationId,
+			repository.getOwner(),
+			repository.getRepoName(),
+			pullRequest.pullNumber()
 		);
 	}
 
