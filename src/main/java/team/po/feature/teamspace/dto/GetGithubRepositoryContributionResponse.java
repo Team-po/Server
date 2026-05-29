@@ -9,6 +9,7 @@ public record GetGithubRepositoryContributionResponse(
 	List<ContributorResponse> contributors
 ) {
 	public record ContributorResponse(
+		Long userId,
 		Long githubUserId,
 		String githubUsername,
 		long mergedPrCount,

@@ -292,7 +292,7 @@ class TeamspaceServiceTest {
 			.privateRepository(true)
 			.build();
 		GithubPullRequestContributionRepository.GithubRepositoryContributionSummary summary =
-			contributionSummary(501L, "dev-a", 3L, 2L, 120L, 15L, 8L);
+			contributionSummary(1L, 501L, "dev-a", 3L, 2L, 120L, 15L, 8L);
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
 		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
 			10L,
@@ -307,6 +307,7 @@ class TeamspaceServiceTest {
 		assertThat(response.repoName()).isEqualTo("backend");
 		assertThat(response.fullName()).isEqualTo("student-team-org/backend");
 		assertThat(response.contributors()).hasSize(1);
+		assertThat(response.contributors().get(0).userId()).isEqualTo(1L);
 		assertThat(response.contributors().get(0).githubUserId()).isEqualTo(501L);
 		assertThat(response.contributors().get(0).githubUsername()).isEqualTo("dev-a");
 		assertThat(response.contributors().get(0).mergedPrCount()).isEqualTo(3L);
@@ -892,6 +893,7 @@ class TeamspaceServiceTest {
 	}
 
 	private GithubPullRequestContributionRepository.GithubRepositoryContributionSummary contributionSummary(
+		Long userId,
 		Long githubUserId,
 		String githubUsername,
 		long mergedPrCount,
@@ -901,6 +903,11 @@ class TeamspaceServiceTest {
 		long changedFiles
 	) {
 		return new GithubPullRequestContributionRepository.GithubRepositoryContributionSummary() {
+			@Override
+			public Long getUserId() {
+				return userId;
+			}
+
 			@Override
 			public Long getGithubUserId() {
 				return githubUserId;

@@ -203,6 +203,7 @@ class TeamspaceControllerTest {
 				"backend",
 				"student-team-org/backend",
 				List.of(new GetGithubRepositoryContributionResponse.ContributorResponse(
+					1L,
 					501L,
 					"dev-a",
 					3L,
@@ -219,6 +220,7 @@ class TeamspaceControllerTest {
 			.andExpect(jsonPath("$.githubRepositoryId").value(100))
 			.andExpect(jsonPath("$.repoName").value("backend"))
 			.andExpect(jsonPath("$.fullName").value("student-team-org/backend"))
+			.andExpect(jsonPath("$.contributors[0].userId").value(1))
 			.andExpect(jsonPath("$.contributors[0].githubUserId").value(501))
 			.andExpect(jsonPath("$.contributors[0].githubUsername").value("dev-a"))
 			.andExpect(jsonPath("$.contributors[0].mergedPrCount").value(3))

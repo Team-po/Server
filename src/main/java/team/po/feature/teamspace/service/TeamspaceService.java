@@ -192,6 +192,7 @@ public class TeamspaceService {
 				.findContributionSummaries(projectGroupId, githubRepositoryId)
 				.stream()
 				.map(summary -> new GetGithubRepositoryContributionResponse.ContributorResponse(
+					summary.getUserId(),
 					summary.getGithubUserId(),
 					summary.getGithubUsername(),
 					summary.getMergedPrCount(),
