@@ -107,7 +107,7 @@ class DevGuideControllerTest {
 		DevGuideRegenerateResponse response =
 			new DevGuideRegenerateResponse(content, DevGuideGenerationType.MANUAL, 2);
 
-		when(devGuideService.regenerate(1L, 1L)).thenReturn(response);
+		when(devGuideService.regenerate(1L, 1L, null)).thenReturn(response);
 
 		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))
 			.andExpect(status().isOk())
@@ -122,7 +122,7 @@ class DevGuideControllerTest {
 		DevGuideRegenerateResponse response =
 			new DevGuideRegenerateResponse(content, DevGuideGenerationType.RECOVERY, 3);
 
-		when(devGuideService.regenerate(1L, 1L)).thenReturn(response);
+		when(devGuideService.regenerate(1L, 1L, null)).thenReturn(response);
 
 		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))
 			.andExpect(status().isOk())
@@ -132,7 +132,7 @@ class DevGuideControllerTest {
 
 	@Test
 	void regenerateDevGuide_returnsConflict_whenAlreadyGenerating() throws Exception {
-		when(devGuideService.regenerate(1L, 1L))
+		when(devGuideService.regenerate(1L, 1L, null))
 			.thenThrow(new ApplicationException(ErrorCode.DEV_GUIDE_GENERATING));
 
 		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))
@@ -141,7 +141,7 @@ class DevGuideControllerTest {
 
 	@Test
 	void regenerateDevGuide_returnsTooManyRequests_whenLimitExceeded() throws Exception {
-		when(devGuideService.regenerate(1L, 1L))
+		when(devGuideService.regenerate(1L, 1L, null))
 			.thenThrow(new ApplicationException(ErrorCode.DEV_GUIDE_REGENERATION_LIMIT_EXCEEDED));
 
 		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))

@@ -65,7 +65,7 @@ public class DevGuideService {
 	}
 
 	// 재생성 API — 트랜잭션 없이 Gemini API 호출
-	public DevGuideRegenerateResponse regenerate(Long projectGroupId, Long userId) {
+	public DevGuideRegenerateResponse regenerate(Long projectGroupId, Long userId, String feedback) {
 		validateProjectGroupMember(projectGroupId, userId);
 
 		ProjectGroup projectGroup = projectGroupRepository.findById(projectGroupId)
@@ -78,7 +78,8 @@ public class DevGuideService {
 			String prompt = promptBuilder.build(
 				projectGroup.getProjectTitle(),
 				projectGroup.getProjectDescription(),
-				projectGroup.getProjectMvp()
+				projectGroup.getProjectMvp(),
+				feedback
 			);
 
 			DevGuideContent content = geminiClient.generateDevGuide(prompt, DevGuideSchema.RESPONSE_SCHEMA);
