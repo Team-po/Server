@@ -117,6 +117,10 @@ public class DevGuide {
 			.build();
 	}
 
+	public void unconfirm() {
+		this.isConfirmed = false;
+	}
+
 	public void delete() {
 		this.deletedAt = LocalDateTime.now();
 	}

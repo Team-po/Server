@@ -19,6 +19,7 @@ import team.po.feature.devguide.client.GeminiClient;
 import team.po.feature.devguide.domain.DevGuide;
 import team.po.feature.devguide.domain.DevGuideGenerationType;
 import team.po.feature.devguide.dto.DevGuideContent;
+import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
 import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.repository.DevGuideRepository;
 import team.po.feature.projectgroup.domain.ProjectGroup;
@@ -132,6 +133,52 @@ class DevGuideServiceTest {
 			.isEqualTo(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode());
 
 		verify(devGuideRepository, never()).findByProjectGroup_IdAndIsConfirmedTrue(any());
+	}
+
+	@Test
+	void regenerate_throwsAccessDenied_whenUserIsNotProjectGroupMember() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(false);
+
+		assertThatThrownBy(() -> devGuideService.regenerate(1L, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode());
+
+		verify(devGuideRepository, never()).existsByProjectGroup_IdAndIsConfirmedTrue(any());
+		verify(geminiClient, never()).generateDevGuide(any(), any());
+	}
+
+	@Test
+	void regenerate_throwsNotFound_whenProjectGroupDoesNotExist() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(projectGroupRepository.findById(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> devGuideService.regenerate(1L, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_NOT_FOUND.getCode());
+
+		verify(geminiClient, never()).generateDevGuide(any(), any());
+		verify(devGuideCommandService, never()).regenerate(any(), any());
+	}
+
+	@Test
+	void regenerate_callsGeminiAndDelegatesCommandService() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideContent content = devGuideContent();
+
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup));
+		when(promptBuilder.build("주제 A", "설명", "MVP")).thenReturn("prompt");
+		when(geminiClient.generateDevGuide(eq("prompt"), any())).thenReturn(content);
+		when(devGuideCommandService.regenerate(1L, content)).thenReturn(DevGuideGenerationType.MANUAL);
+
+		DevGuideRegenerateResponse result = devGuideService.regenerate(1L, 10L);
+
+		assertThat(result.content()).isEqualTo(content);
+		assertThat(result.generationType()).isEqualTo(DevGuideGenerationType.MANUAL);
+		assertThat(result.remainingRegenerationCount()).isNull();
+		verify(devGuideCommandService).regenerate(1L, content);
 	}
 
 	private ProjectGroup projectGroup() {

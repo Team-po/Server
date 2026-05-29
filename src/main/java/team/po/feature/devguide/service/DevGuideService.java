@@ -7,7 +7,9 @@ import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.devguide.client.GeminiClient;
 import team.po.feature.devguide.domain.DevGuide;
+import team.po.feature.devguide.domain.DevGuideGenerationType;
 import team.po.feature.devguide.dto.DevGuideContent;
+import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
 import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.prompt.DevGuideSchema;
 import team.po.feature.devguide.repository.DevGuideRepository;
@@ -47,6 +49,27 @@ public class DevGuideService {
 		);
 
 		devGuideCommandService.create(projectGroupId, content);
+	}
+
+	// Transaction 없이 Gemini API 호출
+	public DevGuideRegenerateResponse regenerate(Long projectGroupId, Long userId) {
+		validateProjectGroupMember(projectGroupId, userId);
+
+		ProjectGroup projectGroup = projectGroupRepository.findById(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
+
+		String prompt = promptBuilder.build(
+			projectGroup.getProjectTitle(),
+			projectGroup.getProjectDescription(),
+			projectGroup.getProjectMvp()
+		);
+
+		DevGuideContent content = geminiClient.generateDevGuide(prompt, DevGuideSchema.RESPONSE_SCHEMA);
+
+		DevGuideGenerationType generationType = devGuideCommandService.regenerate(projectGroupId, content);
+
+		// remainingRegenerationCount: 횟수 제한 구현 시 채워질 예정
+		return new DevGuideRegenerateResponse(content, generationType, null);
 	}
 
 	public DevGuideContent getDevGuide(Long projectGroupId, Long userId) {

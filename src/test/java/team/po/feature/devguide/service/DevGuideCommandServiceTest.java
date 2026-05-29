@@ -14,6 +14,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
+import team.po.feature.devguide.domain.DevGuide;
+import team.po.feature.devguide.domain.DevGuideGenerationType;
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.repository.DevGuideRepository;
 import team.po.feature.projectgroup.domain.ProjectGroup;
@@ -72,6 +74,58 @@ class DevGuideCommandServiceTest {
 
 		verify(devGuideRepository).save(argThat(devGuide ->
 			devGuide.getVersionNo() == 1
+				&& devGuide.isConfirmed()
+		));
+	}
+
+	@Test
+	void regenerate_throwsNotFound_whenProjectGroupDoesNotExist() {
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> devGuideCommandService.regenerate(1L, devGuideContent()))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_NOT_FOUND.getCode());
+
+		verify(devGuideRepository, never()).save(any());
+	}
+
+	@Test
+	void regenerate_usesRecoveryType_whenNoConfirmedGuideExistsAfterLock() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideContent content = devGuideContent();
+
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.empty());
+		when(devGuideRepository.findMaxVersionNoByProjectGroupId(1L)).thenReturn(0);
+
+		DevGuideGenerationType result = devGuideCommandService.regenerate(1L, content);
+
+		assertThat(result).isEqualTo(DevGuideGenerationType.RECOVERY);
+		verify(devGuideRepository).save(argThat(devGuide ->
+			devGuide.getVersionNo() == 1
+				&& devGuide.getGenerationType() == DevGuideGenerationType.RECOVERY
+				&& devGuide.isConfirmed()
+		));
+	}
+
+	@Test
+	void regenerate_usesManualType_andUnconfirmsOld_whenConfirmedGuideExistsAfterLock() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideContent content = devGuideContent();
+		DevGuide existingConfirmed = DevGuide.create(projectGroup, devGuideContent(), 1, DevGuideGenerationType.INITIAL, true);
+
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.of(existingConfirmed));
+		when(devGuideRepository.findMaxVersionNoByProjectGroupId(1L)).thenReturn(1);
+
+		DevGuideGenerationType result = devGuideCommandService.regenerate(1L, content);
+
+		assertThat(result).isEqualTo(DevGuideGenerationType.MANUAL);
+		assertThat(existingConfirmed.isConfirmed()).isFalse();
+		verify(devGuideRepository).save(argThat(devGuide ->
+			devGuide.getVersionNo() == 2
+				&& devGuide.getGenerationType() == DevGuideGenerationType.MANUAL
 				&& devGuide.isConfirmed()
 		));
 	}
