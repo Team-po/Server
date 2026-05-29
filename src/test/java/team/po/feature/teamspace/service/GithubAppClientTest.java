@@ -200,6 +200,118 @@ class GithubAppClientTest {
 	}
 
 	@Test
+	void getClosedPullRequests_returnsClosedPullRequests() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/12345/access_tokens", exchange -> {
+			assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+			assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isEqualTo("Bearer github-app-jwt");
+			writeResponse(exchange, 201, """
+				{
+				  "token": "github-installation-token"
+				}
+				""");
+		});
+		server.createContext("/repos/student-team-org/backend/pulls", exchange -> {
+			assertThat(exchange.getRequestHeaders().getFirst("Authorization"))
+				.isEqualTo("Bearer github-installation-token");
+			assertThat(exchange.getRequestHeaders().getFirst("Accept")).isEqualTo("application/vnd.github+json");
+			assertThat(exchange.getRequestHeaders().getFirst("X-GitHub-Api-Version")).isEqualTo("2022-11-28");
+			assertThat(exchange.getRequestURI().getQuery()).contains("state=closed", "per_page=100", "page=1");
+			writeResponse(exchange, 200, """
+				[
+				  {
+				    "id": 1001,
+				    "number": 10,
+				    "title": "Add contribution sync",
+				    "state": "closed",
+				    "merged_at": "2026-05-01T10:15:30Z",
+				    "html_url": "https://github.com/student-team-org/backend/pull/10",
+				    "user": {
+				      "id": 501,
+				      "login": "dev-a"
+				    }
+				  }
+				]
+				""");
+		});
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			var pullRequests = client.getClosedPullRequests(12345L, "student-team-org", "backend");
+
+			assertThat(pullRequests).hasSize(1);
+			assertThat(pullRequests.get(0).githubPullRequestId()).isEqualTo(1001L);
+			assertThat(pullRequests.get(0).pullNumber()).isEqualTo(10L);
+			assertThat(pullRequests.get(0).title()).isEqualTo("Add contribution sync");
+			assertThat(pullRequests.get(0).authorGithubUserId()).isEqualTo(501L);
+			assertThat(pullRequests.get(0).authorGithubUsername()).isEqualTo("dev-a");
+			assertThat(pullRequests.get(0).state()).isEqualTo("closed");
+			assertThat(pullRequests.get(0).htmlUrl())
+				.isEqualTo("https://github.com/student-team-org/backend/pull/10");
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	void getPullRequest_returnsPullRequestDetail() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/12345/access_tokens", exchange -> writeResponse(exchange, 201, """
+			{
+			  "token": "github-installation-token"
+			}
+			"""));
+		server.createContext("/repos/student-team-org/backend/pulls/10", exchange -> {
+			assertThat(exchange.getRequestHeaders().getFirst("Authorization"))
+				.isEqualTo("Bearer github-installation-token");
+			assertThat(exchange.getRequestHeaders().getFirst("Accept")).isEqualTo("application/vnd.github+json");
+			assertThat(exchange.getRequestHeaders().getFirst("X-GitHub-Api-Version")).isEqualTo("2022-11-28");
+			writeResponse(exchange, 200, """
+				{
+				  "id": 1001,
+				  "number": 10,
+				  "title": "Add contribution sync",
+				  "state": "closed",
+				  "merged_at": "2026-05-01T10:15:30Z",
+				  "additions": 120,
+				  "deletions": 15,
+				  "changed_files": 8,
+				  "html_url": "https://github.com/student-team-org/backend/pull/10",
+				  "user": {
+				    "id": 501,
+				    "login": "dev-a"
+				  }
+				}
+				""");
+		});
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			var pullRequest = client.getPullRequest(12345L, "student-team-org", "backend", 10L);
+
+			assertThat(pullRequest.githubPullRequestId()).isEqualTo(1001L);
+			assertThat(pullRequest.pullNumber()).isEqualTo(10L);
+			assertThat(pullRequest.authorGithubUserId()).isEqualTo(501L);
+			assertThat(pullRequest.additions()).isEqualTo(120);
+			assertThat(pullRequest.deletions()).isEqualTo(15);
+			assertThat(pullRequest.changedFiles()).isEqualTo(8);
+			assertThat(pullRequest.htmlUrl()).isEqualTo("https://github.com/student-team-org/backend/pull/10");
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
 	void validateOrganizationAdmin_throwsForbiddenWhenMembershipIsNotAdmin() throws Exception {
 		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
 

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,10 +27,13 @@ import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.teamspace.domain.GithubInstallation;
+import team.po.feature.teamspace.domain.GithubPullRequestContribution;
 import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubRepository;
+import team.po.feature.teamspace.dto.GithubPullRequestInfo;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
+import team.po.feature.teamspace.repository.GithubPullRequestContributionRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
 import team.po.feature.user.domain.Users;
@@ -52,6 +56,9 @@ class TeamspacePersistenceTxServiceTest {
 	@Mock
 	private GithubInstallationRepository githubInstallationRepository;
 
+	@Mock
+	private GithubPullRequestContributionRepository githubPullRequestContributionRepository;
+
 	private TeamspacePersistenceTxService service;
 
 	@BeforeEach
@@ -61,7 +68,8 @@ class TeamspacePersistenceTxServiceTest {
 			projectGroupRepository,
 			projectGroupGithubInstallationRepository,
 			projectGroupGithubRepositoryRepository,
-			githubInstallationRepository
+			githubInstallationRepository,
+			githubPullRequestContributionRepository
 		);
 	}
 
@@ -260,12 +268,140 @@ class TeamspacePersistenceTxServiceTest {
 		verify(projectGroupGithubRepositoryRepository, never()).saveAll(any());
 	}
 
+	@Test
+	void persistGithubPullRequestContributions_updatesExistingAndSavesNewContributions() {
+		ProjectGroup projectGroup = projectGroup();
+		GithubPullRequestContribution existingContribution = GithubPullRequestContribution.builder()
+			.projectGroup(projectGroup)
+			.githubRepositoryId(100L)
+			.githubPrId(1001L)
+			.prNumber(10L)
+			.title("Old title")
+			.authorGithubUserId(501L)
+			.authorGithubUsername("old-dev")
+			.state("open")
+			.merged(false)
+			.mergedAt(null)
+			.additions(1)
+			.deletions(2)
+			.changedFiles(1)
+			.linkedIssueCount(0)
+			.htmlUrl("https://github.com/student-team-org/backend/pull/10")
+			.syncedAt(Instant.parse("2026-05-01T00:00:00Z"))
+			.build();
+		ReflectionTestUtils.setField(existingContribution, "id", 1L);
+		Instant mergedAt = Instant.parse("2026-05-02T10:00:00Z");
+		GithubPullRequestInfo existingPullRequest = new GithubPullRequestInfo(
+			1001L,
+			10L,
+			"Add contribution sync",
+			501L,
+			"dev-a",
+			"closed",
+			mergedAt,
+			120,
+			15,
+			8,
+			"https://github.com/student-team-org/backend/pull/10"
+		);
+		GithubPullRequestInfo newPullRequest = new GithubPullRequestInfo(
+			1002L,
+			11L,
+			"Add contribution query",
+			502L,
+			"dev-b",
+			"closed",
+			Instant.parse("2026-05-03T10:00:00Z"),
+			80,
+			5,
+			4,
+			"https://github.com/student-team-org/backend/pull/11"
+		);
+		when(projectGroupRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(projectGroup));
+		when(githubPullRequestContributionRepository.findByProjectGroup_IdAndGithubRepositoryIdAndGithubPrId(
+			10L,
+			100L,
+			1001L
+		)).thenReturn(Optional.of(existingContribution));
+		when(githubPullRequestContributionRepository.findByProjectGroup_IdAndGithubRepositoryIdAndGithubPrId(
+			10L,
+			100L,
+			1002L
+		)).thenReturn(Optional.empty());
+
+		service.persistGithubPullRequestContributions(
+			10L,
+			100L,
+			List.of(existingPullRequest, newPullRequest)
+		);
+
+		verify(projectGroupRepository).findByIdForUpdate(10L);
+		assertThat(existingContribution.getTitle()).isEqualTo("Add contribution sync");
+		assertThat(existingContribution.getAuthorGithubUsername()).isEqualTo("dev-a");
+		assertThat(existingContribution.getState()).isEqualTo("closed");
+		assertThat(existingContribution.isMerged()).isTrue();
+		assertThat(existingContribution.getMergedAt()).isEqualTo(mergedAt);
+		assertThat(existingContribution.getAdditions()).isEqualTo(120);
+		assertThat(existingContribution.getDeletions()).isEqualTo(15);
+		assertThat(existingContribution.getChangedFiles()).isEqualTo(8);
+		assertThat(existingContribution.getSyncedAt()).isNotNull();
+
+		ArgumentCaptor<List<GithubPullRequestContribution>> contributionCaptor = ArgumentCaptor.forClass(List.class);
+		verify(githubPullRequestContributionRepository).saveAll(contributionCaptor.capture());
+		assertThat(contributionCaptor.getValue()).hasSize(1);
+		GithubPullRequestContribution newContribution = contributionCaptor.getValue().get(0);
+		assertThat(newContribution.getGithubRepositoryId()).isEqualTo(100L);
+		assertThat(newContribution.getGithubPrId()).isEqualTo(1002L);
+		assertThat(newContribution.getPrNumber()).isEqualTo(11L);
+		assertThat(newContribution.getTitle()).isEqualTo("Add contribution query");
+		assertThat(newContribution.getAuthorGithubUserId()).isEqualTo(502L);
+		assertThat(newContribution.getAuthorGithubUsername()).isEqualTo("dev-b");
+		assertThat(newContribution.isMerged()).isTrue();
+		assertThat(newContribution.getAdditions()).isEqualTo(80);
+		assertThat(newContribution.getDeletions()).isEqualTo(5);
+		assertThat(newContribution.getChangedFiles()).isEqualTo(4);
+		assertThat(newContribution.getLinkedIssueCount()).isZero();
+		assertThat(newContribution.getSyncedAt()).isNotNull();
+	}
+
+	@Test
+	void persistGithubPullRequestContributions_throwsNotFound_whenProjectGroupDoesNotExist() {
+		when(projectGroupRepository.findByIdForUpdate(10L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.persistGithubPullRequestContributions(
+			10L,
+			100L,
+			List.of(new GithubPullRequestInfo(
+				1001L,
+				10L,
+				"Add contribution sync",
+				501L,
+				"dev-a",
+				"closed",
+				Instant.parse("2026-05-02T10:00:00Z"),
+				120,
+				15,
+				8,
+				"https://github.com/student-team-org/backend/pull/10"
+			))
+		))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_NOT_FOUND.getCode());
+
+		verify(githubPullRequestContributionRepository, never())
+			.findByProjectGroup_IdAndGithubRepositoryIdAndGithubPrId(any(), any(), any());
+		verify(githubPullRequestContributionRepository, never()).saveAll(any());
+	}
+
 	private ProjectGroup projectGroup() {
-		return ProjectGroup.builder()
+		ProjectGroup projectGroup = ProjectGroup.builder()
 			.projectName("TeamPo")
 			.projectTitle("TeamPo")
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
+		ReflectionTestUtils.setField(projectGroup, "id", 10L);
+		return projectGroup;
 	}
 
 	private GithubInstallation githubInstallation() {

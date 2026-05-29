@@ -2,6 +2,7 @@ package team.po.feature.teamspace.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.time.Instant;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,8 @@ import lombok.RequiredArgsConstructor;
 import team.po.config.GithubAppProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
+import team.po.feature.teamspace.dto.GithubPullRequestInfo;
+import team.po.feature.teamspace.dto.GithubPullRequestSummary;
 import team.po.feature.teamspace.provider.GithubAppJwtProvider;
 
 @RequiredArgsConstructor
@@ -26,6 +29,7 @@ public class GithubAppClient {
 	private static final String ORGANIZATION_MEMBERSHIP_ACTIVE_STATE = "active";
 	private static final String ORGANIZATION_MEMBERSHIP_ADMIN_ROLE = "admin";
 	private static final int REPOSITORY_PAGE_SIZE = 100;
+	private static final int PULL_REQUEST_PAGE_SIZE = 100;
 
 	private final RestClient restClient;
 	private final GithubAppJwtProvider githubAppJwtProvider;
@@ -90,6 +94,58 @@ public class GithubAppClient {
 			}
 			page++;
 		}
+	}
+
+	public List<GithubPullRequestSummary> getClosedPullRequests(Long installationId, String owner, String repoName) {
+		String accessToken = createInstallationAccessToken(installationId);
+		List<GithubPullRequestSummary> pullRequests = new ArrayList<>();
+		int page = 1;
+
+		while (true) {
+			List<GithubPullRequestResponse> response = getClosedPullRequests(accessToken, owner, repoName, page);
+
+			response.stream()
+				.map(pullRequest -> new GithubPullRequestSummary(
+					pullRequest.id(),
+					pullRequest.number(),
+					pullRequest.title(),
+					pullRequest.user().id(),
+					pullRequest.user().login(),
+					pullRequest.state(),
+					pullRequest.mergedAt(),
+					pullRequest.htmlUrl()
+				))
+				.forEach(pullRequests::add);
+
+			if (response.size() < PULL_REQUEST_PAGE_SIZE) {
+				return pullRequests;
+			}
+			page++;
+		}
+	}
+
+	public GithubPullRequestInfo getPullRequest(
+		Long installationId,
+		String owner,
+		String repoName,
+		Long pullNumber
+	) {
+		String accessToken = createInstallationAccessToken(installationId);
+		GithubPullRequestResponse response = getPullRequest(accessToken, owner, repoName, pullNumber);
+
+		return new GithubPullRequestInfo(
+			response.id(),
+			response.number(),
+			response.title(),
+			response.user().id(),
+			response.user().login(),
+			response.state(),
+			response.mergedAt(),
+			response.additions(),
+			response.deletions(),
+			response.changedFiles(),
+			response.htmlUrl()
+		);
 	}
 
 	public void validateOrganizationAdmin(String accessToken, String organizationLogin) {
@@ -185,6 +241,72 @@ public class GithubAppClient {
 		}
 	}
 
+	private List<GithubPullRequestResponse> getClosedPullRequests(
+		String accessToken,
+		String owner,
+		String repoName,
+		int page
+	) {
+		try {
+			List<GithubPullRequestResponse> response = restClient.get()
+				.uri(UriComponentsBuilder
+					.fromUriString(githubAppProperties.apiBaseUrl())
+					.pathSegment("repos", owner, repoName, "pulls")
+					.queryParam("state", "closed")
+					.queryParam("per_page", PULL_REQUEST_PAGE_SIZE)
+					.queryParam("page", page)
+					.build()
+					.toUriString())
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+				.header(HttpHeaders.ACCEPT, "application/vnd.github+json")
+				.header("X-GitHub-Api-Version", GITHUB_API_VERSION)
+				.retrieve()
+				.body(new org.springframework.core.ParameterizedTypeReference<>() {
+				});
+
+			if (response == null) {
+				throw new ApplicationException(ErrorCode.GITHUB_API_REQUEST_FAILED);
+			}
+
+			return response;
+		} catch (ApplicationException exception) {
+			throw exception;
+		} catch (RestClientException exception) {
+			throw new ApplicationException(ErrorCode.GITHUB_API_REQUEST_FAILED, exception);
+		}
+	}
+
+	private GithubPullRequestResponse getPullRequest(
+		String accessToken,
+		String owner,
+		String repoName,
+		Long pullNumber
+	) {
+		try {
+			GithubPullRequestResponse response = restClient.get()
+				.uri(UriComponentsBuilder
+					.fromUriString(githubAppProperties.apiBaseUrl())
+					.pathSegment("repos", owner, repoName, "pulls", String.valueOf(pullNumber))
+					.build()
+					.toUriString())
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+				.header(HttpHeaders.ACCEPT, "application/vnd.github+json")
+				.header("X-GitHub-Api-Version", GITHUB_API_VERSION)
+				.retrieve()
+				.body(GithubPullRequestResponse.class);
+
+			if (response == null || response.user() == null) {
+				throw new ApplicationException(ErrorCode.GITHUB_API_REQUEST_FAILED);
+			}
+
+			return response;
+		} catch (ApplicationException exception) {
+			throw exception;
+		} catch (RestClientException exception) {
+			throw new ApplicationException(ErrorCode.GITHUB_API_REQUEST_FAILED, exception);
+		}
+	}
+
 	public record GithubAppInstallationInfo(
 		Long installationId,
 		Long accountId,
@@ -246,6 +368,29 @@ public class GithubAppClient {
 	}
 
 	private record GithubRepositoryOwnerResponse(
+		String login
+	) {
+	}
+
+	private record GithubPullRequestResponse(
+		Long id,
+		Long number,
+		String title,
+		GithubPullRequestUserResponse user,
+		String state,
+		@JsonProperty("merged_at")
+		Instant mergedAt,
+		Integer additions,
+		Integer deletions,
+		@JsonProperty("changed_files")
+		Integer changedFiles,
+		@JsonProperty("html_url")
+		String htmlUrl
+	) {
+	}
+
+	private record GithubPullRequestUserResponse(
+		Long id,
 		String login
 	) {
 	}
