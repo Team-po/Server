@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,6 +70,25 @@ class GithubPullRequestContributionRepositoryTest {
 		assertThat(second.getAdditions()).isEqualTo(70L);
 		assertThat(second.getDeletions()).isEqualTo(7L);
 		assertThat(second.getChangedFiles()).isEqualTo(3L);
+	}
+
+	@Test
+	void findExistingGithubPrIds_returnsStoredPullRequestIdsInRepository() {
+		insertUser(1L, "member-a@example.com", "member-a");
+		insertProjectGroup(10L);
+		insertContribution(1L, 10L, 100L, 1001L, 501L, "dev-a", true, 0, 10, 1, 1);
+		insertContribution(2L, 10L, 100L, 1002L, 501L, "dev-a", true, 0, 10, 1, 1);
+		insertContribution(3L, 10L, 200L, 2001L, 501L, "dev-a", true, 0, 10, 1, 1);
+		entityManager.flush();
+		entityManager.clear();
+
+		Set<Long> existingGithubPrIds = repository.findExistingGithubPrIds(
+			10L,
+			100L,
+			Set.of(1001L, 1002L, 9999L)
+		);
+
+		assertThat(existingGithubPrIds).containsExactlyInAnyOrder(1001L, 1002L);
 	}
 
 	private void insertUser(Long id, String email, String nickname) {

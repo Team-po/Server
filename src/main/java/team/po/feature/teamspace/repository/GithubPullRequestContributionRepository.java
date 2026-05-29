@@ -2,6 +2,7 @@ package team.po.feature.teamspace.repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -17,6 +18,19 @@ public interface GithubPullRequestContributionRepository extends JpaRepository<G
 		Long projectGroupId,
 		Long githubRepositoryId,
 		Long githubPrId
+	);
+
+	@Query("""
+		SELECT contribution.githubPrId
+		FROM GithubPullRequestContribution contribution
+		WHERE contribution.projectGroup.id = :projectGroupId
+			AND contribution.githubRepositoryId = :githubRepositoryId
+			AND contribution.githubPrId IN :githubPrIds
+		""")
+	Set<Long> findExistingGithubPrIds(
+		@Param("projectGroupId") Long projectGroupId,
+		@Param("githubRepositoryId") Long githubRepositoryId,
+		@Param("githubPrIds") Set<Long> githubPrIds
 	);
 
 	@Query("""

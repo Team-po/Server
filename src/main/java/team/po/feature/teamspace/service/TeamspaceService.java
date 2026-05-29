@@ -2,7 +2,9 @@ package team.po.feature.teamspace.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -247,17 +249,31 @@ public class TeamspaceService {
 			));
 
 		Long installationId = repository.getGithubInstallation().getInstallationId();
-		List<GithubPullRequestInfo> mergedPullRequests = githubAppClient
+		List<GithubPullRequestSummary> mergedPullRequestSummaries = githubAppClient
 			.getClosedPullRequests(installationId, repository.getOwner(), repository.getRepoName())
 			.stream()
 			.filter(pullRequest -> pullRequest.mergedAt() != null)
+			.toList();
+		Set<Long> mergedGithubPrIds = mergedPullRequestSummaries.stream()
+			.map(GithubPullRequestSummary::githubPullRequestId)
+			.collect(Collectors.toSet());
+		Set<Long> existingGithubPrIds = mergedGithubPrIds.isEmpty()
+			? Set.of()
+			: githubPullRequestContributionRepository.findExistingGithubPrIds(
+				projectGroupId,
+				githubRepositoryId,
+				mergedGithubPrIds
+			);
+
+		List<GithubPullRequestInfo> newMergedPullRequests = mergedPullRequestSummaries.stream()
+			.filter(pullRequest -> !existingGithubPrIds.contains(pullRequest.githubPullRequestId()))
 			.map(pullRequest -> getPullRequestDetail(installationId, repository, pullRequest))
 			.toList();
 
 		teamspacePersistenceTxService.persistGithubPullRequestContributions(
 			projectGroupId,
 			githubRepositoryId,
-			mergedPullRequests
+			newMergedPullRequests
 		);
 	}
 

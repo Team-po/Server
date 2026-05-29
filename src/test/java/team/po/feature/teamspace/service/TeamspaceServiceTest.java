@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -492,12 +493,15 @@ class TeamspaceServiceTest {
 		)).thenReturn(Optional.of(repository));
 		when(githubAppClient.getClosedPullRequests(12345L, "student-team-org", "backend"))
 			.thenReturn(List.of(mergedPullRequest, closedUnmergedPullRequest));
+		when(githubPullRequestContributionRepository.findExistingGithubPrIds(10L, 100L, Set.of(1001L)))
+			.thenReturn(Set.of());
 		when(githubAppClient.getPullRequest(12345L, "student-team-org", "backend", 10L))
 			.thenReturn(pullRequestDetail);
 
 		teamspaceService.syncGithubPullRequestContributions(10L, 100L);
 
 		verify(githubAppClient).getClosedPullRequests(12345L, "student-team-org", "backend");
+		verify(githubPullRequestContributionRepository).findExistingGithubPrIds(10L, 100L, Set.of(1001L));
 		verify(githubAppClient).getPullRequest(12345L, "student-team-org", "backend", 10L);
 		verify(githubAppClient, never()).getPullRequest(12345L, "student-team-org", "backend", 11L);
 		verify(teamspacePersistenceTxService).persistGithubPullRequestContributions(
@@ -505,6 +509,45 @@ class TeamspaceServiceTest {
 			100L,
 			List.of(pullRequestDetail)
 		);
+	}
+
+	@Test
+	void syncGithubPullRequestContributions_skipsPullRequestDetail_whenMergedPullRequestAlreadyExists() {
+		ProjectGroupGithubRepository repository = ProjectGroupGithubRepository.builder()
+			.projectGroup(projectGroup())
+			.githubInstallation(githubInstallation())
+			.githubRepositoryId(100L)
+			.owner("student-team-org")
+			.repoName("backend")
+			.fullName("student-team-org/backend")
+			.defaultBranch("main")
+			.privateRepository(true)
+			.build();
+		GithubPullRequestSummary existingPullRequest = new GithubPullRequestSummary(
+			1001L,
+			10L,
+			"Add contribution sync",
+			501L,
+			"dev-a",
+			"closed",
+			Instant.parse("2026-05-02T10:00:00Z"),
+			"https://github.com/student-team-org/backend/pull/10"
+		);
+		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+			10L,
+			100L
+		)).thenReturn(Optional.of(repository));
+		when(githubAppClient.getClosedPullRequests(12345L, "student-team-org", "backend"))
+			.thenReturn(List.of(existingPullRequest));
+		when(githubPullRequestContributionRepository.findExistingGithubPrIds(10L, 100L, Set.of(1001L)))
+			.thenReturn(Set.of(1001L));
+
+		teamspaceService.syncGithubPullRequestContributions(10L, 100L);
+
+		verify(githubAppClient).getClosedPullRequests(12345L, "student-team-org", "backend");
+		verify(githubPullRequestContributionRepository).findExistingGithubPrIds(10L, 100L, Set.of(1001L));
+		verify(githubAppClient, never()).getPullRequest(any(), anyString(), anyString(), any());
+		verify(teamspacePersistenceTxService).persistGithubPullRequestContributions(10L, 100L, List.of());
 	}
 
 	@Test
