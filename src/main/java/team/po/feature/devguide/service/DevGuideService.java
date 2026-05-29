@@ -98,15 +98,26 @@ public class DevGuideService {
 		validateProjectGroupMember(projectGroupId, userId);
 
 		Optional<DevGuide> devGuide = devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(projectGroupId);
-		if (devGuide.isPresent()) {
-			return new DevGuideQueryResponse(devGuide.get().toContent(), DevGuideStatus.COMPLETED);
+		Optional<DevGuideGeneration> generation = devGuideGenerationRepository.findByProjectGroup_Id(projectGroupId);
+
+		if (devGuide.isEmpty() && generation.isEmpty()) {
+			throw new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND);
 		}
 
-		DevGuideGeneration generation = devGuideGenerationRepository
-			.findByProjectGroup_Id(projectGroupId)
-			.orElseThrow(() -> new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND));
+		// 생성 레코드가 없는 경우(마이그레이션 등) confirmed 가이드 기준으로 COMPLETED 반환
+		DevGuideStatus status = generation
+			.map(DevGuideGeneration::getStatus)
+			.orElse(DevGuideStatus.COMPLETED);
 
-		return new DevGuideQueryResponse(null, generation.getStatus());
+		DevGuideContent content = devGuide.map(DevGuide::toContent).orElse(null);
+
+		Integer remainingCount = generation
+			.map(g -> g.getMaxRegenerationCount()
+				- devGuideRepository.countByProjectGroup_IdAndGenerationType(
+				projectGroupId, DevGuideGenerationType.MANUAL))
+			.orElse(null);
+
+		return new DevGuideQueryResponse(content, status, remainingCount);
 	}
 
 	private void validateProjectGroupMember(Long projectGroupId, Long userId) {

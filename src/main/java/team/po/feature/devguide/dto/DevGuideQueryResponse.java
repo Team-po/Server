@@ -6,6 +6,7 @@ import team.po.feature.devguide.domain.DevGuideStatus;
 
 public record DevGuideQueryResponse(
 	@JsonInclude(JsonInclude.Include.NON_NULL) DevGuideContent content,
-	DevGuideStatus generationStatus
+	DevGuideStatus generationStatus,
+	@JsonInclude(JsonInclude.Include.NON_NULL) Integer remainingRegenerationCount
 ) {
 }

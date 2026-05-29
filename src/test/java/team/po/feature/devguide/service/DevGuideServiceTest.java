@@ -193,21 +193,72 @@ class DevGuideServiceTest {
 	// ─── getDevGuide ─────────────────────────────────────────────────────────
 
 	@Test
-	void getDevGuide_returnsContentWithCompleted_whenConfirmedGuideExists() {
+	void getDevGuide_returnsContentAndRemainingCount_whenCompletedAndConfirmedGuideExists() {
+		ProjectGroup projectGroup = projectGroup();
 		DevGuideContent content = devGuideContent();
-		DevGuide devGuide = DevGuide.create(projectGroup(), content, 1, DevGuideGenerationType.INITIAL, true);
+		DevGuide devGuide = DevGuide.create(projectGroup, content, 1, DevGuideGenerationType.INITIAL, true);
+		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
+		generation.complete();
 
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
 		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.of(devGuide));
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
+			.thenReturn(1);
 
 		DevGuideQueryResponse result = devGuideService.getDevGuide(1L, 10L);
 
 		assertThat(result.generationStatus()).isEqualTo(DevGuideStatus.COMPLETED);
 		assertThat(result.content()).isNotNull();
+		assertThat(result.remainingRegenerationCount()).isEqualTo(2); // max(3) - manual(1)
 	}
 
 	@Test
-	void getDevGuide_returnsGeneratingStatus_whenGenerationInProgress() {
+	void getDevGuide_returnsContentWithGeneratingStatus_whenRegenerationInProgress() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideContent content = devGuideContent();
+		DevGuide devGuide = DevGuide.create(projectGroup, content, 1, DevGuideGenerationType.INITIAL, true);
+		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
+		// status stays GENERATING (startRegeneration set it)
+
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.of(devGuide));
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
+			.thenReturn(0);
+
+		DevGuideQueryResponse result = devGuideService.getDevGuide(1L, 10L);
+
+		// 재생성 진행 중 → 기존 가이드 유지, GENERATING 상태 반환
+		assertThat(result.generationStatus()).isEqualTo(DevGuideStatus.GENERATING);
+		assertThat(result.content()).isNotNull();
+	}
+
+	@Test
+	void getDevGuide_returnsContentWithFailedStatus_whenRegenerationFailed() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideContent content = devGuideContent();
+		DevGuide devGuide = DevGuide.create(projectGroup, content, 1, DevGuideGenerationType.INITIAL, true);
+		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
+		generation.complete();
+		generation.startGenerating();
+		generation.fail();
+
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.of(devGuide));
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
+			.thenReturn(0);
+
+		DevGuideQueryResponse result = devGuideService.getDevGuide(1L, 10L);
+
+		// 재생성 실패 → 기존 가이드 유지, FAILED 상태 반환 (프론트는 재시도 버튼 표시)
+		assertThat(result.generationStatus()).isEqualTo(DevGuideStatus.FAILED);
+		assertThat(result.content()).isNotNull();
+	}
+
+	@Test
+	void getDevGuide_returnsGeneratingStatus_whenInitialGenerationInProgress() {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
 
@@ -222,7 +273,7 @@ class DevGuideServiceTest {
 	}
 
 	@Test
-	void getDevGuide_returnsFailedStatus_whenGenerationFailed() {
+	void getDevGuide_returnsFailedStatus_whenInitialGenerationFailed() {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
 		generation.fail();
@@ -238,7 +289,7 @@ class DevGuideServiceTest {
 	}
 
 	@Test
-	void getDevGuide_throwsNotFound_whenNoGenerationRecordExists() {
+	void getDevGuide_throwsNotFound_whenNeitherGuideNorGenerationRecordExists() {
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
 		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.empty());
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.empty());

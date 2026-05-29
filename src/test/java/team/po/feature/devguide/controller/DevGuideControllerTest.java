@@ -62,22 +62,36 @@ class DevGuideControllerTest {
 	// ─── GET /dev-guide ───────────────────────────────────────────────────────
 
 	@Test
-	void getDevGuide_returnsContentWithCompletedStatus() throws Exception {
+	void getDevGuide_returnsContentWithCompletedStatusAndRemainingCount() throws Exception {
 		DevGuideContent content = sampleContent("프로젝트 개요입니다.");
-		DevGuideQueryResponse response = new DevGuideQueryResponse(content, DevGuideStatus.COMPLETED);
+		DevGuideQueryResponse response = new DevGuideQueryResponse(content, DevGuideStatus.COMPLETED, 2);
 
 		when(devGuideService.getDevGuide(1L, 1L)).thenReturn(response);
 
 		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide", 1L))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.generationStatus").value("COMPLETED"))
+			.andExpect(jsonPath("$.remainingRegenerationCount").value(2))
 			.andExpect(jsonPath("$.content.overview").value("프로젝트 개요입니다."))
 			.andExpect(jsonPath("$.content.techStack[0].category").value("Backend"));
 	}
 
 	@Test
+	void getDevGuide_returnsContentWithGeneratingStatus_whenRegenerationInProgress() throws Exception {
+		DevGuideContent content = sampleContent("기존 가이드 개요입니다.");
+		DevGuideQueryResponse response = new DevGuideQueryResponse(content, DevGuideStatus.GENERATING, 3);
+
+		when(devGuideService.getDevGuide(1L, 1L)).thenReturn(response);
+
+		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide", 1L))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.generationStatus").value("GENERATING"))
+			.andExpect(jsonPath("$.content.overview").value("기존 가이드 개요입니다."));
+	}
+
+	@Test
 	void getDevGuide_returnsGeneratingStatusWithoutContent() throws Exception {
-		DevGuideQueryResponse response = new DevGuideQueryResponse(null, DevGuideStatus.GENERATING);
+		DevGuideQueryResponse response = new DevGuideQueryResponse(null, DevGuideStatus.GENERATING, null);
 
 		when(devGuideService.getDevGuide(1L, 1L)).thenReturn(response);
 
@@ -89,7 +103,7 @@ class DevGuideControllerTest {
 
 	@Test
 	void getDevGuide_returnsFailedStatusWithoutContent() throws Exception {
-		DevGuideQueryResponse response = new DevGuideQueryResponse(null, DevGuideStatus.FAILED);
+		DevGuideQueryResponse response = new DevGuideQueryResponse(null, DevGuideStatus.FAILED, null);
 
 		when(devGuideService.getDevGuide(1L, 1L)).thenReturn(response);
 
