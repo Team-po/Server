@@ -44,6 +44,7 @@ import team.po.feature.teamspace.dto.GithubPullRequestSummary;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
+import team.po.feature.teamspace.repository.GithubPullRequestContributionRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
 import team.po.feature.user.domain.GithubAccount;
@@ -88,6 +89,9 @@ class TeamspaceServiceTest {
 	@Mock
 	private TeamspacePersistenceTxService teamspacePersistenceTxService;
 
+	@Mock
+	private GithubPullRequestContributionRepository githubPullRequestContributionRepository;
+
 	private TeamspaceService teamspaceService;
 
 	@BeforeEach
@@ -111,7 +115,8 @@ class TeamspaceServiceTest {
 			githubAppProperties,
 			githubAppClient,
 			githubTokenEncryptor,
-			teamspacePersistenceTxService
+			teamspacePersistenceTxService,
+			githubPullRequestContributionRepository
 		);
 	}
 
@@ -271,6 +276,77 @@ class TeamspaceServiceTest {
 			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
 
 		verify(projectGroupGithubRepositoryRepository, never()).findAllByProjectGroup_IdAndDeletedAtIsNull(10L);
+	}
+
+	@Test
+	void getGithubRepositoryContributions_returnsContributorSummaries_whenRequesterIsMember() {
+		Users requester = user();
+		ProjectGroupGithubRepository repository = ProjectGroupGithubRepository.builder()
+			.projectGroup(projectGroup())
+			.githubInstallation(githubInstallation())
+			.githubRepositoryId(100L)
+			.owner("student-team-org")
+			.repoName("backend")
+			.fullName("student-team-org/backend")
+			.defaultBranch("main")
+			.privateRepository(true)
+			.build();
+		GithubPullRequestContributionRepository.GithubRepositoryContributionSummary summary =
+			contributionSummary(501L, "dev-a", 3L, 2L, 120L, 15L, 8L);
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+			10L,
+			100L
+		)).thenReturn(Optional.of(repository));
+		when(githubPullRequestContributionRepository.findContributionSummaries(10L, 100L))
+			.thenReturn(List.of(summary));
+
+		var response = teamspaceService.getGithubRepositoryContributions(requester, 10L, 100L);
+
+		assertThat(response.githubRepositoryId()).isEqualTo(100L);
+		assertThat(response.repoName()).isEqualTo("backend");
+		assertThat(response.fullName()).isEqualTo("student-team-org/backend");
+		assertThat(response.contributors()).hasSize(1);
+		assertThat(response.contributors().get(0).githubUserId()).isEqualTo(501L);
+		assertThat(response.contributors().get(0).githubUsername()).isEqualTo("dev-a");
+		assertThat(response.contributors().get(0).mergedPrCount()).isEqualTo(3L);
+		assertThat(response.contributors().get(0).linkedIssueCount()).isEqualTo(2L);
+		assertThat(response.contributors().get(0).additions()).isEqualTo(120L);
+		assertThat(response.contributors().get(0).deletions()).isEqualTo(15L);
+		assertThat(response.contributors().get(0).changedFiles()).isEqualTo(8L);
+		assertThat(response.contributors().get(0).contributionScore()).isEqualTo(40L);
+	}
+
+	@Test
+	void getGithubRepositoryContributions_throwsForbidden_whenRequesterIsNotMember() {
+		Users requester = user();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(false);
+
+		assertThatThrownBy(() -> teamspaceService.getGithubRepositoryContributions(requester, 10L, 100L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
+
+		verify(projectGroupGithubRepositoryRepository, never())
+			.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(any(), any());
+		verify(githubPullRequestContributionRepository, never()).findContributionSummaries(any(), any());
+	}
+
+	@Test
+	void getGithubRepositoryContributions_throwsBadRequest_whenRepositoryIsNotRegistered() {
+		Users requester = user();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+			10L,
+			999L
+		)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> teamspaceService.getGithubRepositoryContributions(requester, 10L, 999L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE.getCode());
+
+		verify(githubPullRequestContributionRepository, never()).findContributionSummaries(any(), any());
 	}
 
 	@Test
@@ -813,5 +889,52 @@ class TeamspaceServiceTest {
 			.build();
 		ReflectionTestUtils.setField(user, "id", 1L);
 		return user;
+	}
+
+	private GithubPullRequestContributionRepository.GithubRepositoryContributionSummary contributionSummary(
+		Long githubUserId,
+		String githubUsername,
+		long mergedPrCount,
+		long linkedIssueCount,
+		long additions,
+		long deletions,
+		long changedFiles
+	) {
+		return new GithubPullRequestContributionRepository.GithubRepositoryContributionSummary() {
+			@Override
+			public Long getGithubUserId() {
+				return githubUserId;
+			}
+
+			@Override
+			public String getGithubUsername() {
+				return githubUsername;
+			}
+
+			@Override
+			public long getMergedPrCount() {
+				return mergedPrCount;
+			}
+
+			@Override
+			public long getLinkedIssueCount() {
+				return linkedIssueCount;
+			}
+
+			@Override
+			public long getAdditions() {
+				return additions;
+			}
+
+			@Override
+			public long getDeletions() {
+				return deletions;
+			}
+
+			@Override
+			public long getChangedFiles() {
+				return changedFiles;
+			}
+		};
 	}
 }

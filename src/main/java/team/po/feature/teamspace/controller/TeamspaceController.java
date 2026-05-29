@@ -18,6 +18,7 @@ import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.GetGithubRepositoryContributionResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.service.TeamspaceService;
@@ -94,6 +95,22 @@ public class TeamspaceController {
 		@PathVariable Long projectGroupId
 	) {
 		GetGithubRepositoryListResponse response = teamspaceService.getGithubRepositoryList(user, projectGroupId);
+
+		return ResponseEntity.ok(response);
+	}
+
+	@Operation(summary = "Repository 기여도 조회 API")
+	@GetMapping("/{projectGroupId}/github/repositories/{githubRepositoryId}/contributions")
+	public ResponseEntity<GetGithubRepositoryContributionResponse> getGithubRepositoryContributions(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId,
+		@PathVariable Long githubRepositoryId
+	) {
+		GetGithubRepositoryContributionResponse response = teamspaceService.getGithubRepositoryContributions(
+			user,
+			projectGroupId,
+			githubRepositoryId
+		);
 
 		return ResponseEntity.ok(response);
 	}

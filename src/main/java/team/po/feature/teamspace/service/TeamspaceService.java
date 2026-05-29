@@ -26,11 +26,13 @@ import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.GetGithubRepositoryContributionResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.GithubPullRequestInfo;
 import team.po.feature.teamspace.dto.GithubPullRequestSummary;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
+import team.po.feature.teamspace.repository.GithubPullRequestContributionRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
 import team.po.feature.user.domain.GithubAccount;
@@ -60,6 +62,7 @@ public class TeamspaceService {
 	private final GithubAppClient githubAppClient;
 	private final GithubTokenEncryptor githubTokenEncryptor;
 	private final TeamspacePersistenceTxService teamspacePersistenceTxService;
+	private final GithubPullRequestContributionRepository githubPullRequestContributionRepository;
 
 	@Transactional(readOnly = true)
 	public GetGithubInstallationStatusResponse getGithubInstallationStatus(Long projectGroupId, Long requesterUserId) {
@@ -170,6 +173,44 @@ public class TeamspaceService {
 			.toList());
 	}
 
+	@Transactional(readOnly = true)
+	public GetGithubRepositoryContributionResponse getGithubRepositoryContributions(
+		Users user,
+		Long projectGroupId,
+		Long githubRepositoryId
+	) {
+		validateProjectGroupMember(projectGroupId, user.getId());
+		ProjectGroupGithubRepository repository = projectGroupGithubRepositoryRepository
+			.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(projectGroupId, githubRepositoryId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE,
+				"팀 스페이스에 등록된 Github Repository가 아닙니다."
+			));
+
+		List<GetGithubRepositoryContributionResponse.ContributorResponse> contributors =
+			githubPullRequestContributionRepository
+				.findContributionSummaries(projectGroupId, githubRepositoryId)
+				.stream()
+				.map(summary -> new GetGithubRepositoryContributionResponse.ContributorResponse(
+					summary.getGithubUserId(),
+					summary.getGithubUsername(),
+					summary.getMergedPrCount(),
+					summary.getLinkedIssueCount(),
+					summary.getAdditions(),
+					summary.getDeletions(),
+					summary.getChangedFiles(),
+					calculateContributionScore(summary.getMergedPrCount(), summary.getLinkedIssueCount())
+				))
+				.toList();
+
+		return new GetGithubRepositoryContributionResponse(
+			repository.getGithubRepositoryId(),
+			repository.getRepoName(),
+			repository.getFullName(),
+			contributors
+		);
+	}
+
 	public void setGithubRepositoryList(Users user, Long projectGroupId, SetGithubRepositoryListRequest request) {
 		GithubRepositorySettingContext context = teamspacePersistenceTxService.prepareGithubRepositorySetting(
 			projectGroupId,
@@ -235,6 +276,10 @@ public class TeamspaceService {
 			repository.getRepoName(),
 			pullRequest.pullNumber()
 		);
+	}
+
+	private long calculateContributionScore(long mergedPrCount, long linkedIssueCount) {
+		return mergedPrCount * 10 + linkedIssueCount * 5;
 	}
 
 	private void validateRequesterCanConnectOrganization(Long requesterUserId, String organizationLogin) {
