@@ -102,8 +102,7 @@ public class MatchService {
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
 
 		if (candidate.getStatus() != Status.WAITING) {
-			log.debug("후보 상태 변경됨 - 빈자리 충원 스킵: sessionId={}, candidateUserId={}",
-				sessionId, candidate.getUser().getId());
+			log.debug("후보 상태 변경됨 - 빈자리 충원 스킵: sessionId={}", sessionId);
 			return;
 		}
 
@@ -176,7 +175,7 @@ public class MatchService {
 
 		MatchingMember hostMember = hosts.getFirst();
 		if (!Boolean.TRUE.equals(hostMember.getIsAccepted())) {
-			log.error("호스트 수락 상태 부정합: sessionId={}, userId={}", sessionId, hostMember.getUser().getId());
+			log.error("호스트 수락 상태 부정합: sessionId={}", sessionId);
 			throw new ApplicationException(ErrorCode.MATCH_DATA_ERROR);
 		}
 
@@ -216,7 +215,7 @@ public class MatchService {
 		// 4. 수락 처리
 		me.accept();
 		Long sessionId = session.getId();
-		log.info("매칭 수락: sessionId={}, userId={}", sessionId, loginUser.getId());
+		log.info("매칭 수락: sessionId={}", sessionId);
 
 		// 5. 전원 수락 여부 확인
 		if (!matchingMemberRepository.isAllAccepted(sessionId, MatchConstants.TEAM_SIZE)) {
@@ -261,7 +260,7 @@ public class MatchService {
 		// 6. 해당 유저의 매칭 요청 상태 WAITING으로 초기화
 		me.getProjectRequest().resetToWaiting();
 		Long sessionId = session.getId();
-		log.info("매칭 거절: sessionId={}, userId={}", sessionId, me.getUser().getId());
+		log.info("매칭 거절: sessionId={}", sessionId);
 
 		// 7. 이벤트 발행
 		List<Long> remainingUserIds = members.stream()
@@ -282,7 +281,7 @@ public class MatchService {
 		// 2. WAITING: 단순 취소
 		if (myPr.getStatus() == Status.WAITING) {
 			myPr.cancel();
-			log.info("매칭 요청 취소 - WAITING: prID={}, userId={}", myPr.getId(), loginUser.getId());
+			log.info("매칭 요청 취소 - WAITING: prId={}", myPr.getId());
 			return;
 		}
 
@@ -323,8 +322,7 @@ public class MatchService {
 			new MatchMemberCanceledEvent(sessionId, me.getUser().getId(), remainingUserIds)
 		);
 
-		log.info("멤버 매칭 취소 완료: prId={}, userId={}, sessionId={}",
-			me.getId(), me.getUser().getId(), sessionId);
+		log.info("멤버 매칭 취소 완료: prId={}, sessionId={}", me.getId(), sessionId);
 	}
 
 	private void cancelAsHost(MatchingMember me, List<MatchingMember> sessionMembers) {
@@ -353,8 +351,7 @@ public class MatchService {
 			new MatchSessionDisbandedEvent(sessionId, me.getUser().getId(), restoredUserIds)
 		);
 
-		log.info("호스트 매칭 취소 및 세션 해산: sessionId={}, hostUserId={}, restoredCount={}",
-			sessionId, me.getUser().getId(), restoredUserIds.size());
+		log.info("호스트 매칭 취소 및 세션 해산: sessionId={}, restoredCount={}", sessionId, restoredUserIds.size());
 	}
 
 	private List<MatchingMember> validateMatchAccessAndGetMembers(MatchingSession session, Long userId) {
