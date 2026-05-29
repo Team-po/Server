@@ -41,22 +41,20 @@ public class MatchController {
 	}
 
 	@Operation(summary = "매칭 수락 API")
-	@PostMapping("/{matchId}/accept")
+	@PostMapping("/accept")
 	public ResponseEntity<Void> accept(
-		@PathVariable Long matchId,
 		@Parameter(hidden = true) @LoginUser Users user
 	) {
-		matchService.accept(matchId, user);
+		matchService.accept(user);
 		return ResponseEntity.ok().build();
 	}
 
 	@Operation(summary = "매칭 거절 API")
-	@PostMapping("/{matchId}/reject")
+	@PostMapping("/reject")
 	public ResponseEntity<Void> reject(
-		@PathVariable Long matchId,
 		@Parameter(hidden = true) @LoginUser Users user
 	) {
-		matchService.reject(matchId, user);
+		matchService.reject(user);
 		return ResponseEntity.ok().build();
 	}
 

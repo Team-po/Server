@@ -190,18 +190,20 @@ public class MatchService {
 	}
 
 	@Transactional
-	public void accept(Long matchId, Users loginUser) {
-		// 0. 이미 완료된 매칭 세션인지 검증
-		MatchingSession session = matchingSessionRepository
-			.findByIdWithLock(matchId)
+	public void accept(Users loginUser) {
+		// 0. 현재 활성 매칭 멤버 조회
+		MatchingMember me = matchingMemberRepository
+			.findCurrentActiveByUserId(loginUser.getId())
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
-		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
-		List<MatchingMember> members = validateMatchAccessAndGetMembers(session, loginUser.getId());
-		MatchingMember me = members.stream()
-			.filter(m -> m.getUser().getId().equals(loginUser.getId())) // 리스트 중 내 ID와 일치하는 객체 찾기
-			.findFirst()
-			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_DATA_ERROR));
+		// Session: PESSIMISTIC_LOCK
+		MatchingSession session = matchingSessionRepository
+			.findByIdWithLock(me.getMatchingSession().getId())
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
+
+		// 1. 세션 전체 멤버 조회
+		List<MatchingMember> members = matchingMemberRepository
+			.findAllActiveBySessionIdWithFetch(session.getId());
 
 		// 2. 호스트 여부 확인 - 호스트는 수락할 수 없음
 		validateNotHost(me);
@@ -213,32 +215,35 @@ public class MatchService {
 
 		// 4. 수락 처리
 		me.accept();
-		log.info("매칭 수락: matchId={}, userId={}", matchId, loginUser.getId());
+		Long sessionId = session.getId();
+		log.info("매칭 수락: sessionId={}, userId={}", sessionId, loginUser.getId());
 
 		// 5. 전원 수락 여부 확인
-		if (!matchingMemberRepository.isAllAccepted(matchId, MatchConstants.TEAM_SIZE)) {
-			eventPublisher.publishEvent(new MatchAcceptedEvent(matchId, loginUser.getId()));
+		if (!matchingMemberRepository.isAllAccepted(sessionId, MatchConstants.TEAM_SIZE)) {
+			eventPublisher.publishEvent(new MatchAcceptedEvent(sessionId, loginUser.getId()));
 			return;
 		}
 
 		// 6. 전원 수락 시 ProjectGroup 생성
-		log.info("전원 수락 완료, ProjectGroup 생성 시작: matchId={}", matchId);
+		log.info("전원 수락 완료, ProjectGroup 생성 시작: sessionId={}", sessionId);
 		completeMatching(session, members);
 	}
 
 	@Transactional
-	public void reject(Long matchId, Users loginUser) {
-		// 0. 이미 완료된 매칭 세션인지 검증
-		MatchingSession session = matchingSessionRepository
-			.findByIdWithLock(matchId)
+	public void reject(Users loginUser) {
+		// 0. 현재 활성 매칭 멤버 조회
+		MatchingMember me = matchingMemberRepository
+			.findCurrentActiveByUserId(loginUser.getId())
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
-		// 1. 매칭 세션 접근 권한 확인 및 멤버 조회
-		List<MatchingMember> members = validateMatchAccessAndGetMembers(session, loginUser.getId());
-		MatchingMember me = members.stream()
-			.filter(m -> m.getUser().getId().equals(loginUser.getId())) // 리스트 중 내 ID와 일치하는 객체 찾기
-			.findFirst()
-			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED));
+		// Session: PESSIMISTIC_LOCK
+		MatchingSession session = matchingSessionRepository
+			.findByIdWithLock(me.getMatchingSession().getId())
+			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
+
+		// 1. 세션 전체 멤버 조회
+		List<MatchingMember> members = matchingMemberRepository
+			.findAllActiveBySessionIdWithFetch(session.getId());
 
 		// 2. 호스트 여부 조회: 호스트는 거절 불가
 		validateNotHost(me);
@@ -255,7 +260,8 @@ public class MatchService {
 
 		// 6. 해당 유저의 매칭 요청 상태 WAITING으로 초기화
 		me.getProjectRequest().resetToWaiting();
-		log.info("매칭 거절: matchId={}, userId={}", matchId, me.getUser().getId());
+		Long sessionId = session.getId();
+		log.info("매칭 거절: sessionId={}, userId={}", sessionId, me.getUser().getId());
 
 		// 7. 이벤트 발행
 		List<Long> remainingUserIds = members.stream()
@@ -263,7 +269,7 @@ public class MatchService {
 			.map(m -> m.getUser().getId())
 			.toList();
 
-		eventPublisher.publishEvent(new MatchRejectedEvent(matchId, loginUser.getId(), remainingUserIds));
+		eventPublisher.publishEvent(new MatchRejectedEvent(sessionId, loginUser.getId(), remainingUserIds));
 	}
 
 	@Transactional

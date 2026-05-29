@@ -138,18 +138,18 @@ class MatchControllerTest {
 
 	@Test
 	void accept_returnsOk() throws Exception {
-		doNothing().when(matchService).accept(eq(42L), any(Users.class));
+		doNothing().when(matchService).accept(any(Users.class));
 
-		mockMvc.perform(post("/api/match/42/accept"))
+		mockMvc.perform(post("/api/match/accept"))
 			.andExpect(status().isOk());
 	}
 
 	@Test
 	void accept_returnsNotFound_whenSessionNotExists() throws Exception {
 		doThrow(new ApplicationException(ErrorCode.MATCH_NOT_FOUND))
-			.when(matchService).accept(eq(42L), any(Users.class));
+			.when(matchService).accept(any(Users.class));
 
-		mockMvc.perform(post("/api/match/42/accept"))
+		mockMvc.perform(post("/api/match/accept"))
 			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("MATCH_NOT_FOUND"));
 	}
@@ -157,9 +157,9 @@ class MatchControllerTest {
 	@Test
 	void accept_returnsBadRequest_whenHost() throws Exception {
 		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
-			.when(matchService).accept(eq(42L), any(Users.class));
+			.when(matchService).accept(any(Users.class));
 
-		mockMvc.perform(post("/api/match/42/accept"))
+		mockMvc.perform(post("/api/match/accept"))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("MATCH_ACCESS_DENIED"));
 	}
@@ -168,18 +168,18 @@ class MatchControllerTest {
 
 	@Test
 	void reject_returnsOk() throws Exception {
-		doNothing().when(matchService).reject(eq(42L), any(Users.class));
+		doNothing().when(matchService).reject(any(Users.class));
 
-		mockMvc.perform(post("/api/match/42/reject"))
+		mockMvc.perform(post("/api/match/reject"))
 			.andExpect(status().isOk());
 	}
 
 	@Test
 	void reject_returnsNotFound_whenSessionNotExists() throws Exception {
 		doThrow(new ApplicationException(ErrorCode.MATCH_NOT_FOUND))
-			.when(matchService).reject(eq(42L), any(Users.class));
+			.when(matchService).reject(any(Users.class));
 
-		mockMvc.perform(post("/api/match/42/reject"))
+		mockMvc.perform(post("/api/match/reject"))
 			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("MATCH_NOT_FOUND"));
 	}
@@ -187,9 +187,9 @@ class MatchControllerTest {
 	@Test
 	void reject_returnsBadRequest_whenHost() throws Exception {
 		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
-			.when(matchService).reject(eq(42L), any(Users.class));
+			.when(matchService).reject(any(Users.class));
 
-		mockMvc.perform(post("/api/match/42/reject"))
+		mockMvc.perform(post("/api/match/reject"))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("MATCH_ACCESS_DENIED"));
 	}
@@ -197,9 +197,9 @@ class MatchControllerTest {
 	@Test
 	void reject_returnsBadRequest_whenAlreadyAccepted() throws Exception {
 		doThrow(new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED))
-			.when(matchService).reject(eq(42L), any(Users.class));
+			.when(matchService).reject(any(Users.class));
 
-		mockMvc.perform(post("/api/match/42/reject"))
+		mockMvc.perform(post("/api/match/reject"))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("MATCH_ACCESS_DENIED"));
 	}
