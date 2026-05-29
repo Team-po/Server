@@ -19,8 +19,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.context.request.ServletWebRequest;
 
 import team.po.common.jwt.UserPrincipal;
+import team.po.exception.ApplicationException;
 import team.po.feature.user.domain.Users;
-import team.po.feature.user.exception.InvalidAuthenticationException;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -92,7 +92,7 @@ class LoginUserArgumentResolverTest {
 			new ServletWebRequest(new org.springframework.mock.web.MockHttpServletRequest()),
 			null
 		))
-			.isInstanceOf(InvalidAuthenticationException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("인증된 유저를 찾을 수 없습니다.");
 	}
 

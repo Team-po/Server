@@ -2,6 +2,8 @@ package team.po.common.jwt;
 
 import java.io.IOException;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -14,6 +16,8 @@ import jakarta.servlet.ServletRequest;
 import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import team.po.exception.ErrorCode;
+import team.po.exception.ExceptionResponse;
 
 public class JwtAuthenticationFilter extends GenericFilterBean {
 
@@ -22,9 +26,15 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 	private static final String REFRESH_TOKEN_PATH = "/api/users/refresh-token";
 
 	private final JwtTokenProvider jwtTokenProvider;
+	private final ObjectMapper objectMapper;
 
 	public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider) {
+		this(jwtTokenProvider, new ObjectMapper().findAndRegisterModules());
+	}
+
+	public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, ObjectMapper objectMapper) {
 		this.jwtTokenProvider = jwtTokenProvider;
+		this.objectMapper = objectMapper;
 	}
 
 	@Override
@@ -76,6 +86,7 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 		response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 		response.setCharacterEncoding("UTF-8");
-		response.getWriter().write("{\"message\":\"Invalid or expired access token.\"}");
+		objectMapper.writeValue(response.getWriter(),
+			ExceptionResponse.from(ErrorCode.INVALID_TOKEN, "유효하지 않거나 만료된 액세스 토큰입니다."));
 	}
 }

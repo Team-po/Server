@@ -9,7 +9,6 @@ import java.util.Locale;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -22,9 +21,10 @@ import lombok.extern.slf4j.Slf4j;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
-import team.po.exception.ErrorCodeConstants;
+import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
+import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
-import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
@@ -33,10 +33,8 @@ import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
-import team.po.feature.user.exception.DuplicatedEmailException;
-import team.po.feature.user.exception.InvalidPasswordException;
-import team.po.feature.user.exception.InvalidTokenException;
-import team.po.feature.user.exception.UserNotFoundException;
+import team.po.feature.user.dto.ValidateDeleteUserEmailRequest;
+import team.po.feature.user.repository.GithubAccountRepository;
 import team.po.feature.user.repository.UserRepository;
 
 @Slf4j
@@ -44,14 +42,18 @@ import team.po.feature.user.repository.UserRepository;
 @RequiredArgsConstructor
 public class UserService {
 	private final UserRepository userRepository;
+	private final GithubAccountRepository githubAccountRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final AuthenticationManager authenticationManager;
 	private final JwtTokenProvider jwtTokenProvider;
 	private final ProfileImageRedisService profileImageRedisService;
+	private final EmailService emailService;
 	@Value("${cloud.aws.s3.endpoint:}")
 	private String s3Endpoint;
 	@Value("${cloud.aws.s3.bucket}")
 	private String bucket;
+	@Value("${cloud.aws.region.static}")
+	private String region;
 
 	public void signUp(SignUpRequest signUpRequest) {
 		String normalizedEmail = this.normalizeEmail(signUpRequest.email());
@@ -59,6 +61,7 @@ public class UserService {
 		if (signUpRequest.profileImageKey() != null) {
 			profileImageRedisService.consumeSignUpTicket(signUpRequest.profileImageKey());
 		}
+		emailService.consumeVerifiedSignUpEmail(normalizedEmail);
 		String password = passwordEncoder.encode(signUpRequest.password());
 
 		Users user = Users.builder().email(normalizedEmail).password(password)
@@ -69,8 +72,7 @@ public class UserService {
 			userRepository.save(user);
 		} catch (DataIntegrityViolationException e) {
 			if (isEmailUniqueConstraintViolation(e)) {
-				throw new DuplicatedEmailException(HttpStatus.CONFLICT, ErrorCodeConstants.EMAIL_ALREADY_EXISTS,
-					"중복된 이메일이 존재합니다.");
+				throw new ApplicationException(ErrorCode.EMAIL_ALREADY_EXISTS);
 			}
 			throw e;
 		}
@@ -101,33 +103,28 @@ public class UserService {
 		String normalizedEmail = this.normalizeEmail(email);
 
 		if (userRepository.existsByEmail(normalizedEmail))
-			throw new DuplicatedEmailException(HttpStatus.CONFLICT, ErrorCodeConstants.EMAIL_ALREADY_EXISTS,
-				"중복된 이메일이 존재합니다.");
+			throw new ApplicationException(ErrorCode.EMAIL_ALREADY_EXISTS);
 
 	}
 
 	public RefreshTokenResponse refreshToken(RefreshTokenRequest request) {
 		String token = request.refreshToken();
 		if (!jwtTokenProvider.validateRefreshToken(token)) {
-			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN,
-				"유효하지 않은 리프레시 토큰입니다.");
+			throw new ApplicationException(ErrorCode.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
 		}
 
 		Long userId = jwtTokenProvider.getUserId(token);
 		String email = jwtTokenProvider.getEmail(token);
 
 		Users user = userRepository.findById(userId)
-			.orElseThrow(() -> new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER,
-				"존재하지 않는 유저의 리프레시 토큰입니다."));
+			.orElseThrow(() -> new ApplicationException(ErrorCode.UNEXISTED_USER, "존재하지 않는 유저의 리프레시 토큰입니다."));
 
 		if (user.getDeletedAt() != null) {
-			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNEXISTED_USER,
-				"존재하지 않는 유저의 리프레시 토큰입니다.");
+			throw new ApplicationException(ErrorCode.UNEXISTED_USER, "존재하지 않는 유저의 리프레시 토큰입니다.");
 		}
 
 		if (!jwtTokenProvider.isRefreshTokenMatched(email, token)) {
-			throw new InvalidTokenException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.INVALID_TOKEN,
-				"유효하지 않은 리프레시 토큰입니다.");
+			throw new ApplicationException(ErrorCode.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
 		}
 
 		String accessToken = jwtTokenProvider.generateAccessToken(userId, user.getEmail());
@@ -135,6 +132,9 @@ public class UserService {
 	}
 
 	public GetProfileResponse getMyProfile(Users user) {
+		GithubAccount githubAccount = githubAccountRepository.findByUserIdAndDeletedAtIsNull(user.getId())
+			.orElse(null);
+
 		return GetProfileResponse.builder()
 			.email(user.getEmail())
 			.nickname(user.getNickname())
@@ -142,6 +142,9 @@ public class UserService {
 			.level(user.getLevel())
 			.description(user.getDescription())
 			.profileImage(buildProfileImageUrl(user.getProfileImage()))
+			.isGithubLogin(user.isGithubLogin())
+			.isGithubLinked(githubAccount != null)
+			.githubUsername(githubAccount == null ? null : githubAccount.getGithubUsername())
 			.build();
 	}
 
@@ -161,38 +164,42 @@ public class UserService {
 	@Transactional
 	public void editPassword(Users loginUser, EditPasswordRequest request) {
 		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
-			() -> new UserNotFoundException(
-				HttpStatus.UNAUTHORIZED,
-				ErrorCodeConstants.UNEXISTED_USER,
-				"존재하지 않은 유저입니다."
-			));
+			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
 		if (!passwordEncoder.matches(request.currentPassword(), user.getPassword()))
-			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD,
-				"현재 비밀번호와 동일하지 않습니다.");
+			throw new ApplicationException(ErrorCode.UNMATCHED_PASSWORD);
 
 		String newPassword = passwordEncoder.encode(request.afterPassword());
 		user.editPassword(newPassword);
 		jwtTokenProvider.deleteRefreshToken(user.getEmail());
 	}
 
+	public void sendDeleteUserEmail(Users loginUser) {
+		Users user = this.getActiveUser(loginUser.getId());
+
+		emailService.sendDeleteUserEmail(user.getEmail());
+	}
+
+	public void validateDeleteUserEmail(Users loginUser, ValidateDeleteUserEmailRequest request) {
+		Users user = this.getActiveUser(loginUser.getId());
+
+		emailService.validateDeleteUserAuthNumber(user.getEmail(), request.authNumber());
+	}
+
 	@Transactional
-	public void deleteUser(Users loginUser, DeleteUserRequest request) {
-		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
-			() -> new UserNotFoundException(
-				HttpStatus.UNAUTHORIZED,
-				ErrorCodeConstants.UNEXISTED_USER,
-				"존재하지 않은 유저입니다."
-			));
-		if (!passwordEncoder.matches(request.password(), user.getPassword()))
-			throw new InvalidPasswordException(HttpStatus.UNAUTHORIZED, ErrorCodeConstants.UNMATCHED_PASSWORD,
-				"현재 비밀번호와 동일하지 않습니다.");
+	public void deleteUser(Users loginUser) {
+		Users user = this.getActiveUser(loginUser.getId());
+		emailService.validateVerifiedDeleteUserEmail(user.getEmail());
 
 		Instant deletedAt = Instant.now();
 		String email = user.getEmail();
 		String deletedEmail = createDeletedEmail(user.getId(), email, deletedAt);
 
 		user.softDelete(deletedAt, deletedEmail);
+		githubAccountRepository.findByUserIdAndDeletedAtIsNull(user.getId())
+			.ifPresent(githubAccount -> githubAccount.softDelete(deletedAt));
+		userRepository.flush();
 		jwtTokenProvider.deleteRefreshToken(email);
+		emailService.consumeVerifiedDeleteUserEmail(email);
 	}
 
 	private String normalizeEmail(String email) {
@@ -231,13 +238,19 @@ public class UserService {
 		if (objectKey == null || objectKey.isBlank()) {
 			return objectKey;
 		}
+		String normalizedObjectKey = objectKey.startsWith("/") ? objectKey.substring(1) : objectKey;
+
 		if (s3Endpoint == null || s3Endpoint.isBlank()) {
-			return objectKey;
+			return "https://" + bucket + ".s3." + region + ".amazonaws.com/" + normalizedObjectKey;
 		}
 
 		String normalizedEndpoint = s3Endpoint.endsWith("/") ? s3Endpoint.substring(0, s3Endpoint.length() - 1) : s3Endpoint;
-		String normalizedObjectKey = objectKey.startsWith("/") ? objectKey.substring(1) : objectKey;
 
 		return normalizedEndpoint + "/" + bucket + "/" + normalizedObjectKey;
+	}
+
+	private Users getActiveUser(Long id) {
+		return  userRepository.findByIdAndDeletedAtIsNull(id).orElseThrow(
+			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
 	}
 }

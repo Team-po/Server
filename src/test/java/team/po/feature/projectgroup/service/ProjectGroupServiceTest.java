@@ -1,13 +1,8 @@
 package team.po.feature.projectgroup.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,9 +13,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import team.po.exception.ErrorCodeConstants;
+import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
 import team.po.feature.projectgroup.domain.GroupRole;
 import team.po.feature.projectgroup.domain.MemberRole;
 import team.po.feature.projectgroup.domain.ProjectGroup;
@@ -29,7 +26,6 @@ import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 import team.po.feature.projectgroup.dto.CreateProjectGroupMemberRequest;
 import team.po.feature.projectgroup.dto.CreateProjectGroupRequest;
 import team.po.feature.projectgroup.dto.CreateProjectGroupResponse;
-import team.po.feature.projectgroup.exception.ProjectGroupException;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.user.domain.Users;
@@ -50,11 +46,15 @@ class ProjectGroupServiceTest {
 	@InjectMocks
 	private ProjectGroupService projectGroupService;
 
+	@Mock
+	private ApplicationEventPublisher eventPublisher;
+
 	@Test
 	void createProjectGroup_savesGroupAndMembers_whenRequestIsValid() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
 		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
-		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE)))
+		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(),
+			eq(ProjectGroupStatus.ACTIVE)))
 			.thenReturn(false);
 		when(projectGroupRepository.save(any(ProjectGroup.class))).thenAnswer(invocation -> {
 			ProjectGroup saved = invocation.getArgument(0);
@@ -93,9 +93,9 @@ class ProjectGroupServiceTest {
 		);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.INVALID_PROJECT_GROUP_REQUEST);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_PROJECT_GROUP_REQUEST.getCode());
 	}
 
 	@Test
@@ -113,9 +113,9 @@ class ProjectGroupServiceTest {
 		);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.INVALID_PROJECT_GROUP_REQUEST);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_PROJECT_GROUP_REQUEST.getCode());
 	}
 
 	@Test
@@ -134,16 +134,17 @@ class ProjectGroupServiceTest {
 		);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(request))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.INVALID_PROJECT_GROUP_REQUEST);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_PROJECT_GROUP_REQUEST.getCode());
 	}
 
 	@Test
 	void createProjectGroup_savesGroup_whenHostExists() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
 		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
-		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE)))
+		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(),
+			eq(ProjectGroupStatus.ACTIVE)))
 			.thenReturn(false);
 		when(projectGroupRepository.save(any(ProjectGroup.class))).thenAnswer(invocation -> {
 			ProjectGroup saved = invocation.getArgument(0);
@@ -162,20 +163,21 @@ class ProjectGroupServiceTest {
 		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(defaultRequest()))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.PROJECT_GROUP_MEMBER_NOT_FOUND);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_MEMBER_NOT_FOUND.getCode());
 	}
 
 	@Test
 	void createProjectGroup_throwsBadRequest_whenAnyMemberAlreadyBelongsToActiveTeam() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
 		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
-		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE)))
+		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(),
+			eq(ProjectGroupStatus.ACTIVE)))
 			.thenReturn(true);
 
 		assertThatThrownBy(() -> projectGroupService.createProjectGroup(defaultRequest()))
-			.isInstanceOf(ProjectGroupException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("이미 ACTIVE 팀에 속한 사용자가 포함되어 있습니다.");
 		verify(projectGroupRepository, never()).save(any(ProjectGroup.class));
 	}
@@ -184,7 +186,8 @@ class ProjectGroupServiceTest {
 	void createProjectGroup_checksMembershipAgainstActiveStatusOnly() {
 		List<Users> matchedUsers = List.of(mockUser(1L), mockUser(2L), mockUser(3L), mockUser(4L));
 		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(anyList())).thenReturn(matchedUsers);
-		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(), eq(ProjectGroupStatus.ACTIVE)))
+		when(projectGroupMemberRepository.existsByUser_IdInAndProjectGroup_Status(anyList(),
+			eq(ProjectGroupStatus.ACTIVE)))
 			.thenReturn(false);
 		when(projectGroupRepository.save(any(ProjectGroup.class))).thenAnswer(invocation -> {
 			ProjectGroup saved = invocation.getArgument(0);
@@ -206,8 +209,10 @@ class ProjectGroupServiceTest {
 			.projectTitle("주제 A")
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
-		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
-		ProjectGroupMember targetMember = new ProjectGroupMember(projectGroup, mockUser(2L), MemberRole.FRONTEND, GroupRole.MEMBER);
+		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND,
+			GroupRole.HOST);
+		ProjectGroupMember targetMember = new ProjectGroupMember(projectGroup, mockUser(2L), MemberRole.FRONTEND,
+			GroupRole.MEMBER);
 		assertThat(targetMember.isAdmin()).isFalse();
 
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndGroupRole(10L, GroupRole.HOST))
@@ -227,14 +232,15 @@ class ProjectGroupServiceTest {
 			.projectTitle("주제 A")
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
-		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
+		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND,
+			GroupRole.HOST);
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndGroupRole(20L, GroupRole.HOST))
 			.thenReturn(Optional.of(hostMember));
 
 		assertThatThrownBy(() -> projectGroupService.grantAdminPermission(20L, 99L, 2L))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.PROJECT_GROUP_PERMISSION_DENIED);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
 	}
 
 	@Test
@@ -244,16 +250,17 @@ class ProjectGroupServiceTest {
 			.projectTitle("주제 A")
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
-		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
+		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND,
+			GroupRole.HOST);
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndGroupRole(30L, GroupRole.HOST))
 			.thenReturn(Optional.of(hostMember));
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(30L, 1L))
 			.thenReturn(Optional.of(hostMember));
 
 		assertThatThrownBy(() -> projectGroupService.revokeAdminPermission(30L, 1L, 1L))
-			.isInstanceOf(ProjectGroupException.class)
-			.extracting("error")
-			.isEqualTo(ErrorCodeConstants.PROJECT_GROUP_PERMISSION_DENIED);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
 	}
 
 	@Test
@@ -263,8 +270,10 @@ class ProjectGroupServiceTest {
 			.projectTitle("주제 A")
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
-		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
-		ProjectGroupMember targetMember = new ProjectGroupMember(projectGroup, mockUser(2L), MemberRole.FRONTEND, GroupRole.MEMBER);
+		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND,
+			GroupRole.HOST);
+		ProjectGroupMember targetMember = new ProjectGroupMember(projectGroup, mockUser(2L), MemberRole.FRONTEND,
+			GroupRole.MEMBER);
 		targetMember.grantAdmin();
 		assertThat(targetMember.isAdmin()).isTrue();
 
@@ -276,6 +285,71 @@ class ProjectGroupServiceTest {
 		projectGroupService.revokeAdminPermission(40L, 1L, 2L);
 
 		assertThat(targetMember.isAdmin()).isFalse();
+	}
+
+	@Test
+	void finishProjectGroup_finishesProjectGroup_whenRequesterIsHost() {
+		ProjectGroup projectGroup = ProjectGroup.builder()
+			.projectName("Teampo Alpha")
+			.projectTitle("주제 A")
+			.status(ProjectGroupStatus.ACTIVE)
+			.build();
+
+		when(projectGroupRepository.findByIdForUpdate(50L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(50L, 1L, GroupRole.HOST))
+			.thenReturn(true);
+
+		projectGroupService.finishProjectGroup(50L, 1L);
+
+		assertThat(projectGroup.getStatus()).isEqualTo(ProjectGroupStatus.FINISHED);
+	}
+
+	@Test
+	void finishProjectGroup_throwsForbidden_whenRequesterIsNotHost() {
+		ProjectGroup projectGroup = ProjectGroup.builder()
+			.projectName("Teampo Alpha")
+			.projectTitle("주제 A")
+			.status(ProjectGroupStatus.ACTIVE)
+			.build();
+
+		when(projectGroupRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(60L, 99L, GroupRole.HOST))
+			.thenReturn(false);
+
+		assertThatThrownBy(() -> projectGroupService.finishProjectGroup(60L, 99L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
+	}
+
+	@Test
+	void finishProjectGroup_throwsBadRequest_whenProjectGroupAlreadyFinished() {
+		ProjectGroup projectGroup = ProjectGroup.builder()
+			.projectName("Teampo Alpha")
+			.projectTitle("주제 A")
+			.status(ProjectGroupStatus.FINISHED)
+			.build();
+
+		when(projectGroupRepository.findByIdForUpdate(70L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(70L, 1L, GroupRole.HOST))
+			.thenReturn(true);
+
+		assertThatThrownBy(() -> projectGroupService.finishProjectGroup(70L, 1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_PROJECT_GROUP_REQUEST.getCode());
+	}
+
+	@Test
+	void getMyProjectGroup_throwsNotFound_whenUserHasNoActiveGroup() {
+		Users requester = mockUser(100L);
+		when(projectGroupMemberRepository.findByUser_IdAndProjectGroup_Status(100L, ProjectGroupStatus.ACTIVE))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> projectGroupService.getMyProjectGroup(requester))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_NOT_FOUND.getCode());
 	}
 
 	private CreateProjectGroupRequest defaultRequest() {

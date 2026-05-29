@@ -4,6 +4,7 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
+*/.DS_Store
 
 ### STS ###
 .apt_generated
@@ -38,3 +39,20 @@ out/
 
 src/main/resources/jwt-secret.yml
 src/main/resources/s3-secret.yml
+config/*-secret.yml
+config/*.local.yml
+deploy/*.env
+!deploy/*.env.example
+src/test/stest.json
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

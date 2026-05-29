@@ -12,8 +12,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -23,8 +25,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
+import team.po.exception.ApplicationException;
+import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
-import team.po.feature.user.dto.DeleteUserRequest;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
@@ -33,11 +36,8 @@ import team.po.feature.user.dto.RefreshTokenResponse;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
-import team.po.feature.user.exception.DuplicatedEmailException;
-import team.po.feature.user.exception.InvalidPasswordException;
-import team.po.feature.user.exception.InvalidProfileImageKeyException;
-import team.po.feature.user.exception.InvalidTokenException;
-import team.po.feature.user.exception.UserNotFoundException;
+import team.po.feature.user.dto.ValidateDeleteUserEmailRequest;
+import team.po.feature.user.repository.GithubAccountRepository;
 import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -45,6 +45,9 @@ class UserServiceTest {
 
 	@Mock
 	private UserRepository userRepository;
+
+	@Mock
+	private GithubAccountRepository githubAccountRepository;
 
 	@Mock
 	private PasswordEncoder passwordEncoder;
@@ -58,6 +61,9 @@ class UserServiceTest {
 	@Mock
 	private ProfileImageRedisService profileImageRedisService;
 
+	@Mock
+	private EmailService emailService;
+
 	@InjectMocks
 	private UserService userService;
 
@@ -65,6 +71,7 @@ class UserServiceTest {
 	void setUp() {
 		ReflectionTestUtils.setField(userService, "s3Endpoint", "https://storage.hwangdo.kr");
 		ReflectionTestUtils.setField(userService, "bucket", "team-po");
+		ReflectionTestUtils.setField(userService, "region", "ap-northeast-2");
 	}
 
 	@Test
@@ -86,22 +93,37 @@ class UserServiceTest {
 		assertThat(savedUser.getDescription()).isNull();
 		assertThat(savedUser.getTemperature()).isEqualTo(50);
 		assertThat(savedUser.getLevel()).isEqualTo(5);
+		assertThat(savedUser.isGithubLogin()).isFalse();
 		verify(profileImageRedisService).consumeSignUpTicket("images/sign-up/test.png");
+		verify(emailService).consumeVerifiedSignUpEmail("test@email.com");
 	}
 
 	@Test
 	void signUp_throwsWhenProfileImageKeyWasNotIssued() {
 		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 5, "images/sign-up/test.png");
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
-		org.mockito.Mockito.doThrow(new InvalidProfileImageKeyException(
-			org.springframework.http.HttpStatus.BAD_REQUEST,
-			team.po.exception.ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY,
-			"발급되지 않았거나 만료된 프로필 이미지 키입니다."
-		)).when(profileImageRedisService).consumeSignUpTicket("images/sign-up/test.png");
+		org.mockito.Mockito.doThrow(new ApplicationException(team.po.exception.ErrorCode.INVALID_PROFILE_IMAGE_KEY))
+			.when(profileImageRedisService).consumeSignUpTicket("images/sign-up/test.png");
 
 		assertThatThrownBy(() -> userService.signUp(request))
-			.isInstanceOf(InvalidProfileImageKeyException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("발급되지 않았거나 만료된 프로필 이미지 키입니다.");
+
+		verify(passwordEncoder, never()).encode(any());
+		verify(emailService, never()).consumeVerifiedSignUpEmail(any());
+		verify(userRepository, never()).save(any());
+	}
+
+	@Test
+	void signUp_throwsWhenEmailWasNotVerified() {
+		SignUpRequest request = new SignUpRequest("test@email.com", "password123", "tester", 3, null);
+		when(userRepository.existsByEmail("test@email.com")).thenReturn(false);
+		doThrow(new ApplicationException(team.po.exception.ErrorCode.EMAIL_NOT_VERIFIED))
+			.when(emailService).consumeVerifiedSignUpEmail("test@email.com");
+
+		assertThatThrownBy(() -> userService.signUp(request))
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("이메일 인증이 필요합니다.");
 
 		verify(passwordEncoder, never()).encode(any());
 		verify(userRepository, never()).save(any());
@@ -113,8 +135,10 @@ class UserServiceTest {
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(true);
 
 		assertThatThrownBy(() -> userService.signUp(request))
-			.isInstanceOf(DuplicatedEmailException.class);
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("중복된 이메일이 존재합니다.");
 
+		verify(emailService, never()).consumeVerifiedSignUpEmail(any());
 		verify(passwordEncoder, never()).encode(any());
 		verify(userRepository, never()).save(any());
 	}
@@ -133,7 +157,7 @@ class UserServiceTest {
 		when(userRepository.existsByEmail("test@email.com")).thenReturn(true);
 
 		assertThatThrownBy(() -> userService.checkEmailDuplication(" Test@Email.com "))
-			.isInstanceOf(DuplicatedEmailException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("중복된 이메일이 존재합니다.");
 
 		verify(userRepository).existsByEmail("test@email.com");
@@ -208,7 +232,7 @@ class UserServiceTest {
 		when(jwtTokenProvider.validateRefreshToken("invalid-refresh-token")).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.refreshToken(request))
-			.isInstanceOf(InvalidTokenException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("유효하지 않은 리프레시 토큰입니다.");
 	}
 
@@ -221,7 +245,7 @@ class UserServiceTest {
 		when(userRepository.findById(1L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> userService.refreshToken(request))
-			.isInstanceOf(InvalidTokenException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("존재하지 않는 유저의 리프레시 토큰입니다.");
 
 		verify(jwtTokenProvider, never()).isRefreshTokenMatched(any(), any());
@@ -246,7 +270,7 @@ class UserServiceTest {
 		when(jwtTokenProvider.isRefreshTokenMatched("test@email.com", "refresh-token")).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.refreshToken(request))
-			.isInstanceOf(InvalidTokenException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("유효하지 않은 리프레시 토큰입니다.");
 
 		verify(jwtTokenProvider, never()).generateAccessToken(any(), any());
@@ -258,6 +282,7 @@ class UserServiceTest {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		loginUser.editProfileImage("profile.png");
 		loginUser.editDescription("hello");
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 
 		GetProfileResponse response = userService.getMyProfile(loginUser);
 
@@ -267,6 +292,39 @@ class UserServiceTest {
 		assertThat(response.nickname()).isEqualTo("tester");
 		assertThat(response.temperature()).isEqualTo(50);
 		assertThat(response.level()).isEqualTo(3);
+		assertThat(response.isGithubLogin()).isFalse();
+		assertThat(response.isGithubLinked()).isFalse();
+		assertThat(response.githubUsername()).isNull();
+	}
+
+	@Test
+	void getMyProfile_returnsGithubStatusWhenGithubAccountIsLinked() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		GithubAccount githubAccount = GithubAccount.builder()
+			.user(loginUser)
+			.githubUserId(123L)
+			.githubUsername("octocat")
+			.build();
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(githubAccount));
+
+		GetProfileResponse response = userService.getMyProfile(loginUser);
+
+		assertThat(response.isGithubLogin()).isFalse();
+		assertThat(response.isGithubLinked()).isTrue();
+		assertThat(response.githubUsername()).isEqualTo("octocat");
+	}
+
+	@Test
+	void getMyProfile_returnsAwsS3ProfileImageUrlWhenEndpointIsBlank() {
+		ReflectionTestUtils.setField(userService, "s3Endpoint", "");
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		loginUser.editProfileImage("images/users/1/profile.png");
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+
+		GetProfileResponse response = userService.getMyProfile(loginUser);
+
+		assertThat(response.profileImage())
+			.isEqualTo("https://team-po.s3.ap-northeast-2.amazonaws.com/images/users/1/profile.png");
 	}
 
 	@Test
@@ -291,14 +349,11 @@ class UserServiceTest {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		EditProfileRequest request = new EditProfileRequest("updated-description", "updated-nickname", 4, "images/users/1/new.png");
 		loginUser.editProfileImage("profile.png");
-		org.mockito.Mockito.doThrow(new InvalidProfileImageKeyException(
-			org.springframework.http.HttpStatus.BAD_REQUEST,
-			team.po.exception.ErrorCodeConstants.INVALID_PROFILE_IMAGE_KEY,
-			"발급되지 않았거나 만료된 프로필 이미지 키입니다."
-		)).when(profileImageRedisService).consumeProfileUpdateTicket(1L, "images/users/1/new.png");
+		org.mockito.Mockito.doThrow(new ApplicationException(team.po.exception.ErrorCode.INVALID_PROFILE_IMAGE_KEY))
+			.when(profileImageRedisService).consumeProfileUpdateTicket(1L, "images/users/1/new.png");
 
 		assertThatThrownBy(() -> userService.editMyProfile(loginUser, request))
-			.isInstanceOf(InvalidProfileImageKeyException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("발급되지 않았거나 만료된 프로필 이미지 키입니다.");
 
 		assertThat(loginUser.getProfileImage()).isEqualTo("profile.png");
@@ -332,7 +387,7 @@ class UserServiceTest {
 		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.editPassword(loginUser, request))
-			.isInstanceOf(InvalidPasswordException.class)
+			.isInstanceOf(ApplicationException.class)
 			.hasMessage("현재 비밀번호와 동일하지 않습니다.");
 
 		verify(passwordEncoder, never()).encode(any());
@@ -340,22 +395,54 @@ class UserServiceTest {
 	}
 
 	@Test
+	void sendDeleteUserEmail_sendsEmailToManagedUserEmail() {
+		Users loginUser = authenticatedUser(1L, "login@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+
+		userService.sendDeleteUserEmail(loginUser);
+
+		verify(emailService).sendDeleteUserEmail("test@email.com");
+	}
+
+	@Test
+	void validateDeleteUserEmail_validatesManagedUserEmail() {
+		Users loginUser = authenticatedUser(1L, "login@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		ValidateDeleteUserEmailRequest request = new ValidateDeleteUserEmailRequest(123456);
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+
+		userService.validateDeleteUserEmail(loginUser, request);
+
+		verify(emailService).validateDeleteUserAuthNumber("test@email.com", 123456);
+	}
+
+	@Test
 	void deleteUser_softDeletesManagedUserAndDeletesRefreshToken() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		Users managedUser = authenticatedUser(1L, "test@email.com");
-		DeleteUserRequest request = new DeleteUserRequest("current-password");
-		managedUser.editPassword("encoded-current-password");
+		GithubAccount githubAccount = GithubAccount.builder()
+			.user(managedUser)
+			.githubUserId(123L)
+			.githubUsername("octocat")
+			.build();
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
-		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(githubAccount));
 
-		userService.deleteUser(loginUser, request);
+		userService.deleteUser(loginUser);
 
 		assertThat(managedUser.getDeletedAt()).isNotNull();
 		assertThat(managedUser.getEmail()).startsWith("deleted__1__");
 		assertThat(managedUser.getEmail()).doesNotContain("test@email.com");
 		assertThat(managedUser.getEmail().length()).isLessThanOrEqualTo(255);
+		assertThat(githubAccount.getDeletedAt()).isEqualTo(managedUser.getDeletedAt());
 		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
-		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
+		verify(githubAccountRepository).findByUserIdAndDeletedAtIsNull(1L);
+		InOrder inOrder = inOrder(emailService, userRepository, jwtTokenProvider);
+		inOrder.verify(emailService).validateVerifiedDeleteUserEmail("test@email.com");
+		inOrder.verify(userRepository).flush();
+		inOrder.verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
+		inOrder.verify(emailService).consumeVerifiedDeleteUserEmail("test@email.com");
 	}
 
 	@Test
@@ -365,13 +452,10 @@ class UserServiceTest {
 		String longLocalPart = "a".repeat(120);
 		String longDomainPart = "b".repeat(120);
 		String originalEmail = longLocalPart + "@" + longDomainPart + ".com";
-		DeleteUserRequest request = new DeleteUserRequest("current-password");
 		ReflectionTestUtils.setField(managedUser, "email", originalEmail);
-		managedUser.editPassword("encoded-current-password");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
-		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
 
-		userService.deleteUser(loginUser, request);
+		userService.deleteUser(loginUser);
 
 		assertThat(managedUser.getEmail().length()).isLessThanOrEqualTo(255);
 		assertThat(managedUser.getEmail()).startsWith("deleted__1__");
@@ -380,18 +464,36 @@ class UserServiceTest {
 	}
 
 	@Test
-	void deleteUser_throwsWhenPasswordDoesNotMatch() {
+	void deleteUser_throwsWhenEmailWasNotVerified() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		Users managedUser = authenticatedUser(1L, "test@email.com");
-		DeleteUserRequest request = new DeleteUserRequest("wrong-password");
-		managedUser.editPassword("encoded-current-password");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
-		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
+		doThrow(new ApplicationException(team.po.exception.ErrorCode.EMAIL_NOT_VERIFIED))
+			.when(emailService).validateVerifiedDeleteUserEmail("test@email.com");
 
-		assertThatThrownBy(() -> userService.deleteUser(loginUser, request))
-			.isInstanceOf(InvalidPasswordException.class)
-			.hasMessage("현재 비밀번호와 동일하지 않습니다.");
+		assertThatThrownBy(() -> userService.deleteUser(loginUser))
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("이메일 인증이 필요합니다.");
 
+		assertThat(managedUser.getDeletedAt()).isNull();
+		verify(userRepository, never()).flush();
+		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
+		verify(emailService, never()).consumeVerifiedDeleteUserEmail(any());
+	}
+
+	@Test
+	void deleteUser_doesNotConsumeVerifiedEmailWhenSoftDeleteFlushFails() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		doThrow(new DataIntegrityViolationException("failed"))
+			.when(userRepository).flush();
+
+		assertThatThrownBy(() -> userService.deleteUser(loginUser))
+			.isInstanceOf(DataIntegrityViolationException.class);
+
+		verify(emailService).validateVerifiedDeleteUserEmail("test@email.com");
+		verify(emailService, never()).consumeVerifiedDeleteUserEmail(any());
 		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
 	}
 
