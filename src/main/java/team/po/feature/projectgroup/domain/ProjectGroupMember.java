@@ -47,6 +47,9 @@ public class ProjectGroupMember {
 	@Column(name = "is_admin", nullable = false)
 	private boolean admin;
 
+	@Column(name = "is_finish_agreed", nullable = false)
+	private boolean finishAgreed;
+
 	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
 	private Instant createdAt;
 
@@ -62,6 +65,7 @@ public class ProjectGroupMember {
 		this.memberRole = memberRole;
 		this.groupRole = groupRole;
 		this.admin = groupRole == GroupRole.HOST;
+		this.finishAgreed = false;
 	}
 
 	public void grantAdmin() {
@@ -70,5 +74,9 @@ public class ProjectGroupMember {
 
 	public void revokeAdmin() {
 		this.admin = false;
+	}
+
+	public void agreeFinish() {
+		this.finishAgreed = true;
 	}
 }

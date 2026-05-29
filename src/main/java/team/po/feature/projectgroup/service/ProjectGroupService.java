@@ -153,17 +153,12 @@ public class ProjectGroupService {
 		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
 
-		boolean isHost = projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(
-			projectGroupId,
-			requesterUserId,
-			GroupRole.HOST
-		);
-		if (!isHost) {
-			throw new ApplicationException(
-				ErrorCode.PROJECT_GROUP_PERMISSION_DENIED,
-				"방장만 팀 스페이스를 종료할 수 있습니다."
-			);
-		}
+		ProjectGroupMember requesterMember = projectGroupMemberRepository
+			.findByProjectGroup_IdAndUser_Id(projectGroupId, requesterUserId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.PROJECT_GROUP_ACCESS_DENIED,
+				"팀원만 팀 스페이스 종료에 동의할 수 있습니다."
+			));
 
 		if (projectGroup.getStatus() == ProjectGroupStatus.FINISHED) {
 			throw new ApplicationException(
@@ -172,7 +167,20 @@ public class ProjectGroupService {
 			);
 		}
 
-		projectGroup.finish();
+		requesterMember.agreeFinish();
+
+		long memberCount = projectGroupMemberRepository.countByProjectGroup_Id(projectGroupId);
+		if (memberCount != 4L) {
+			throw new ApplicationException(
+				ErrorCode.INVALID_PROJECT_GROUP_REQUEST,
+				"팀 인원은 정확히 4명이어야 종료 동의가 가능합니다."
+			);
+		}
+
+		long agreedCount = projectGroupMemberRepository.countByProjectGroup_IdAndFinishAgreedTrue(projectGroupId);
+		if (agreedCount == memberCount) {
+			projectGroup.finish();
+		}
 	}
 
 	private void validateCreateRequest(CreateProjectGroupRequest request) {

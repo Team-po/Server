@@ -73,7 +73,7 @@ class ProjectGroupControllerTest {
 	}
 
 	@Test
-	void finishProjectGroup_returnsOk_whenHostRequests() throws Exception {
+	void finishProjectGroup_returnsOk_whenMemberAgrees() throws Exception {
 		mockMvc.perform(patch("/api/project-groups/{projectGroupId}/finish", 10L))
 			.andExpect(status().isOk());
 
@@ -81,15 +81,15 @@ class ProjectGroupControllerTest {
 	}
 
 	@Test
-	void finishProjectGroup_returnsForbidden_whenRequesterIsNotHost() throws Exception {
+	void finishProjectGroup_returnsForbidden_whenRequesterIsNotMember() throws Exception {
 		doThrow(new ApplicationException(
-			ErrorCode.PROJECT_GROUP_PERMISSION_DENIED,
-			"방장만 팀 스페이스를 종료할 수 있습니다."
+			ErrorCode.PROJECT_GROUP_ACCESS_DENIED,
+			"팀원만 팀 스페이스 종료에 동의할 수 있습니다."
 		)).when(projectGroupService).finishProjectGroup(anyLong(), anyLong());
 
 		mockMvc.perform(patch("/api/project-groups/{projectGroupId}/finish", 10L))
 			.andExpect(status().isForbidden())
-			.andExpect(jsonPath("$.code").value(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode()))
-			.andExpect(jsonPath("$.message").value("방장만 팀 스페이스를 종료할 수 있습니다."));
+			.andExpect(jsonPath("$.code").value(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode()))
+			.andExpect(jsonPath("$.message").value("팀원만 팀 스페이스 종료에 동의할 수 있습니다."));
 	}
 }
