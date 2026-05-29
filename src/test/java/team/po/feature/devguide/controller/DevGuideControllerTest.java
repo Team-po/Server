@@ -5,11 +5,6 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-import team.po.exception.ApplicationException;
-import team.po.exception.ErrorCode;
-import team.po.feature.devguide.domain.DevGuideGenerationType;
-import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
-
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -23,8 +18,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import team.po.common.auth.LoginUserArgumentResolver;
+import team.po.exception.ApplicationException;
 import team.po.exception.CustomExceptionHandler;
+import team.po.exception.ErrorCode;
+import team.po.feature.devguide.domain.DevGuideGenerationType;
+import team.po.feature.devguide.domain.DevGuideStatus;
 import team.po.feature.devguide.dto.DevGuideContent;
+import team.po.feature.devguide.dto.DevGuideQueryResponse;
+import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
 import team.po.feature.devguide.service.DevGuideService;
 import team.po.feature.user.domain.Users;
 
@@ -58,77 +59,105 @@ class DevGuideControllerTest {
 		when(loginUserArgumentResolver.resolveArgument(any(), any(), any(), any())).thenReturn(mockUser);
 	}
 
-	@Test
-	void getDevGuide_returnsDevGuideContent() throws Exception {
-		DevGuideContent content = new DevGuideContent(
-			"프로젝트 개요입니다.",
-			List.of(new DevGuideContent.TechStackItem("Backend", "Spring Boot", "이유입니다.")),
-			List.of(new DevGuideContent.MvpPriority(1, "로그인", "핵심 기능입니다.", List.of("회원가입", "로그인", "토큰 발급"))),
-			List.of(new DevGuideContent.DecisionPoint("인증 방식", List.of("JWT", "Session"), "트레이드오프를 고려합니다.")),
-			List.of(new DevGuideContent.Milestone(1, "요구사항 정리",
-				new DevGuideContent.RoleTasks("백엔드 작업", "프론트 작업", "디자인 작업")))
-		);
+	// ─── GET /dev-guide ───────────────────────────────────────────────────────
 
-		when(devGuideService.getDevGuide(1L, 1L)).thenReturn(content);
+	@Test
+	void getDevGuide_returnsContentWithCompletedStatus() throws Exception {
+		DevGuideContent content = sampleContent("프로젝트 개요입니다.");
+		DevGuideQueryResponse response = new DevGuideQueryResponse(content, DevGuideStatus.COMPLETED);
+
+		when(devGuideService.getDevGuide(1L, 1L)).thenReturn(response);
 
 		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide", 1L))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.overview").value("프로젝트 개요입니다."))
-			.andExpect(jsonPath("$.techStack[0].category").value("Backend"))
-			.andExpect(jsonPath("$.mvpPriorities[0].priority").value(1))
-			.andExpect(jsonPath("$.decisionPoints[0].topic").value("인증 방식"))
-			.andExpect(jsonPath("$.milestones[0].week").value(1));
+			.andExpect(jsonPath("$.generationStatus").value("COMPLETED"))
+			.andExpect(jsonPath("$.content.overview").value("프로젝트 개요입니다."))
+			.andExpect(jsonPath("$.content.techStack[0].category").value("Backend"));
 	}
 
 	@Test
-	void regenerateDevGuide_returnsContentAndGenerationType() throws Exception {
-		DevGuideContent content = new DevGuideContent(
-			"재생성된 프로젝트 개요입니다.",
-			List.of(new DevGuideContent.TechStackItem("Backend", "Spring Boot", "이유입니다.")),
-			List.of(new DevGuideContent.MvpPriority(1, "로그인", "핵심 기능입니다.", List.of("회원가입", "로그인", "토큰 발급"))),
-			List.of(new DevGuideContent.DecisionPoint("인증 방식", List.of("JWT", "Session"), "트레이드오프를 고려합니다.")),
-			List.of(new DevGuideContent.Milestone(1, "요구사항 정리",
-				new DevGuideContent.RoleTasks("백엔드 작업", "프론트 작업", "디자인 작업")))
-		);
+	void getDevGuide_returnsGeneratingStatusWithoutContent() throws Exception {
+		DevGuideQueryResponse response = new DevGuideQueryResponse(null, DevGuideStatus.GENERATING);
+
+		when(devGuideService.getDevGuide(1L, 1L)).thenReturn(response);
+
+		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide", 1L))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.generationStatus").value("GENERATING"))
+			.andExpect(jsonPath("$.content").doesNotExist());
+	}
+
+	@Test
+	void getDevGuide_returnsFailedStatusWithoutContent() throws Exception {
+		DevGuideQueryResponse response = new DevGuideQueryResponse(null, DevGuideStatus.FAILED);
+
+		when(devGuideService.getDevGuide(1L, 1L)).thenReturn(response);
+
+		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide", 1L))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.generationStatus").value("FAILED"))
+			.andExpect(jsonPath("$.content").doesNotExist());
+	}
+
+	// ─── POST /dev-guide/regenerate ───────────────────────────────────────────
+
+	@Test
+	void regenerateDevGuide_returnsContentAndManualType() throws Exception {
+		DevGuideContent content = sampleContent("재생성된 개요입니다.");
 		DevGuideRegenerateResponse response =
-			new DevGuideRegenerateResponse(content, DevGuideGenerationType.MANUAL, null);
+			new DevGuideRegenerateResponse(content, DevGuideGenerationType.MANUAL, 2);
 
 		when(devGuideService.regenerate(1L, 1L)).thenReturn(response);
 
 		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.content.overview").value("재생성된 프로젝트 개요입니다."))
-			.andExpect(jsonPath("$.content.techStack[0].category").value("Backend"))
 			.andExpect(jsonPath("$.generationType").value("MANUAL"))
-			.andExpect(jsonPath("$.remainingRegenerationCount").doesNotExist());
+			.andExpect(jsonPath("$.remainingRegenerationCount").value(2))
+			.andExpect(jsonPath("$.content.overview").value("재생성된 개요입니다."));
 	}
 
 	@Test
-	void regenerateDevGuide_returnsRecoveryType_whenNoConfirmedGuideExisted() throws Exception {
-		DevGuideContent content = new DevGuideContent(
-			"복구된 프로젝트 개요입니다.",
+	void regenerateDevGuide_returnsRecoveryType_whenRetryingAfterFailure() throws Exception {
+		DevGuideContent content = sampleContent("복구된 개요입니다.");
+		DevGuideRegenerateResponse response =
+			new DevGuideRegenerateResponse(content, DevGuideGenerationType.RECOVERY, 3);
+
+		when(devGuideService.regenerate(1L, 1L)).thenReturn(response);
+
+		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.generationType").value("RECOVERY"))
+			.andExpect(jsonPath("$.remainingRegenerationCount").value(3));
+	}
+
+	@Test
+	void regenerateDevGuide_returnsConflict_whenAlreadyGenerating() throws Exception {
+		when(devGuideService.regenerate(1L, 1L))
+			.thenThrow(new ApplicationException(ErrorCode.DEV_GUIDE_GENERATING));
+
+		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))
+			.andExpect(status().isConflict());
+	}
+
+	@Test
+	void regenerateDevGuide_returnsTooManyRequests_whenLimitExceeded() throws Exception {
+		when(devGuideService.regenerate(1L, 1L))
+			.thenThrow(new ApplicationException(ErrorCode.DEV_GUIDE_REGENERATION_LIMIT_EXCEEDED));
+
+		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))
+			.andExpect(status().isTooManyRequests());
+	}
+
+	// ─── fixtures ────────────────────────────────────────────────────────────
+
+	private DevGuideContent sampleContent(String overview) {
+		return new DevGuideContent(
+			overview,
 			List.of(new DevGuideContent.TechStackItem("Backend", "Spring Boot", "이유입니다.")),
 			List.of(new DevGuideContent.MvpPriority(1, "로그인", "핵심 기능입니다.", List.of("회원가입", "로그인", "토큰 발급"))),
 			List.of(new DevGuideContent.DecisionPoint("인증 방식", List.of("JWT", "Session"), "트레이드오프를 고려합니다.")),
 			List.of(new DevGuideContent.Milestone(1, "요구사항 정리",
 				new DevGuideContent.RoleTasks("백엔드 작업", "프론트 작업", "디자인 작업")))
 		);
-		DevGuideRegenerateResponse response =
-			new DevGuideRegenerateResponse(content, DevGuideGenerationType.RECOVERY, null);
-
-		when(devGuideService.regenerate(1L, 1L)).thenReturn(response);
-
-		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.generationType").value("RECOVERY"));
-	}
-
-	@Test
-	void regenerateDevGuide_returnsNotFound_whenProjectGroupDoesNotExist() throws Exception {
-		when(devGuideService.regenerate(1L, 1L))
-			.thenThrow(new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
-
-		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))
-			.andExpect(status().isNotFound());
 	}
 }

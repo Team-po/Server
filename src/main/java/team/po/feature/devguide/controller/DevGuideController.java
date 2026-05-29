@@ -11,7 +11,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import lombok.RequiredArgsConstructor;
 import team.po.common.auth.LoginUser;
-import team.po.feature.devguide.dto.DevGuideContent;
+import team.po.feature.devguide.dto.DevGuideQueryResponse;
 import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
 import team.po.feature.devguide.service.DevGuideService;
 import team.po.feature.user.domain.Users;
@@ -24,11 +24,11 @@ public class DevGuideController {
 
 	@Operation(summary = "팀 스페이스 개발 가이드라인 조회 API")
 	@GetMapping("/{projectGroupId}/dev-guide")
-	public ResponseEntity<DevGuideContent> getDevGuide(
+	public ResponseEntity<DevGuideQueryResponse> getDevGuide(
 		@Parameter(hidden = true) @LoginUser Users user,
 		@PathVariable Long projectGroupId
 	) {
-		DevGuideContent response = devGuideService.getDevGuide(projectGroupId, user.getId());
+		DevGuideQueryResponse response = devGuideService.getDevGuide(projectGroupId, user.getId());
 
 		return ResponseEntity.ok(response);
 	}
