@@ -53,7 +53,8 @@ public enum ErrorCode {
 		"담당자는 현재 팀 멤버여야 합니다."),
 	PROJECT_CHECKLIST_WRITE_NOT_ALLOWED(HttpStatus.FORBIDDEN, "PROJECT_CHECKLIST_WRITE_NOT_ALLOWED",
 		"종료된 팀 스페이스에서는 체크리스트를 수정할 수 없습니다."),
-	PROJECT_CHECKLIST_DESCRIPTION_REQUIRED_FOR_AI(HttpStatus.BAD_REQUEST, "PROJECT_CHECKLIST_DESCRIPTION_REQUIRED_FOR_AI",
+	PROJECT_CHECKLIST_DESCRIPTION_REQUIRED_FOR_AI(HttpStatus.BAD_REQUEST,
+		"PROJECT_CHECKLIST_DESCRIPTION_REQUIRED_FOR_AI",
 		"체크리스트 설명이 있어야 AI 조언을 생성할 수 있습니다."),
 	PROJECT_CHECKLIST_DATA_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "PROJECT_CHECKLIST_DATA_ERROR",
 		"체크리스트 데이터 형식이 올바르지 않습니다."),
@@ -86,7 +87,8 @@ public enum ErrorCode {
 		" AI 가이드라인 생성에 실패했습니다."),
 	GEMINI_INVALID_RESPONSE(HttpStatus.INTERNAL_SERVER_ERROR, "GEMINI_INVALID_RESPONSE",
 		"Gemini API 응답 형식이 올바르지 않습니다."),
-	GEMINI_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "GEMINI_API_ERROR", "Gemini API 호출에 실패했습니다.");
+	GEMINI_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "GEMINI_API_ERROR", "Gemini API 호출에 실패했습니다."),
+	DEV_GUIDE_NOT_FOUND(HttpStatus.NOT_FOUND, "DEV_GUIDE_NOT_FOUND", "개발 가이드라인이 존재하지 않습니다.");
 
 	private final HttpStatus status;
 	private final String code;
