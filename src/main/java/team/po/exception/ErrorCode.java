@@ -88,7 +88,8 @@ public enum ErrorCode {
 	GEMINI_INVALID_RESPONSE(HttpStatus.INTERNAL_SERVER_ERROR, "GEMINI_INVALID_RESPONSE",
 		"Gemini API 응답 형식이 올바르지 않습니다."),
 	GEMINI_API_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "GEMINI_API_ERROR", "Gemini API 호출에 실패했습니다."),
-	DEV_GUIDE_NOT_FOUND(HttpStatus.NOT_FOUND, "DEV_GUIDE_NOT_FOUND", "개발 가이드라인이 존재하지 않습니다.");
+	DEV_GUIDE_NOT_FOUND(HttpStatus.NOT_FOUND, "DEV_GUIDE_NOT_FOUND", "개발 가이드라인이 존재하지 않습니다."),
+	DEV_GUIDE_ALREADY_EXISTS(HttpStatus.CONFLICT, "DEV_GUIDE_ALREADY_EXISTS", "이미 개발 가이드라인이 존재합니다.");
 
 	private final HttpStatus status;
 	private final String code;

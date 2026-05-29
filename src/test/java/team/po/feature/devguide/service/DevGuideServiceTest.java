@@ -17,6 +17,7 @@ import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.devguide.client.GeminiClient;
 import team.po.feature.devguide.domain.DevGuide;
+import team.po.feature.devguide.domain.DevGuideGenerationType;
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.repository.DevGuideRepository;
@@ -51,7 +52,7 @@ class DevGuideServiceTest {
 
 	@Test
 	void generate_returnsWithoutCallingGemini_whenDevGuideAlreadyExists() {
-		when(devGuideRepository.existsByProjectGroup_Id(1L)).thenReturn(true);
+		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(true);
 
 		devGuideService.generate(1L);
 
@@ -65,7 +66,7 @@ class DevGuideServiceTest {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideContent content = devGuideContent();
 
-		when(devGuideRepository.existsByProjectGroup_Id(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup));
 		when(promptBuilder.build("주제 A", "설명", "MVP")).thenReturn("prompt");
 		when(geminiClient.generateDevGuide(eq("prompt"), any())).thenReturn(content);
@@ -78,7 +79,7 @@ class DevGuideServiceTest {
 
 	@Test
 	void generate_throwsNotFound_whenProjectGroupDoesNotExist() {
-		when(devGuideRepository.existsByProjectGroup_Id(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> devGuideService.generate(1L))
@@ -94,11 +95,11 @@ class DevGuideServiceTest {
 	void getDevGuide_returnsContent_whenDevGuideExists() {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideContent content = devGuideContent();
-		DevGuide devGuide = DevGuide.create(projectGroup, content);
+		DevGuide devGuide = DevGuide.create(projectGroup, content, 1, DevGuideGenerationType.INITIAL, true);
 
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L))
 			.thenReturn(true);
-		when(devGuideRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(devGuide));
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.of(devGuide));
 
 		DevGuideContent result = devGuideService.getDevGuide(1L, 10L);
 
@@ -112,7 +113,7 @@ class DevGuideServiceTest {
 	void getDevGuide_throwsNotFound_whenDevGuideDoesNotExist() {
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L))
 			.thenReturn(true);
-		when(devGuideRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.empty());
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> devGuideService.getDevGuide(1L, 10L))
 			.isInstanceOf(ApplicationException.class)
@@ -130,7 +131,7 @@ class DevGuideServiceTest {
 			.extracting("code")
 			.isEqualTo(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode());
 
-		verify(devGuideRepository, never()).findByProjectGroup_Id(any());
+		verify(devGuideRepository, never()).findByProjectGroup_IdAndIsConfirmedTrue(any());
 	}
 
 	private ProjectGroup projectGroup() {

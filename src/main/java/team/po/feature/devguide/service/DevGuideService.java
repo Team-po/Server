@@ -27,7 +27,8 @@ public class DevGuideService {
 
 	// Transaction 없이 Gemini API 호출
 	public void generate(Long projectGroupId) {
-		if (devGuideRepository.existsByProjectGroup_Id(projectGroupId)) {
+		// 이미 가이드라인이 존재하는 경우 API 호출하지 않고 return
+		if (devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(projectGroupId)) {
 			return;
 		}
 
@@ -52,7 +53,7 @@ public class DevGuideService {
 		// 조회 가능한 유저인지 검증
 		validateProjectGroupMember(projectGroupId, userId);
 
-		DevGuide devGuide = devGuideRepository.findByProjectGroup_Id(projectGroupId)
+		DevGuide devGuide = devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(projectGroupId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND));
 
 		return devGuide.toContent();

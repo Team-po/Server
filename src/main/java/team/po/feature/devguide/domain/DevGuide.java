@@ -8,6 +8,8 @@ import org.hibernate.type.SqlTypes;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -15,7 +17,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -34,8 +35,18 @@ public class DevGuide {
 	private Long id;
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
-	@JoinColumn(name = "project_group_id", nullable = false, unique = true)
+	@JoinColumn(name = "project_group_id", nullable = false)
 	private ProjectGroup projectGroup;
+
+	@Column(name = "version_no", nullable = false)
+	private int versionNo;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "generation_type", nullable = false, length = 20)
+	private DevGuideGenerationType generationType;
+
+	@Column(name = "is_confirmed", nullable = false)
+	private boolean isConfirmed;
 
 	@Column(nullable = false, columnDefinition = "TEXT")
 	private String overview;
@@ -59,14 +70,14 @@ public class DevGuide {
 	@Column(nullable = false, updatable = false)
 	private LocalDateTime createdAt;
 
-	@Column(nullable = false)
-	private LocalDateTime updatedAt;
-
 	private LocalDateTime deletedAt;
 
 	@Builder
 	private DevGuide(
 		ProjectGroup projectGroup,
+		int versionNo,
+		DevGuideGenerationType generationType,
+		boolean isConfirmed,
 		String overview,
 		List<DevGuideContent.TechStackItem> techStack,
 		List<DevGuideContent.MvpPriority> mvpPriorities,
@@ -74,6 +85,9 @@ public class DevGuide {
 		List<DevGuideContent.Milestone> milestones
 	) {
 		this.projectGroup = projectGroup;
+		this.versionNo = versionNo;
+		this.generationType = generationType;
+		this.isConfirmed = isConfirmed;
 		this.overview = overview;
 		this.techStack = techStack;
 		this.mvpPriorities = mvpPriorities;
@@ -81,27 +95,26 @@ public class DevGuide {
 		this.milestones = milestones;
 	}
 
-	public static DevGuide create(ProjectGroup projectGroup, DevGuideContent content) {
+	public static DevGuide create(
+		ProjectGroup projectGroup,
+		DevGuideContent content,
+		int versionNo,
+		DevGuideGenerationType generationType,
+		boolean isConfirmed
+	) {
 		content.validate();
 
 		return DevGuide.builder()
 			.projectGroup(projectGroup)
+			.versionNo(versionNo)
+			.generationType(generationType)
+			.isConfirmed(isConfirmed)
 			.overview(content.overview())
 			.techStack(content.techStack())
 			.mvpPriorities(content.mvpPriorities())
 			.decisionPoints(content.decisionPoints())
 			.milestones(content.milestones())
 			.build();
-	}
-
-	public void update(DevGuideContent content) {
-		content.validate();
-
-		this.overview = content.overview();
-		this.techStack = content.techStack();
-		this.mvpPriorities = content.mvpPriorities();
-		this.decisionPoints = content.decisionPoints();
-		this.milestones = content.milestones();
 	}
 
 	public void delete() {
@@ -120,13 +133,6 @@ public class DevGuide {
 
 	@PrePersist
 	protected void onCreate() {
-		LocalDateTime now = LocalDateTime.now();
-		this.createdAt = now;
-		this.updatedAt = now;
-	}
-
-	@PreUpdate
-	protected void onUpdate() {
-		this.updatedAt = LocalDateTime.now();
+		this.createdAt = LocalDateTime.now();
 	}
 }
