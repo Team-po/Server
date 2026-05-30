@@ -13,6 +13,7 @@ public record GithubPullRequestInfo(
 	Integer additions,
 	Integer deletions,
 	Integer changedFiles,
+	Integer linkedIssueCount,
 	String htmlUrl
 ) {
 }

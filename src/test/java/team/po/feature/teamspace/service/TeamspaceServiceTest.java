@@ -485,6 +485,7 @@ class TeamspaceServiceTest {
 			120,
 			15,
 			8,
+			2,
 			"https://github.com/student-team-org/backend/pull/10"
 		);
 		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(

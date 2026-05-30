@@ -294,6 +294,7 @@ class GithubAppClientTest {
 				  "additions": 120,
 				  "deletions": 15,
 				  "changed_files": 8,
+				  "body": "Closes #10\\nFixes #11 and #12\\nResolves student-team-org/frontend#13\\nCloses #10",
 				  "html_url": "https://github.com/student-team-org/backend/pull/10",
 				  "user": {
 				    "id": 501,
@@ -317,6 +318,7 @@ class GithubAppClientTest {
 			assertThat(pullRequestInfo.additions()).isEqualTo(120);
 			assertThat(pullRequestInfo.deletions()).isEqualTo(15);
 			assertThat(pullRequestInfo.changedFiles()).isEqualTo(8);
+			assertThat(pullRequestInfo.linkedIssueCount()).isEqualTo(4);
 			assertThat(pullRequestInfo.htmlUrl()).isEqualTo("https://github.com/student-team-org/backend/pull/10");
 		} finally {
 			server.stop(0);

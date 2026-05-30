@@ -3,7 +3,11 @@ package team.po.feature.teamspace.service;
 import java.util.ArrayList;
 import java.util.List;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -31,6 +35,11 @@ public class GithubAppClient {
 	private static final String ORGANIZATION_MEMBERSHIP_ADMIN_ROLE = "admin";
 	private static final int REPOSITORY_PAGE_SIZE = 100;
 	private static final int PULL_REQUEST_PAGE_SIZE = 100;
+	private static final Pattern CLOSING_ISSUE_REFERENCES_PATTERN = Pattern.compile(
+		"(?i)\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\\b\\s+"
+			+ "((?:(?:[\\w.-]+/[\\w.-]+)?#\\d+)(?:\\s*(?:,|and)\\s*(?:(?:[\\w.-]+/[\\w.-]+)?#\\d+))*)"
+	);
+	private static final Pattern ISSUE_REFERENCE_PATTERN = Pattern.compile("(?:[\\w.-]+/[\\w.-]+)?#\\d+");
 
 	private final RestClient restClient;
 	private final GithubAppJwtProvider githubAppJwtProvider;
@@ -149,6 +158,7 @@ public class GithubAppClient {
 			response.additions(),
 			response.deletions(),
 			response.changedFiles(),
+			countLinkedIssues(response.body()),
 			response.htmlUrl()
 		));
 	}
@@ -319,6 +329,23 @@ public class GithubAppClient {
 			&& !pullRequest.user().login().isBlank();
 	}
 
+	private int countLinkedIssues(String pullRequestBody) {
+		if (pullRequestBody == null || pullRequestBody.isBlank()) {
+			return 0;
+		}
+
+		Set<String> issueReferences = new HashSet<>();
+		Matcher closingIssueReferencesMatcher = CLOSING_ISSUE_REFERENCES_PATTERN.matcher(pullRequestBody);
+		while (closingIssueReferencesMatcher.find()) {
+			Matcher issueReferenceMatcher = ISSUE_REFERENCE_PATTERN.matcher(closingIssueReferencesMatcher.group(1));
+			while (issueReferenceMatcher.find()) {
+				issueReferences.add(issueReferenceMatcher.group().toLowerCase());
+			}
+		}
+
+		return issueReferences.size();
+	}
+
 	public record GithubAppInstallationInfo(
 		Long installationId,
 		Long accountId,
@@ -396,6 +423,7 @@ public class GithubAppClient {
 		Integer deletions,
 		@JsonProperty("changed_files")
 		Integer changedFiles,
+		String body,
 		@JsonProperty("html_url")
 		String htmlUrl
 	) {

@@ -192,7 +192,7 @@ public class TeamspacePersistenceTxService {
 					toNonNegativeInt(pullRequest.additions()),
 					toNonNegativeInt(pullRequest.deletions()),
 					toNonNegativeInt(pullRequest.changedFiles()),
-					0,
+					toNonNegativeInt(pullRequest.linkedIssueCount()),
 					pullRequest.htmlUrl(),
 					Instant.now()
 				);
@@ -212,7 +212,7 @@ public class TeamspacePersistenceTxService {
 				.additions(toNonNegativeInt(pullRequest.additions()))
 				.deletions(toNonNegativeInt(pullRequest.deletions()))
 				.changedFiles(toNonNegativeInt(pullRequest.changedFiles()))
-				.linkedIssueCount(0)
+				.linkedIssueCount(toNonNegativeInt(pullRequest.linkedIssueCount()))
 				.htmlUrl(pullRequest.htmlUrl())
 				.syncedAt(Instant.now())
 				.build());

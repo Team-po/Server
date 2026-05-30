@@ -302,6 +302,7 @@ class TeamspacePersistenceTxServiceTest {
 			120,
 			15,
 			8,
+			2,
 			"https://github.com/student-team-org/backend/pull/10"
 		);
 		GithubPullRequestInfo newPullRequest = new GithubPullRequestInfo(
@@ -315,6 +316,7 @@ class TeamspacePersistenceTxServiceTest {
 			80,
 			5,
 			4,
+			1,
 			"https://github.com/student-team-org/backend/pull/11"
 		);
 		when(projectGroupRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(projectGroup));
@@ -344,6 +346,7 @@ class TeamspacePersistenceTxServiceTest {
 		assertThat(existingContribution.getAdditions()).isEqualTo(120);
 		assertThat(existingContribution.getDeletions()).isEqualTo(15);
 		assertThat(existingContribution.getChangedFiles()).isEqualTo(8);
+		assertThat(existingContribution.getLinkedIssueCount()).isEqualTo(2);
 		assertThat(existingContribution.getSyncedAt()).isNotNull();
 
 		ArgumentCaptor<List<GithubPullRequestContribution>> contributionCaptor = ArgumentCaptor.forClass(List.class);
@@ -360,7 +363,7 @@ class TeamspacePersistenceTxServiceTest {
 		assertThat(newContribution.getAdditions()).isEqualTo(80);
 		assertThat(newContribution.getDeletions()).isEqualTo(5);
 		assertThat(newContribution.getChangedFiles()).isEqualTo(4);
-		assertThat(newContribution.getLinkedIssueCount()).isZero();
+		assertThat(newContribution.getLinkedIssueCount()).isEqualTo(1);
 		assertThat(newContribution.getSyncedAt()).isNotNull();
 	}
 
@@ -382,6 +385,7 @@ class TeamspacePersistenceTxServiceTest {
 				120,
 				15,
 				8,
+				0,
 				"https://github.com/student-team-org/backend/pull/10"
 			))
 		))
