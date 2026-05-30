@@ -278,6 +278,23 @@ class DevGuideCommandServiceTest {
 		assertThat(generation.getStatus()).isEqualTo(DevGuideStatus.COMPLETED);
 	}
 
+	// ─── recoverStaleGenerationsOnStartup ────────────────────────────────────
+
+	@Test
+	void recoverStaleGenerationsOnStartup_failsAllGeneratingStates() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideGeneration gen1 = DevGuideGeneration.create(projectGroup);
+		DevGuideGeneration gen2 = DevGuideGeneration.create(projectGroup);
+
+		when(devGuideGenerationRepository.findAllByStatus(DevGuideStatus.GENERATING))
+			.thenReturn(List.of(gen1, gen2));
+
+		devGuideCommandService.recoverStaleGenerationsOnStartup();
+
+		assertThat(gen1.getStatus()).isEqualTo(DevGuideStatus.FAILED);
+		assertThat(gen2.getStatus()).isEqualTo(DevGuideStatus.FAILED);
+	}
+
 	// ─── fixtures ────────────────────────────────────────────────────────────
 
 	private ProjectGroup projectGroup() {

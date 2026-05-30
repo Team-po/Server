@@ -2,6 +2,8 @@ package team.po.feature.devguide.service;
 
 import java.util.Optional;
 
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -133,6 +135,20 @@ public class DevGuideCommandService {
 		int manualCount = devGuideRepository.countByProjectGroup_IdAndGenerationType(
 			projectGroupId, DevGuideGenerationType.MANUAL);
 		return generation.getMaxRegenerationCount() - manualCount;
+	}
+
+	/**
+	 * 서버 기동 시 GENERATING 상태를 전부 FAILED로 전환한다.
+	 * 재시작 전에 진행 중이던 생성 작업은 스레드가 종료됐으므로 복구 불가능하다.
+	 *
+	 * 단일 인스턴스 전제. 멀티 인스턴스 환경에서는 다른 인스턴스가 처리 중인
+	 * 작업을 잘못 FAILED로 전환할 수 있으므로 @Scheduled 폴링 방식으로 교체해야 한다.
+	 */
+	@EventListener(ApplicationReadyEvent.class)
+	@Transactional
+	public void recoverStaleGenerationsOnStartup() {
+		devGuideGenerationRepository.findAllByStatus(DevGuideStatus.GENERATING)
+			.forEach(DevGuideGeneration::fail);
 	}
 
 	/**
