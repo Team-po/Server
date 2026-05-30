@@ -496,7 +496,7 @@ class TeamspaceServiceTest {
 		when(githubPullRequestContributionRepository.findExistingGithubPrIds(10L, 100L, Set.of(1001L)))
 			.thenReturn(Set.of());
 		when(githubAppClient.getPullRequest(12345L, "student-team-org", "backend", 10L))
-			.thenReturn(pullRequestDetail);
+			.thenReturn(Optional.of(pullRequestDetail));
 
 		teamspaceService.syncGithubPullRequestContributions(10L, 100L);
 
@@ -547,6 +547,45 @@ class TeamspaceServiceTest {
 		verify(githubAppClient).getClosedPullRequests(12345L, "student-team-org", "backend");
 		verify(githubPullRequestContributionRepository).findExistingGithubPrIds(10L, 100L, Set.of(1001L));
 		verify(githubAppClient, never()).getPullRequest(any(), anyString(), anyString(), any());
+		verify(teamspacePersistenceTxService).persistGithubPullRequestContributions(10L, 100L, List.of());
+	}
+
+	@Test
+	void syncGithubPullRequestContributions_skipsPullRequest_whenPullRequestDetailUserIsMissing() {
+		ProjectGroupGithubRepository repository = ProjectGroupGithubRepository.builder()
+			.projectGroup(projectGroup())
+			.githubInstallation(githubInstallation())
+			.githubRepositoryId(100L)
+			.owner("student-team-org")
+			.repoName("backend")
+			.fullName("student-team-org/backend")
+			.defaultBranch("main")
+			.privateRepository(true)
+			.build();
+		GithubPullRequestSummary pullRequest = new GithubPullRequestSummary(
+			1001L,
+			10L,
+			"Old PR from deleted user",
+			501L,
+			"dev-a",
+			"closed",
+			Instant.parse("2026-05-02T10:00:00Z"),
+			"https://github.com/student-team-org/backend/pull/10"
+		);
+		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+			10L,
+			100L
+		)).thenReturn(Optional.of(repository));
+		when(githubAppClient.getClosedPullRequests(12345L, "student-team-org", "backend"))
+			.thenReturn(List.of(pullRequest));
+		when(githubPullRequestContributionRepository.findExistingGithubPrIds(10L, 100L, Set.of(1001L)))
+			.thenReturn(Set.of());
+		when(githubAppClient.getPullRequest(12345L, "student-team-org", "backend", 10L))
+			.thenReturn(Optional.empty());
+
+		teamspaceService.syncGithubPullRequestContributions(10L, 100L);
+
+		verify(githubAppClient).getPullRequest(12345L, "student-team-org", "backend", 10L);
 		verify(teamspacePersistenceTxService).persistGithubPullRequestContributions(10L, 100L, List.of());
 	}
 

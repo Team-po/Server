@@ -3,6 +3,7 @@ package team.po.feature.teamspace.service;
 import java.util.ArrayList;
 import java.util.List;
 import java.time.Instant;
+import java.util.Optional;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -105,6 +106,7 @@ public class GithubAppClient {
 			List<GithubPullRequestResponse> response = getClosedPullRequests(accessToken, owner, repoName, page);
 
 			response.stream()
+				.filter(this::hasGithubUser)
 				.map(pullRequest -> new GithubPullRequestSummary(
 					pullRequest.id(),
 					pullRequest.number(),
@@ -124,7 +126,7 @@ public class GithubAppClient {
 		}
 	}
 
-	public GithubPullRequestInfo getPullRequest(
+	public Optional<GithubPullRequestInfo> getPullRequest(
 		Long installationId,
 		String owner,
 		String repoName,
@@ -132,8 +134,11 @@ public class GithubAppClient {
 	) {
 		String accessToken = createInstallationAccessToken(installationId);
 		GithubPullRequestResponse response = getPullRequest(accessToken, owner, repoName, pullNumber);
+		if (!hasGithubUser(response)) {
+			return Optional.empty();
+		}
 
-		return new GithubPullRequestInfo(
+		return Optional.of(new GithubPullRequestInfo(
 			response.id(),
 			response.number(),
 			response.title(),
@@ -145,7 +150,7 @@ public class GithubAppClient {
 			response.deletions(),
 			response.changedFiles(),
 			response.htmlUrl()
-		);
+		));
 	}
 
 	public void validateOrganizationAdmin(String accessToken, String organizationLogin) {
@@ -295,7 +300,7 @@ public class GithubAppClient {
 				.retrieve()
 				.body(GithubPullRequestResponse.class);
 
-			if (response == null || response.user() == null) {
+			if (response == null) {
 				throw new ApplicationException(ErrorCode.GITHUB_API_REQUEST_FAILED);
 			}
 
@@ -305,6 +310,13 @@ public class GithubAppClient {
 		} catch (RestClientException exception) {
 			throw new ApplicationException(ErrorCode.GITHUB_API_REQUEST_FAILED, exception);
 		}
+	}
+
+	private boolean hasGithubUser(GithubPullRequestResponse pullRequest) {
+		return pullRequest.user() != null
+			&& pullRequest.user().id() != null
+			&& pullRequest.user().login() != null
+			&& !pullRequest.user().login().isBlank();
 	}
 
 	public record GithubAppInstallationInfo(

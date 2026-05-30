@@ -19,6 +19,7 @@ import org.springframework.web.client.RestClient;
 import team.po.config.GithubAppProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
+import team.po.feature.teamspace.dto.GithubPullRequestInfo;
 import team.po.feature.teamspace.provider.GithubAppJwtProvider;
 import team.po.feature.teamspace.service.GithubAppClient.GithubAppInstallationInfo;
 
@@ -223,6 +224,15 @@ class GithubAppClientTest {
 			writeResponse(exchange, 200, """
 				[
 				  {
+				    "id": 999,
+				    "number": 9,
+				    "title": "Old PR from deleted user",
+				    "state": "closed",
+				    "merged_at": "2026-04-01T10:15:30Z",
+				    "html_url": "https://github.com/student-team-org/backend/pull/9",
+				    "user": null
+				  },
+				  {
 				    "id": 1001,
 				    "number": 10,
 				    "title": "Add contribution sync",
@@ -299,13 +309,51 @@ class GithubAppClientTest {
 
 			var pullRequest = client.getPullRequest(12345L, "student-team-org", "backend", 10L);
 
-			assertThat(pullRequest.githubPullRequestId()).isEqualTo(1001L);
-			assertThat(pullRequest.pullNumber()).isEqualTo(10L);
-			assertThat(pullRequest.authorGithubUserId()).isEqualTo(501L);
-			assertThat(pullRequest.additions()).isEqualTo(120);
-			assertThat(pullRequest.deletions()).isEqualTo(15);
-			assertThat(pullRequest.changedFiles()).isEqualTo(8);
-			assertThat(pullRequest.htmlUrl()).isEqualTo("https://github.com/student-team-org/backend/pull/10");
+			assertThat(pullRequest).isPresent();
+			GithubPullRequestInfo pullRequestInfo = pullRequest.orElseThrow();
+			assertThat(pullRequestInfo.githubPullRequestId()).isEqualTo(1001L);
+			assertThat(pullRequestInfo.pullNumber()).isEqualTo(10L);
+			assertThat(pullRequestInfo.authorGithubUserId()).isEqualTo(501L);
+			assertThat(pullRequestInfo.additions()).isEqualTo(120);
+			assertThat(pullRequestInfo.deletions()).isEqualTo(15);
+			assertThat(pullRequestInfo.changedFiles()).isEqualTo(8);
+			assertThat(pullRequestInfo.htmlUrl()).isEqualTo("https://github.com/student-team-org/backend/pull/10");
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	void getPullRequest_returnsEmpty_whenPullRequestUserIsMissing() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/12345/access_tokens", exchange -> writeResponse(exchange, 201, """
+			{
+			  "token": "github-installation-token"
+			}
+			"""));
+		server.createContext("/repos/student-team-org/backend/pulls/10", exchange -> writeResponse(exchange, 200, """
+			{
+			  "id": 1001,
+			  "number": 10,
+			  "title": "Old PR from deleted user",
+			  "state": "closed",
+			  "merged_at": "2026-05-01T10:15:30Z",
+			  "additions": 120,
+			  "deletions": 15,
+			  "changed_files": 8,
+			  "html_url": "https://github.com/student-team-org/backend/pull/10",
+			  "user": null
+			}
+			"""));
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			assertThat(client.getPullRequest(12345L, "student-team-org", "backend", 10L)).isEmpty();
 		} finally {
 			server.stop(0);
 		}

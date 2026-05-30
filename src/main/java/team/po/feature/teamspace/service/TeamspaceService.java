@@ -2,6 +2,7 @@ package team.po.feature.teamspace.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -268,6 +269,7 @@ public class TeamspaceService {
 		List<GithubPullRequestInfo> newMergedPullRequests = mergedPullRequestSummaries.stream()
 			.filter(pullRequest -> !existingGithubPrIds.contains(pullRequest.githubPullRequestId()))
 			.map(pullRequest -> getPullRequestDetail(installationId, repository, pullRequest))
+			.flatMap(Optional::stream)
 			.toList();
 
 		teamspacePersistenceTxService.persistGithubPullRequestContributions(
@@ -282,7 +284,7 @@ public class TeamspaceService {
 		syncGithubPullRequestContributions(projectGroupId, githubRepositoryId);
 	}
 
-	private GithubPullRequestInfo getPullRequestDetail(
+	private Optional<GithubPullRequestInfo> getPullRequestDetail(
 		Long installationId,
 		ProjectGroupGithubRepository repository,
 		GithubPullRequestSummary pullRequest
