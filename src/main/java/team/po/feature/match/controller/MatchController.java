@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import lombok.RequiredArgsConstructor;
 import team.po.common.auth.LoginUser;
 import team.po.feature.match.dto.MatchMemberResponse;
@@ -22,48 +23,44 @@ public class MatchController {
 	private final MatchService matchService;
 
 	@Operation(summary = "매칭 멤버 조회 API")
-	@GetMapping("/{matchId}/members")
+	@GetMapping("/members")
 	public ResponseEntity<MatchMemberResponse> getMatchMembers(
-		@PathVariable Long matchId,
-		@LoginUser Users user
+		@Parameter(hidden = true) @LoginUser Users user
 	) {
-		MatchMemberResponse response = matchService.getMatchMembers(matchId, user);
+		MatchMemberResponse response = matchService.getMatchMembers(user);
 		return ResponseEntity.ok().body(response);
 	}
 
 	@Operation(summary = "매칭 프로젝트 정보 조회 API")
-	@GetMapping("/{matchId}/project")
+	@GetMapping("/project")
 	public ResponseEntity<MatchProjectResponse> getMatchProject(
-		@PathVariable Long matchId,
-		@LoginUser Users user
+		@Parameter(hidden = true) @LoginUser Users user
 	) {
-		MatchProjectResponse response = matchService.getMatchProject(matchId, user);
+		MatchProjectResponse response = matchService.getMatchProject(user);
 		return ResponseEntity.ok().body(response);
 	}
 
 	@Operation(summary = "매칭 수락 API")
-	@PostMapping("/{matchId}/accept")
+	@PostMapping("/accept")
 	public ResponseEntity<Void> accept(
-		@PathVariable Long matchId,
-		@LoginUser Users user
+		@Parameter(hidden = true) @LoginUser Users user
 	) {
-		matchService.accept(matchId, user);
+		matchService.accept(user);
 		return ResponseEntity.ok().build();
 	}
 
 	@Operation(summary = "매칭 거절 API")
-	@PostMapping("/{matchId}/reject")
+	@PostMapping("/reject")
 	public ResponseEntity<Void> reject(
-		@PathVariable Long matchId,
-		@LoginUser Users user
+		@Parameter(hidden = true) @LoginUser Users user
 	) {
-		matchService.reject(matchId, user);
+		matchService.reject(user);
 		return ResponseEntity.ok().build();
 	}
 
 	@Operation(summary = "매칭 취소 API")
 	@PostMapping(value = "/cancel")
-	public ResponseEntity<Void> cancel(@LoginUser Users user) {
+	public ResponseEntity<Void> cancel(@Parameter(hidden = true) @LoginUser Users user) {
 		matchService.cancel(user);
 		return ResponseEntity.ok().build();
 	}

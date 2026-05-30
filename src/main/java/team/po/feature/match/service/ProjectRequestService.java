@@ -60,8 +60,8 @@ public class ProjectRequestService {
 				.projectMvp(request.projectMvp())
 				.build();
 			projectRequestRepository.save(projectRequest);
-			log.info("매칭 요청 생성 완료. userId: {}, projectRequestId: {}, role: {}",
-				user.getId(), projectRequest.getId(), projectRequest.getRole());
+			log.info("매칭 요청 생성 완료. projectRequestId: {}, role: {}",
+				projectRequest.getId(), projectRequest.getRole());
 		} catch (DataIntegrityViolationException e) { // 동시 요청 Race Condition
 			throw new ApplicationException(ErrorCode.PROJECT_REQUEST_ALREADY_EXISTS);
 		}
@@ -83,17 +83,20 @@ public class ProjectRequestService {
 			List.of(Status.WAITING, Status.MATCHING)
 		).orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND, "진행 중인 매칭 요청이 없습니다."));
 
-		Long matchId = null;
-		// MATCHING: matchId 반환
+		// MATCHING 상태인데 활성 MatchingMember가 없으면 데이터 불일치
 		if (projectRequest.getStatus() == Status.MATCHING) {
-			matchId = matchingMemberRepository
+			boolean hasActiveMember = matchingMemberRepository
 				.findCurrentActiveByUserId(user.getId())
-				.map(m -> m.getMatchingSession().getId())
-				.orElseThrow(() -> {
-					log.error("활성 매칭 멤버 데이터 부정합: userId={}", user.getId());
-					return new ApplicationException(ErrorCode.MATCH_DATA_ERROR);
-				});
+				.isPresent();
+			if (!hasActiveMember) {
+				log.error("MATCHING 상태지만 활성 매칭 멤버 없음: userId={}", user.getId());
+				throw new ApplicationException(ErrorCode.MATCH_DATA_ERROR);
+			}
 		}
-		return new ProjectRequestStatusResponse(projectRequest.getStatus(), matchId);
+
+		return new ProjectRequestStatusResponse(
+			projectRequest.getStatus(),
+			projectRequest.getRole()
+		);
 	}
 }
