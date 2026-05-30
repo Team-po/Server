@@ -1,6 +1,7 @@
 package team.po.feature.teamspace.service;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -52,6 +53,7 @@ public class TeamspaceService {
 	private static final String GITHUB_APP_INSTALLATION_BASE_URL = "https://github.com/apps";
 	private static final String GITHUB_APP_INSTALLATION_STATE_DELIMITER = "|";
 	private static final String GITHUB_APP_SETUP_ACTION_INSTALL = "install";
+	private static final int EXISTING_GITHUB_PR_ID_QUERY_CHUNK_SIZE = 500;
 
 	private final ProjectGroupMemberRepository projectGroupMemberRepository;
 	private final ProjectGroupGithubInstallationRepository projectGroupGithubInstallationRepository;
@@ -260,13 +262,11 @@ public class TeamspaceService {
 		Set<Long> mergedGithubPrIds = mergedPullRequestSummaries.stream()
 			.map(GithubPullRequestSummary::githubPullRequestId)
 			.collect(Collectors.toSet());
-		Set<Long> existingGithubPrIds = mergedGithubPrIds.isEmpty()
-			? Set.of()
-			: githubPullRequestContributionRepository.findExistingGithubPrIds(
-				projectGroupId,
-				githubRepositoryId,
-				mergedGithubPrIds
-			);
+		Set<Long> existingGithubPrIds = findExistingGithubPrIdsInChunks(
+			projectGroupId,
+			githubRepositoryId,
+			mergedGithubPrIds
+		);
 
 		List<GithubPullRequestInfo> newMergedPullRequests = mergedPullRequestSummaries.stream()
 			.filter(pullRequest -> !existingGithubPrIds.contains(pullRequest.githubPullRequestId()))
@@ -296,6 +296,29 @@ public class TeamspaceService {
 			repository.getRepoName(),
 			pullRequest.pullNumber()
 		);
+	}
+
+	private Set<Long> findExistingGithubPrIdsInChunks(
+		Long projectGroupId,
+		Long githubRepositoryId,
+		Set<Long> githubPrIds
+	) {
+		if (githubPrIds.isEmpty()) {
+			return Set.of();
+		}
+
+		List<Long> githubPrIdList = githubPrIds.stream().toList();
+		Set<Long> existingGithubPrIds = new HashSet<>();
+		for (int start = 0; start < githubPrIdList.size(); start += EXISTING_GITHUB_PR_ID_QUERY_CHUNK_SIZE) {
+			int end = Math.min(start + EXISTING_GITHUB_PR_ID_QUERY_CHUNK_SIZE, githubPrIdList.size());
+			existingGithubPrIds.addAll(githubPullRequestContributionRepository.findExistingGithubPrIds(
+				projectGroupId,
+				githubRepositoryId,
+				Set.copyOf(githubPrIdList.subList(start, end))
+			));
+		}
+
+		return existingGithubPrIds;
 	}
 
 	private long calculateContributionScore(long mergedPrCount, long linkedIssueCount) {

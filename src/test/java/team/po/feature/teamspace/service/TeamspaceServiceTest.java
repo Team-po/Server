@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,6 +16,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -554,6 +557,60 @@ class TeamspaceServiceTest {
 		verify(githubAppClient).createPullRequestSyncSession(12345L);
 		verify(pullRequestSyncSession).getClosedPullRequests("student-team-org", "backend");
 		verify(githubPullRequestContributionRepository).findExistingGithubPrIds(10L, 100L, Set.of(1001L));
+		verify(pullRequestSyncSession, never()).getPullRequest(anyString(), anyString(), any());
+		verify(teamspacePersistenceTxService).persistGithubPullRequestContributions(10L, 100L, List.of());
+	}
+
+	@Test
+	void syncGithubPullRequestContributions_findsExistingPullRequestIdsInChunks() {
+		ProjectGroupGithubRepository repository = ProjectGroupGithubRepository.builder()
+			.projectGroup(projectGroup())
+			.githubInstallation(githubInstallation())
+			.githubRepositoryId(100L)
+			.owner("student-team-org")
+			.repoName("backend")
+			.fullName("student-team-org/backend")
+			.defaultBranch("main")
+			.privateRepository(true)
+			.build();
+		Instant mergedAt = Instant.parse("2026-05-02T10:00:00Z");
+		List<GithubPullRequestSummary> mergedPullRequests = LongStream.rangeClosed(1, 1001)
+			.mapToObj(index -> new GithubPullRequestSummary(
+				100000L + index,
+				index,
+				"PR " + index,
+				501L,
+				"dev-a",
+				"closed",
+				mergedAt,
+				"https://github.com/student-team-org/backend/pull/" + index
+			))
+			.toList();
+		Set<Long> mergedGithubPrIds = mergedPullRequests.stream()
+			.map(GithubPullRequestSummary::githubPullRequestId)
+			.collect(Collectors.toSet());
+
+		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+			10L,
+			100L
+		)).thenReturn(Optional.of(repository));
+		when(githubAppClient.createPullRequestSyncSession(12345L)).thenReturn(pullRequestSyncSession);
+		when(pullRequestSyncSession.getClosedPullRequests("student-team-org", "backend"))
+			.thenReturn(mergedPullRequests);
+		when(githubPullRequestContributionRepository.findExistingGithubPrIds(eq(10L), eq(100L), any()))
+			.thenAnswer(invocation -> invocation.getArgument(2));
+
+		teamspaceService.syncGithubPullRequestContributions(10L, 100L);
+
+		@SuppressWarnings("unchecked")
+		ArgumentCaptor<Set<Long>> githubPrIdsCaptor = ArgumentCaptor.forClass(Set.class);
+		verify(githubPullRequestContributionRepository, times(3))
+			.findExistingGithubPrIds(eq(10L), eq(100L), githubPrIdsCaptor.capture());
+		assertThat(githubPrIdsCaptor.getAllValues())
+			.hasSize(3)
+			.allSatisfy(chunk -> assertThat(chunk).hasSizeLessThanOrEqualTo(500));
+		assertThat(githubPrIdsCaptor.getAllValues().stream().flatMap(Set::stream).collect(Collectors.toSet()))
+			.containsExactlyInAnyOrderElementsOf(mergedGithubPrIds);
 		verify(pullRequestSyncSession, never()).getPullRequest(anyString(), anyString(), any());
 		verify(teamspacePersistenceTxService).persistGithubPullRequestContributions(10L, 100L, List.of());
 	}
