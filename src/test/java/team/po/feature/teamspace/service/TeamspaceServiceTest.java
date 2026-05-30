@@ -85,6 +85,9 @@ class TeamspaceServiceTest {
 	private GithubAppClient githubAppClient;
 
 	@Mock
+	private GithubPullRequestSyncSession pullRequestSyncSession;
+
+	@Mock
 	private GithubTokenEncryptor githubTokenEncryptor;
 
 	@Mock
@@ -492,19 +495,21 @@ class TeamspaceServiceTest {
 			10L,
 			100L
 		)).thenReturn(Optional.of(repository));
-		when(githubAppClient.getClosedPullRequests(12345L, "student-team-org", "backend"))
+		when(githubAppClient.createPullRequestSyncSession(12345L)).thenReturn(pullRequestSyncSession);
+		when(pullRequestSyncSession.getClosedPullRequests("student-team-org", "backend"))
 			.thenReturn(List.of(mergedPullRequest, closedUnmergedPullRequest));
 		when(githubPullRequestContributionRepository.findExistingGithubPrIds(10L, 100L, Set.of(1001L)))
 			.thenReturn(Set.of());
-		when(githubAppClient.getPullRequest(12345L, "student-team-org", "backend", 10L))
+		when(pullRequestSyncSession.getPullRequest("student-team-org", "backend", 10L))
 			.thenReturn(Optional.of(pullRequestDetail));
 
 		teamspaceService.syncGithubPullRequestContributions(10L, 100L);
 
-		verify(githubAppClient).getClosedPullRequests(12345L, "student-team-org", "backend");
+		verify(githubAppClient).createPullRequestSyncSession(12345L);
+		verify(pullRequestSyncSession).getClosedPullRequests("student-team-org", "backend");
 		verify(githubPullRequestContributionRepository).findExistingGithubPrIds(10L, 100L, Set.of(1001L));
-		verify(githubAppClient).getPullRequest(12345L, "student-team-org", "backend", 10L);
-		verify(githubAppClient, never()).getPullRequest(12345L, "student-team-org", "backend", 11L);
+		verify(pullRequestSyncSession).getPullRequest("student-team-org", "backend", 10L);
+		verify(pullRequestSyncSession, never()).getPullRequest("student-team-org", "backend", 11L);
 		verify(teamspacePersistenceTxService).persistGithubPullRequestContributions(
 			10L,
 			100L,
@@ -538,16 +543,18 @@ class TeamspaceServiceTest {
 			10L,
 			100L
 		)).thenReturn(Optional.of(repository));
-		when(githubAppClient.getClosedPullRequests(12345L, "student-team-org", "backend"))
+		when(githubAppClient.createPullRequestSyncSession(12345L)).thenReturn(pullRequestSyncSession);
+		when(pullRequestSyncSession.getClosedPullRequests("student-team-org", "backend"))
 			.thenReturn(List.of(existingPullRequest));
 		when(githubPullRequestContributionRepository.findExistingGithubPrIds(10L, 100L, Set.of(1001L)))
 			.thenReturn(Set.of(1001L));
 
 		teamspaceService.syncGithubPullRequestContributions(10L, 100L);
 
-		verify(githubAppClient).getClosedPullRequests(12345L, "student-team-org", "backend");
+		verify(githubAppClient).createPullRequestSyncSession(12345L);
+		verify(pullRequestSyncSession).getClosedPullRequests("student-team-org", "backend");
 		verify(githubPullRequestContributionRepository).findExistingGithubPrIds(10L, 100L, Set.of(1001L));
-		verify(githubAppClient, never()).getPullRequest(any(), anyString(), anyString(), any());
+		verify(pullRequestSyncSession, never()).getPullRequest(anyString(), anyString(), any());
 		verify(teamspacePersistenceTxService).persistGithubPullRequestContributions(10L, 100L, List.of());
 	}
 
@@ -577,16 +584,17 @@ class TeamspaceServiceTest {
 			10L,
 			100L
 		)).thenReturn(Optional.of(repository));
-		when(githubAppClient.getClosedPullRequests(12345L, "student-team-org", "backend"))
+		when(githubAppClient.createPullRequestSyncSession(12345L)).thenReturn(pullRequestSyncSession);
+		when(pullRequestSyncSession.getClosedPullRequests("student-team-org", "backend"))
 			.thenReturn(List.of(pullRequest));
 		when(githubPullRequestContributionRepository.findExistingGithubPrIds(10L, 100L, Set.of(1001L)))
 			.thenReturn(Set.of());
-		when(githubAppClient.getPullRequest(12345L, "student-team-org", "backend", 10L))
+		when(pullRequestSyncSession.getPullRequest("student-team-org", "backend", 10L))
 			.thenReturn(Optional.empty());
 
 		teamspaceService.syncGithubPullRequestContributions(10L, 100L);
 
-		verify(githubAppClient).getPullRequest(12345L, "student-team-org", "backend", 10L);
+		verify(pullRequestSyncSession).getPullRequest("student-team-org", "backend", 10L);
 		verify(teamspacePersistenceTxService).persistGithubPullRequestContributions(10L, 100L, List.of());
 	}
 
@@ -602,7 +610,7 @@ class TeamspaceServiceTest {
 			.extracting("code")
 			.isEqualTo(ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE.getCode());
 
-		verify(githubAppClient, never()).getClosedPullRequests(any(), anyString(), anyString());
+		verify(githubAppClient, never()).createPullRequestSyncSession(any());
 		verify(teamspacePersistenceTxService, never()).persistGithubPullRequestContributions(any(), any(), any());
 	}
 
@@ -625,7 +633,8 @@ class TeamspaceServiceTest {
 			10L,
 			100L
 		)).thenReturn(Optional.of(repository));
-		when(githubAppClient.getClosedPullRequests(12345L, "student-team-org", "backend"))
+		when(githubAppClient.createPullRequestSyncSession(12345L)).thenReturn(pullRequestSyncSession);
+		when(pullRequestSyncSession.getClosedPullRequests("student-team-org", "backend"))
 			.thenReturn(List.of());
 
 		teamspaceService.syncGithubPullRequestContributions(requester, 10L, 100L);
@@ -651,7 +660,7 @@ class TeamspaceServiceTest {
 
 		verify(projectGroupGithubRepositoryRepository, never())
 			.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(any(), any());
-		verify(githubAppClient, never()).getClosedPullRequests(any(), anyString(), anyString());
+		verify(githubAppClient, never()).createPullRequestSyncSession(any());
 		verify(teamspacePersistenceTxService, never()).persistGithubPullRequestContributions(any(), any(), any());
 	}
 

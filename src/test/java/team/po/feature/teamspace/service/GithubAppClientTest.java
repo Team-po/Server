@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -320,6 +321,69 @@ class GithubAppClientTest {
 			assertThat(pullRequestInfo.changedFiles()).isEqualTo(8);
 			assertThat(pullRequestInfo.linkedIssueCount()).isEqualTo(4);
 			assertThat(pullRequestInfo.htmlUrl()).isEqualTo("https://github.com/student-team-org/backend/pull/10");
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	void pullRequestSyncSession_reusesInstallationAccessToken() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+		AtomicInteger accessTokenRequestCount = new AtomicInteger();
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/12345/access_tokens", exchange -> {
+			accessTokenRequestCount.incrementAndGet();
+			writeResponse(exchange, 201, """
+				{
+				  "token": "github-installation-token"
+				}
+				""");
+		});
+		server.createContext("/repos/student-team-org/backend/pulls", exchange -> writeResponse(exchange, 200, """
+			[
+			  {
+			    "id": 1001,
+			    "number": 10,
+			    "title": "Add contribution sync",
+			    "state": "closed",
+			    "merged_at": "2026-05-01T10:15:30Z",
+			    "html_url": "https://github.com/student-team-org/backend/pull/10",
+			    "user": {
+			      "id": 501,
+			      "login": "dev-a"
+			    }
+			  }
+			]
+			"""));
+		server.createContext("/repos/student-team-org/backend/pulls/10", exchange -> writeResponse(exchange, 200, """
+			{
+			  "id": 1001,
+			  "number": 10,
+			  "title": "Add contribution sync",
+			  "state": "closed",
+			  "merged_at": "2026-05-01T10:15:30Z",
+			  "additions": 120,
+			  "deletions": 15,
+			  "changed_files": 8,
+			  "body": "Closes #10",
+			  "html_url": "https://github.com/student-team-org/backend/pull/10",
+			  "user": {
+			    "id": 501,
+			    "login": "dev-a"
+			  }
+			}
+			"""));
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+			GithubPullRequestSyncSession session = client.createPullRequestSyncSession(12345L);
+
+			assertThat(session.getClosedPullRequests("student-team-org", "backend")).hasSize(1);
+			assertThat(session.getPullRequest("student-team-org", "backend", 10L)).isPresent();
+			assertThat(accessTokenRequestCount).hasValue(1);
 		} finally {
 			server.stop(0);
 		}

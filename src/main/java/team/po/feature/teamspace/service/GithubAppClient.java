@@ -107,7 +107,32 @@ public class GithubAppClient {
 	}
 
 	public List<GithubPullRequestSummary> getClosedPullRequests(Long installationId, String owner, String repoName) {
-		String accessToken = createInstallationAccessToken(installationId);
+		return createPullRequestSyncSession(installationId).getClosedPullRequests(owner, repoName);
+	}
+
+	public GithubPullRequestSyncSession createPullRequestSyncSession(Long installationId) {
+		return new InstallationTokenPullRequestSyncSession(createInstallationAccessToken(installationId));
+	}
+
+	private class InstallationTokenPullRequestSyncSession implements GithubPullRequestSyncSession {
+		private final String accessToken;
+
+		private InstallationTokenPullRequestSyncSession(String accessToken) {
+			this.accessToken = accessToken;
+		}
+
+		@Override
+		public List<GithubPullRequestSummary> getClosedPullRequests(String owner, String repoName) {
+			return GithubAppClient.this.getClosedPullRequests(accessToken, owner, repoName);
+		}
+
+		@Override
+		public Optional<GithubPullRequestInfo> getPullRequest(String owner, String repoName, Long pullNumber) {
+			return GithubAppClient.this.getPullRequest(accessToken, owner, repoName, pullNumber);
+		}
+	}
+
+	private List<GithubPullRequestSummary> getClosedPullRequests(String accessToken, String owner, String repoName) {
 		List<GithubPullRequestSummary> pullRequests = new ArrayList<>();
 		int page = 1;
 
@@ -141,8 +166,16 @@ public class GithubAppClient {
 		String repoName,
 		Long pullNumber
 	) {
-		String accessToken = createInstallationAccessToken(installationId);
-		GithubPullRequestResponse response = getPullRequest(accessToken, owner, repoName, pullNumber);
+		return createPullRequestSyncSession(installationId).getPullRequest(owner, repoName, pullNumber);
+	}
+
+	private Optional<GithubPullRequestInfo> getPullRequest(
+		String accessToken,
+		String owner,
+		String repoName,
+		Long pullNumber
+	) {
+		GithubPullRequestResponse response = requestPullRequest(accessToken, owner, repoName, pullNumber);
 		if (!hasGithubUser(response)) {
 			return Optional.empty();
 		}
@@ -291,7 +324,7 @@ public class GithubAppClient {
 		}
 	}
 
-	private GithubPullRequestResponse getPullRequest(
+	private GithubPullRequestResponse requestPullRequest(
 		String accessToken,
 		String owner,
 		String repoName,

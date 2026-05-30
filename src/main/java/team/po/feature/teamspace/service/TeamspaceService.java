@@ -250,8 +250,10 @@ public class TeamspaceService {
 			));
 
 		Long installationId = repository.getGithubInstallation().getInstallationId();
-		List<GithubPullRequestSummary> mergedPullRequestSummaries = githubAppClient
-			.getClosedPullRequests(installationId, repository.getOwner(), repository.getRepoName())
+		GithubPullRequestSyncSession pullRequestSyncSession = githubAppClient
+			.createPullRequestSyncSession(installationId);
+		List<GithubPullRequestSummary> mergedPullRequestSummaries = pullRequestSyncSession
+			.getClosedPullRequests(repository.getOwner(), repository.getRepoName())
 			.stream()
 			.filter(pullRequest -> pullRequest.mergedAt() != null)
 			.toList();
@@ -268,7 +270,7 @@ public class TeamspaceService {
 
 		List<GithubPullRequestInfo> newMergedPullRequests = mergedPullRequestSummaries.stream()
 			.filter(pullRequest -> !existingGithubPrIds.contains(pullRequest.githubPullRequestId()))
-			.map(pullRequest -> getPullRequestDetail(installationId, repository, pullRequest))
+			.map(pullRequest -> getPullRequestDetail(pullRequestSyncSession, repository, pullRequest))
 			.flatMap(Optional::stream)
 			.toList();
 
@@ -285,12 +287,11 @@ public class TeamspaceService {
 	}
 
 	private Optional<GithubPullRequestInfo> getPullRequestDetail(
-		Long installationId,
+		GithubPullRequestSyncSession pullRequestSyncSession,
 		ProjectGroupGithubRepository repository,
 		GithubPullRequestSummary pullRequest
 	) {
-		return githubAppClient.getPullRequest(
-			installationId,
+		return pullRequestSyncSession.getPullRequest(
 			repository.getOwner(),
 			repository.getRepoName(),
 			pullRequest.pullNumber()
