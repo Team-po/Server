@@ -72,8 +72,8 @@ class DevGuideControllerTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.generationStatus").value("COMPLETED"))
 			.andExpect(jsonPath("$.remainingRegenerationCount").value(2))
-			.andExpect(jsonPath("$.content.overview").value("프로젝트 개요입니다."))
-			.andExpect(jsonPath("$.content.techStack[0].category").value("Backend"));
+			.andExpect(jsonPath("$.overview").value("프로젝트 개요입니다."))
+			.andExpect(jsonPath("$.techStack[0].category").value("Backend"));
 	}
 
 	@Test
@@ -86,7 +86,7 @@ class DevGuideControllerTest {
 		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide", 1L))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.generationStatus").value("GENERATING"))
-			.andExpect(jsonPath("$.content.overview").value("기존 가이드 개요입니다."));
+			.andExpect(jsonPath("$.overview").value("기존 가이드 개요입니다."));
 	}
 
 	@Test

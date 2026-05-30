@@ -208,9 +208,9 @@ class DevGuideServiceTest {
 
 		DevGuideQueryResponse result = devGuideService.getDevGuide(1L, 10L);
 
-		assertThat(result.generationStatus()).isEqualTo(DevGuideStatus.COMPLETED);
-		assertThat(result.content()).isNotNull();
-		assertThat(result.remainingRegenerationCount()).isEqualTo(2); // max(3) - manual(1)
+		assertThat(result.getGenerationStatus()).isEqualTo(DevGuideStatus.COMPLETED);
+		assertThat(result.getContent()).isNotNull();
+		assertThat(result.getRemainingRegenerationCount()).isEqualTo(2); // max(3) - manual(1)
 	}
 
 	@Test
@@ -230,8 +230,8 @@ class DevGuideServiceTest {
 		DevGuideQueryResponse result = devGuideService.getDevGuide(1L, 10L);
 
 		// 재생성 진행 중 → 기존 가이드 유지, GENERATING 상태 반환
-		assertThat(result.generationStatus()).isEqualTo(DevGuideStatus.GENERATING);
-		assertThat(result.content()).isNotNull();
+		assertThat(result.getGenerationStatus()).isEqualTo(DevGuideStatus.GENERATING);
+		assertThat(result.getContent()).isNotNull();
 	}
 
 	@Test
@@ -253,8 +253,8 @@ class DevGuideServiceTest {
 		DevGuideQueryResponse result = devGuideService.getDevGuide(1L, 10L);
 
 		// 재생성 실패 → 기존 가이드 유지, FAILED 상태 반환 (프론트는 재시도 버튼 표시)
-		assertThat(result.generationStatus()).isEqualTo(DevGuideStatus.FAILED);
-		assertThat(result.content()).isNotNull();
+		assertThat(result.getGenerationStatus()).isEqualTo(DevGuideStatus.FAILED);
+		assertThat(result.getContent()).isNotNull();
 	}
 
 	@Test
@@ -268,8 +268,8 @@ class DevGuideServiceTest {
 
 		DevGuideQueryResponse result = devGuideService.getDevGuide(1L, 10L);
 
-		assertThat(result.generationStatus()).isEqualTo(DevGuideStatus.GENERATING);
-		assertThat(result.content()).isNull();
+		assertThat(result.getGenerationStatus()).isEqualTo(DevGuideStatus.GENERATING);
+		assertThat(result.getContent()).isNull();
 	}
 
 	@Test
@@ -284,8 +284,8 @@ class DevGuideServiceTest {
 
 		DevGuideQueryResponse result = devGuideService.getDevGuide(1L, 10L);
 
-		assertThat(result.generationStatus()).isEqualTo(DevGuideStatus.FAILED);
-		assertThat(result.content()).isNull();
+		assertThat(result.getGenerationStatus()).isEqualTo(DevGuideStatus.FAILED);
+		assertThat(result.getContent()).isNull();
 	}
 
 	@Test
