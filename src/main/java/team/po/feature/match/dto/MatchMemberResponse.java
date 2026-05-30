@@ -5,7 +5,6 @@ import java.util.List;
 import team.po.feature.match.enums.Role;
 
 public record MatchMemberResponse(
-	Long matchId,
 	List<MemberDto> members
 ) {
 	public record MemberDto(
