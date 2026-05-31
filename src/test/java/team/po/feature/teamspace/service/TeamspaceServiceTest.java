@@ -45,6 +45,7 @@ import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.GithubPullRequestInfo;
 import team.po.feature.teamspace.dto.GithubPullRequestSummary;
+import team.po.feature.teamspace.dto.GithubPullRequestSyncContext;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
@@ -449,16 +450,6 @@ class TeamspaceServiceTest {
 
 	@Test
 	void syncGithubPullRequestContributions_fetchesMergedPullRequestDetailsAndPersists() {
-		ProjectGroupGithubRepository repository = ProjectGroupGithubRepository.builder()
-			.projectGroup(projectGroup())
-			.githubInstallation(githubInstallation())
-			.githubRepositoryId(100L)
-			.owner("student-team-org")
-			.repoName("backend")
-			.fullName("student-team-org/backend")
-			.defaultBranch("main")
-			.privateRepository(true)
-			.build();
 		Instant mergedAt = Instant.parse("2026-05-02T10:00:00Z");
 		GithubPullRequestSummary mergedPullRequest = new GithubPullRequestSummary(
 			1001L,
@@ -494,10 +485,10 @@ class TeamspaceServiceTest {
 			2,
 			"https://github.com/student-team-org/backend/pull/10"
 		);
-		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+		when(projectGroupGithubRepositoryRepository.findGithubPullRequestSyncContext(
 			10L,
 			100L
-		)).thenReturn(Optional.of(repository));
+		)).thenReturn(Optional.of(pullRequestSyncContext()));
 		when(githubAppClient.createPullRequestSyncSession(12345L)).thenReturn(pullRequestSyncSession);
 		when(pullRequestSyncSession.getClosedPullRequests("student-team-org", "backend"))
 			.thenReturn(List.of(mergedPullRequest, closedUnmergedPullRequest));
@@ -522,16 +513,6 @@ class TeamspaceServiceTest {
 
 	@Test
 	void syncGithubPullRequestContributions_skipsPullRequestDetail_whenMergedPullRequestAlreadyExists() {
-		ProjectGroupGithubRepository repository = ProjectGroupGithubRepository.builder()
-			.projectGroup(projectGroup())
-			.githubInstallation(githubInstallation())
-			.githubRepositoryId(100L)
-			.owner("student-team-org")
-			.repoName("backend")
-			.fullName("student-team-org/backend")
-			.defaultBranch("main")
-			.privateRepository(true)
-			.build();
 		GithubPullRequestSummary existingPullRequest = new GithubPullRequestSummary(
 			1001L,
 			10L,
@@ -542,10 +523,10 @@ class TeamspaceServiceTest {
 			Instant.parse("2026-05-02T10:00:00Z"),
 			"https://github.com/student-team-org/backend/pull/10"
 		);
-		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+		when(projectGroupGithubRepositoryRepository.findGithubPullRequestSyncContext(
 			10L,
 			100L
-		)).thenReturn(Optional.of(repository));
+		)).thenReturn(Optional.of(pullRequestSyncContext()));
 		when(githubAppClient.createPullRequestSyncSession(12345L)).thenReturn(pullRequestSyncSession);
 		when(pullRequestSyncSession.getClosedPullRequests("student-team-org", "backend"))
 			.thenReturn(List.of(existingPullRequest));
@@ -563,16 +544,6 @@ class TeamspaceServiceTest {
 
 	@Test
 	void syncGithubPullRequestContributions_findsExistingPullRequestIdsInChunks() {
-		ProjectGroupGithubRepository repository = ProjectGroupGithubRepository.builder()
-			.projectGroup(projectGroup())
-			.githubInstallation(githubInstallation())
-			.githubRepositoryId(100L)
-			.owner("student-team-org")
-			.repoName("backend")
-			.fullName("student-team-org/backend")
-			.defaultBranch("main")
-			.privateRepository(true)
-			.build();
 		Instant mergedAt = Instant.parse("2026-05-02T10:00:00Z");
 		List<GithubPullRequestSummary> mergedPullRequests = LongStream.rangeClosed(1, 1001)
 			.mapToObj(index -> new GithubPullRequestSummary(
@@ -590,10 +561,10 @@ class TeamspaceServiceTest {
 			.map(GithubPullRequestSummary::githubPullRequestId)
 			.collect(Collectors.toSet());
 
-		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+		when(projectGroupGithubRepositoryRepository.findGithubPullRequestSyncContext(
 			10L,
 			100L
-		)).thenReturn(Optional.of(repository));
+		)).thenReturn(Optional.of(pullRequestSyncContext()));
 		when(githubAppClient.createPullRequestSyncSession(12345L)).thenReturn(pullRequestSyncSession);
 		when(pullRequestSyncSession.getClosedPullRequests("student-team-org", "backend"))
 			.thenReturn(mergedPullRequests);
@@ -617,16 +588,6 @@ class TeamspaceServiceTest {
 
 	@Test
 	void syncGithubPullRequestContributions_skipsPullRequest_whenPullRequestDetailUserIsMissing() {
-		ProjectGroupGithubRepository repository = ProjectGroupGithubRepository.builder()
-			.projectGroup(projectGroup())
-			.githubInstallation(githubInstallation())
-			.githubRepositoryId(100L)
-			.owner("student-team-org")
-			.repoName("backend")
-			.fullName("student-team-org/backend")
-			.defaultBranch("main")
-			.privateRepository(true)
-			.build();
 		GithubPullRequestSummary pullRequest = new GithubPullRequestSummary(
 			1001L,
 			10L,
@@ -637,10 +598,10 @@ class TeamspaceServiceTest {
 			Instant.parse("2026-05-02T10:00:00Z"),
 			"https://github.com/student-team-org/backend/pull/10"
 		);
-		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+		when(projectGroupGithubRepositoryRepository.findGithubPullRequestSyncContext(
 			10L,
 			100L
-		)).thenReturn(Optional.of(repository));
+		)).thenReturn(Optional.of(pullRequestSyncContext()));
 		when(githubAppClient.createPullRequestSyncSession(12345L)).thenReturn(pullRequestSyncSession);
 		when(pullRequestSyncSession.getClosedPullRequests("student-team-org", "backend"))
 			.thenReturn(List.of(pullRequest));
@@ -657,7 +618,7 @@ class TeamspaceServiceTest {
 
 	@Test
 	void syncGithubPullRequestContributions_throwsBadRequest_whenRepositoryIsNotRegistered() {
-		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+		when(projectGroupGithubRepositoryRepository.findGithubPullRequestSyncContext(
 			10L,
 			999L
 		)).thenReturn(Optional.empty());
@@ -674,22 +635,12 @@ class TeamspaceServiceTest {
 	@Test
 	void syncGithubPullRequestContributions_withUser_validatesHostAndSyncsRepository() {
 		Users requester = user();
-		ProjectGroupGithubRepository repository = ProjectGroupGithubRepository.builder()
-			.projectGroup(projectGroup())
-			.githubInstallation(githubInstallation())
-			.githubRepositoryId(100L)
-			.owner("student-team-org")
-			.repoName("backend")
-			.fullName("student-team-org/backend")
-			.defaultBranch("main")
-			.privateRepository(true)
-			.build();
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
 			.thenReturn(true);
-		when(projectGroupGithubRepositoryRepository.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(
+		when(projectGroupGithubRepositoryRepository.findGithubPullRequestSyncContext(
 			10L,
 			100L
-		)).thenReturn(Optional.of(repository));
+		)).thenReturn(Optional.of(pullRequestSyncContext()));
 		when(githubAppClient.createPullRequestSyncSession(12345L)).thenReturn(pullRequestSyncSession);
 		when(pullRequestSyncSession.getClosedPullRequests("student-team-org", "backend"))
 			.thenReturn(List.of());
@@ -716,7 +667,7 @@ class TeamspaceServiceTest {
 			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
 
 		verify(projectGroupGithubRepositoryRepository, never())
-			.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(any(), any());
+			.findGithubPullRequestSyncContext(any(), any());
 		verify(githubAppClient, never()).createPullRequestSyncSession(any());
 		verify(teamspacePersistenceTxService, never()).persistGithubPullRequestContributions(any(), any(), any());
 	}
@@ -1027,6 +978,14 @@ class TeamspaceServiceTest {
 			98765L,
 			"student-team-org",
 			GithubInstallation.ORGANIZATION_ACCOUNT_TYPE
+		);
+	}
+
+	private GithubPullRequestSyncContext pullRequestSyncContext() {
+		return new GithubPullRequestSyncContext(
+			12345L,
+			"student-team-org",
+			"backend"
 		);
 	}
 

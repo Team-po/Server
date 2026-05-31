@@ -34,6 +34,7 @@ import team.po.feature.teamspace.dto.GetGithubRepositoryContributionResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.GithubPullRequestInfo;
 import team.po.feature.teamspace.dto.GithubPullRequestSummary;
+import team.po.feature.teamspace.dto.GithubPullRequestSyncContext;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.GithubPullRequestContributionRepository;
@@ -244,18 +245,17 @@ public class TeamspaceService {
 	}
 
 	public void syncGithubPullRequestContributions(Long projectGroupId, Long githubRepositoryId) {
-		ProjectGroupGithubRepository repository = projectGroupGithubRepositoryRepository
-			.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(projectGroupId, githubRepositoryId)
+		GithubPullRequestSyncContext context = projectGroupGithubRepositoryRepository
+			.findGithubPullRequestSyncContext(projectGroupId, githubRepositoryId)
 			.orElseThrow(() -> new ApplicationException(
 				ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE,
 				"팀 스페이스에 등록된 Github Repository가 아닙니다."
 			));
 
-		Long installationId = repository.getGithubInstallation().getInstallationId();
 		GithubPullRequestSyncSession pullRequestSyncSession = githubAppClient
-			.createPullRequestSyncSession(installationId);
+			.createPullRequestSyncSession(context.installationId());
 		List<GithubPullRequestSummary> mergedPullRequestSummaries = pullRequestSyncSession
-			.getClosedPullRequests(repository.getOwner(), repository.getRepoName())
+			.getClosedPullRequests(context.owner(), context.repoName())
 			.stream()
 			.filter(pullRequest -> pullRequest.mergedAt() != null)
 			.toList();
@@ -270,7 +270,7 @@ public class TeamspaceService {
 
 		List<GithubPullRequestInfo> newMergedPullRequests = mergedPullRequestSummaries.stream()
 			.filter(pullRequest -> !existingGithubPrIds.contains(pullRequest.githubPullRequestId()))
-			.map(pullRequest -> getPullRequestDetail(pullRequestSyncSession, repository, pullRequest))
+			.map(pullRequest -> getPullRequestDetail(pullRequestSyncSession, context, pullRequest))
 			.flatMap(Optional::stream)
 			.toList();
 
@@ -288,12 +288,12 @@ public class TeamspaceService {
 
 	private Optional<GithubPullRequestInfo> getPullRequestDetail(
 		GithubPullRequestSyncSession pullRequestSyncSession,
-		ProjectGroupGithubRepository repository,
+		GithubPullRequestSyncContext context,
 		GithubPullRequestSummary pullRequest
 	) {
 		return pullRequestSyncSession.getPullRequest(
-			repository.getOwner(),
-			repository.getRepoName(),
+			context.owner(),
+			context.repoName(),
 			pullRequest.pullNumber()
 		);
 	}
