@@ -9,8 +9,10 @@ import org.springframework.util.StringUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import team.po.feature.user.service.GithubOAuthService;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class GithubOAuthAuthorizationRequestRepository
@@ -33,6 +35,7 @@ public class GithubOAuthAuthorizationRequestRepository
 		HttpServletResponse response
 	) {
 		if (authorizationRequest != null) {
+			log.info("GitHub OAuth authorization request scopes: {}", authorizationRequest.getScopes());
 			String linkCode = request.getParameter(LINK_CODE_PARAMETER);
 			if (StringUtils.hasText(linkCode)) {
 				githubOAuthService.bindGithubLinkState(authorizationRequest.getState(), linkCode);

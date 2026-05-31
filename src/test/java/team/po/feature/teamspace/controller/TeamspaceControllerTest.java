@@ -33,6 +33,7 @@ import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.GetGithubRepositoryContributionResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.service.TeamspaceService;
@@ -192,5 +193,53 @@ class TeamspaceControllerTest {
 			10L,
 			new SetGithubRepositoryListRequest(List.of())
 		);
+	}
+
+	@Test
+	void getGithubRepositoryContributions_returnsOk() throws Exception {
+		when(teamspaceService.getGithubRepositoryContributions(mockUser, 10L, 100L))
+			.thenReturn(new GetGithubRepositoryContributionResponse(
+				100L,
+				"backend",
+				"student-team-org/backend",
+				List.of(new GetGithubRepositoryContributionResponse.ContributorResponse(
+					1L,
+					501L,
+					"dev-a",
+					3L,
+					2L,
+					120L,
+					15L,
+					8L,
+					40L
+				))
+			));
+
+		mockMvc.perform(get("/api/team-space/10/github/repositories/100/contributions"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.githubRepositoryId").value(100))
+			.andExpect(jsonPath("$.repoName").value("backend"))
+			.andExpect(jsonPath("$.fullName").value("student-team-org/backend"))
+			.andExpect(jsonPath("$.contributors[0].userId").value(1))
+			.andExpect(jsonPath("$.contributors[0].githubUserId").value(501))
+			.andExpect(jsonPath("$.contributors[0].githubUsername").value("dev-a"))
+			.andExpect(jsonPath("$.contributors[0].mergedPrCount").value(3))
+			.andExpect(jsonPath("$.contributors[0].linkedIssueCount").value(2))
+			.andExpect(jsonPath("$.contributors[0].additions").value(120))
+			.andExpect(jsonPath("$.contributors[0].deletions").value(15))
+			.andExpect(jsonPath("$.contributors[0].changedFiles").value(8))
+			.andExpect(jsonPath("$.contributors[0].contributionScore").value(40));
+
+		verify(teamspaceService).getGithubRepositoryContributions(mockUser, 10L, 100L);
+	}
+
+	@Test
+	void syncGithubPullRequestContributions_returnsOk() throws Exception {
+		mockMvc.perform(post(
+				"/api/team-space/10/github/repositories/100/pull-request-contributions/sync"
+			))
+			.andExpect(status().isOk());
+
+		verify(teamspaceService).syncGithubPullRequestContributions(mockUser, 10L, 100L);
 	}
 }
