@@ -118,31 +118,4 @@ public class GithubPullRequestContribution {
 		this.syncedAt = syncedAt;
 	}
 
-	public void updatePullRequestContribution(
-		String title,
-		Long authorGithubUserId,
-		String authorGithubUsername,
-		String state,
-		boolean merged,
-		Instant mergedAt,
-		int additions,
-		int deletions,
-		int changedFiles,
-		int linkedIssueCount,
-		String htmlUrl,
-		Instant syncedAt
-	) {
-		this.title = title;
-		this.authorGithubUserId = authorGithubUserId;
-		this.authorGithubUsername = authorGithubUsername;
-		this.state = state;
-		this.merged = merged;
-		this.mergedAt = mergedAt;
-		this.additions = additions;
-		this.deletions = deletions;
-		this.changedFiles = changedFiles;
-		this.linkedIssueCount = linkedIssueCount;
-		this.htmlUrl = htmlUrl;
-		this.syncedAt = syncedAt;
-	}
 }

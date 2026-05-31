@@ -153,13 +153,18 @@ public class TeamspacePersistenceTxService {
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
 
 		List<GithubPullRequestContribution> newContributions = pullRequests.stream()
-			.map(pullRequest -> upsertGithubPullRequestContribution(
-				projectGroupId,
+			.filter(pullRequest -> githubPullRequestContributionRepository
+				.findByProjectGroup_IdAndGithubRepositoryIdAndGithubPrId(
+					projectGroupId,
+					githubRepositoryId,
+					pullRequest.githubPullRequestId()
+				)
+				.isEmpty())
+			.map(pullRequest -> createGithubPullRequestContribution(
 				projectGroup,
 				githubRepositoryId,
 				pullRequest
 			))
-			.filter(contribution -> contribution.getId() == null)
 			.toList();
 
 		if (newContributions.isEmpty()) {
@@ -169,53 +174,29 @@ public class TeamspacePersistenceTxService {
 		githubPullRequestContributionRepository.saveAll(newContributions);
 	}
 
-	private GithubPullRequestContribution upsertGithubPullRequestContribution(
-		Long projectGroupId,
+	private GithubPullRequestContribution createGithubPullRequestContribution(
 		ProjectGroup projectGroup,
 		Long githubRepositoryId,
 		GithubPullRequestInfo pullRequest
 	) {
-		return githubPullRequestContributionRepository
-			.findByProjectGroup_IdAndGithubRepositoryIdAndGithubPrId(
-				projectGroupId,
-				githubRepositoryId,
-				pullRequest.githubPullRequestId()
-			)
-			.map(existingContribution -> {
-				existingContribution.updatePullRequestContribution(
-					pullRequest.title(),
-					pullRequest.authorGithubUserId(),
-					pullRequest.authorGithubUsername(),
-					pullRequest.state(),
-					pullRequest.mergedAt() != null,
-					pullRequest.mergedAt(),
-					toNonNegativeInt(pullRequest.additions()),
-					toNonNegativeInt(pullRequest.deletions()),
-					toNonNegativeInt(pullRequest.changedFiles()),
-					toNonNegativeInt(pullRequest.linkedIssueCount()),
-					pullRequest.htmlUrl(),
-					Instant.now()
-				);
-				return existingContribution;
-			})
-			.orElseGet(() -> GithubPullRequestContribution.builder()
-				.projectGroup(projectGroup)
-				.githubRepositoryId(githubRepositoryId)
-				.githubPrId(pullRequest.githubPullRequestId())
-				.prNumber(pullRequest.pullNumber())
-				.title(pullRequest.title())
-				.authorGithubUserId(pullRequest.authorGithubUserId())
-				.authorGithubUsername(pullRequest.authorGithubUsername())
-				.state(pullRequest.state())
-				.merged(pullRequest.mergedAt() != null)
-				.mergedAt(pullRequest.mergedAt())
-				.additions(toNonNegativeInt(pullRequest.additions()))
-				.deletions(toNonNegativeInt(pullRequest.deletions()))
-				.changedFiles(toNonNegativeInt(pullRequest.changedFiles()))
-				.linkedIssueCount(toNonNegativeInt(pullRequest.linkedIssueCount()))
-				.htmlUrl(pullRequest.htmlUrl())
-				.syncedAt(Instant.now())
-				.build());
+		return GithubPullRequestContribution.builder()
+			.projectGroup(projectGroup)
+			.githubRepositoryId(githubRepositoryId)
+			.githubPrId(pullRequest.githubPullRequestId())
+			.prNumber(pullRequest.pullNumber())
+			.title(pullRequest.title())
+			.authorGithubUserId(pullRequest.authorGithubUserId())
+			.authorGithubUsername(pullRequest.authorGithubUsername())
+			.state(pullRequest.state())
+			.merged(pullRequest.mergedAt() != null)
+			.mergedAt(pullRequest.mergedAt())
+			.additions(toNonNegativeInt(pullRequest.additions()))
+			.deletions(toNonNegativeInt(pullRequest.deletions()))
+			.changedFiles(toNonNegativeInt(pullRequest.changedFiles()))
+			.linkedIssueCount(toNonNegativeInt(pullRequest.linkedIssueCount()))
+			.htmlUrl(pullRequest.htmlUrl())
+			.syncedAt(Instant.now())
+			.build();
 	}
 
 	private int toNonNegativeInt(Integer value) {

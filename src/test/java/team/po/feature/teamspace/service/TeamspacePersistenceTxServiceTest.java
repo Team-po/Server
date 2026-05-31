@@ -269,7 +269,7 @@ class TeamspacePersistenceTxServiceTest {
 	}
 
 	@Test
-	void persistGithubPullRequestContributions_updatesExistingAndSavesNewContributions() {
+	void persistGithubPullRequestContributions_skipsExistingAndSavesNewContributions() {
 		ProjectGroup projectGroup = projectGroup();
 		GithubPullRequestContribution existingContribution = GithubPullRequestContribution.builder()
 			.projectGroup(projectGroup)
@@ -338,16 +338,16 @@ class TeamspacePersistenceTxServiceTest {
 		);
 
 		verify(projectGroupRepository).findByIdForUpdate(10L);
-		assertThat(existingContribution.getTitle()).isEqualTo("Add contribution sync");
-		assertThat(existingContribution.getAuthorGithubUsername()).isEqualTo("dev-a");
-		assertThat(existingContribution.getState()).isEqualTo("closed");
-		assertThat(existingContribution.isMerged()).isTrue();
-		assertThat(existingContribution.getMergedAt()).isEqualTo(mergedAt);
-		assertThat(existingContribution.getAdditions()).isEqualTo(120);
-		assertThat(existingContribution.getDeletions()).isEqualTo(15);
-		assertThat(existingContribution.getChangedFiles()).isEqualTo(8);
-		assertThat(existingContribution.getLinkedIssueCount()).isEqualTo(2);
-		assertThat(existingContribution.getSyncedAt()).isNotNull();
+		assertThat(existingContribution.getTitle()).isEqualTo("Old title");
+		assertThat(existingContribution.getAuthorGithubUsername()).isEqualTo("old-dev");
+		assertThat(existingContribution.getState()).isEqualTo("open");
+		assertThat(existingContribution.isMerged()).isFalse();
+		assertThat(existingContribution.getMergedAt()).isNull();
+		assertThat(existingContribution.getAdditions()).isEqualTo(1);
+		assertThat(existingContribution.getDeletions()).isEqualTo(2);
+		assertThat(existingContribution.getChangedFiles()).isEqualTo(1);
+		assertThat(existingContribution.getLinkedIssueCount()).isEqualTo(0);
+		assertThat(existingContribution.getSyncedAt()).isEqualTo(Instant.parse("2026-05-01T00:00:00Z"));
 
 		ArgumentCaptor<List<GithubPullRequestContribution>> contributionCaptor = ArgumentCaptor.forClass(List.class);
 		verify(githubPullRequestContributionRepository).saveAll(contributionCaptor.capture());
