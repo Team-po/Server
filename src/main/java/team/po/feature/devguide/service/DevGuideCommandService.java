@@ -1,5 +1,6 @@
 package team.po.feature.devguide.service;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -143,16 +144,16 @@ public class DevGuideCommandService {
 	}
 
 	/**
-	 * 서버 기동 시 GENERATING 상태를 전부 FAILED로 전환한다.
-	 * 재시작 전에 진행 중이던 생성 작업은 스레드가 종료됐으므로 복구 불가능하다.
-	 *
-	 * 단일 인스턴스 전제. 멀티 인스턴스 환경에서는 다른 인스턴스가 처리 중인
-	 * 작업을 잘못 FAILED로 전환할 수 있으므로 @Scheduled 폴링 방식으로 교체해야 한다.
+	 * 서버 기동 시 일정 시간(STALE_THRESHOLD_MINUTES) 이상 갱신되지 않은 GENERATING 레코드를 FAILED로 전환한다.
+	 * 블루/그린 배포 시 신규 인스턴스가 기동되더라도, 기존 인스턴스가 처리 중인 최근 작업은 건드리지 않는다.
 	 */
+	private static final int STALE_THRESHOLD_MINUTES = 10;
+
 	@EventListener(ApplicationReadyEvent.class)
 	@Transactional
 	public void recoverStaleGenerationsOnStartup() {
-		devGuideGenerationRepository.findAllByStatus(DevGuideStatus.GENERATING)
+		LocalDateTime threshold = LocalDateTime.now().minusMinutes(STALE_THRESHOLD_MINUTES);
+		devGuideGenerationRepository.findAllByStatusAndUpdatedAtBefore(DevGuideStatus.GENERATING, threshold)
 			.forEach(DevGuideGeneration::fail);
 	}
 

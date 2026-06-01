@@ -1,5 +1,6 @@
 package team.po.feature.devguide.repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -11,5 +12,5 @@ import team.po.feature.devguide.domain.DevGuideStatus;
 public interface DevGuideGenerationRepository extends JpaRepository<DevGuideGeneration, Long> {
 	Optional<DevGuideGeneration> findByProjectGroup_Id(Long projectGroupId);
 
-	List<DevGuideGeneration> findAllByStatus(DevGuideStatus status);
+	List<DevGuideGeneration> findAllByStatusAndUpdatedAtBefore(DevGuideStatus status, LocalDateTime threshold);
 }
