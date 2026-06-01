@@ -18,6 +18,7 @@ import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.repository.DevGuideGenerationRepository;
 import team.po.feature.devguide.repository.DevGuideRepository;
 import team.po.feature.projectgroup.domain.ProjectGroup;
+import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 
 @Service
@@ -82,6 +83,10 @@ public class DevGuideCommandService {
 	public DevGuideGenerationType startRegeneration(Long projectGroupId) {
 		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
+
+		if (projectGroup.getStatus() == ProjectGroupStatus.FINISHED) {
+			throw new ApplicationException(ErrorCode.DEV_GUIDE_WRITE_NOT_ALLOWED);
+		}
 
 		Optional<DevGuideGeneration> existing = devGuideGenerationRepository.findByProjectGroup_Id(projectGroupId);
 

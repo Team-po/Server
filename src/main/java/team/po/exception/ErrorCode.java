@@ -92,7 +92,9 @@ public enum ErrorCode {
 	DEV_GUIDE_ALREADY_EXISTS(HttpStatus.CONFLICT, "DEV_GUIDE_ALREADY_EXISTS", "이미 개발 가이드라인이 존재합니다."),
 	DEV_GUIDE_GENERATING(HttpStatus.CONFLICT, "DEV_GUIDE_GENERATING", "개발 가이드라인이 생성 중입니다."),
 	DEV_GUIDE_REGENERATION_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "DEV_GUIDE_REGENERATION_LIMIT_EXCEEDED",
-		"재생성 횟수를 초과했습니다.");
+		"재생성 횟수를 초과했습니다."),
+	DEV_GUIDE_WRITE_NOT_ALLOWED(HttpStatus.FORBIDDEN, "DEV_GUIDE_WRITE_NOT_ALLOWED",
+		"종료된 팀 스페이스에서는 개발 가이드라인을 생성할 수 없습니다.");
 
 	private final HttpStatus status;
 	private final String code;
