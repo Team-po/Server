@@ -45,6 +45,7 @@ public class DevGuideService {
 			return;
 		}
 
+		DevGuideContent content;
 		try {
 			ProjectGroup projectGroup = projectGroupRepository.findById(projectGroupId)
 				.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
@@ -55,13 +56,13 @@ public class DevGuideService {
 				projectGroup.getProjectMvp()
 			);
 
-			DevGuideContent content = geminiClient.generateDevGuide(prompt, DevGuideSchema.RESPONSE_SCHEMA);
-
-			devGuideCommandService.create(projectGroupId, content);
+			content = geminiClient.generateDevGuide(prompt, DevGuideSchema.RESPONSE_SCHEMA);
 		} catch (Exception e) {
 			devGuideCommandService.failGeneration(projectGroupId);
 			throw e;
 		}
+
+		devGuideCommandService.create(projectGroupId, content);
 	}
 
 	// 재생성 API — 트랜잭션 없이 Gemini API 호출
@@ -74,6 +75,7 @@ public class DevGuideService {
 		// Gemini 호출 전: 조건 검증(GENERATING 차단, 횟수 제한), 타입 결정, 상태 GENERATING 전환
 		DevGuideGenerationType generationType = devGuideCommandService.startRegeneration(projectGroupId);
 
+		DevGuideContent content;
 		try {
 			String prompt = promptBuilder.build(
 				projectGroup.getProjectTitle(),
@@ -82,16 +84,15 @@ public class DevGuideService {
 				feedback
 			);
 
-			DevGuideContent content = geminiClient.generateDevGuide(prompt, DevGuideSchema.RESPONSE_SCHEMA);
-
-			// Gemini 호출 후: 가이드 저장, 상태 COMPLETED 전환, 남은 횟수 반환
-			int remainingCount = devGuideCommandService.completeRegeneration(projectGroupId, content, generationType);
-
-			return new DevGuideRegenerateResponse(content, generationType, remainingCount);
+			content = geminiClient.generateDevGuide(prompt, DevGuideSchema.RESPONSE_SCHEMA);
 		} catch (Exception e) {
 			devGuideCommandService.failGeneration(projectGroupId);
 			throw e;
 		}
+
+		// Gemini 호출 후: 가이드 저장, 상태 COMPLETED 전환, 남은 횟수 반환
+		int remainingCount = devGuideCommandService.completeRegeneration(projectGroupId, content, generationType);
+		return new DevGuideRegenerateResponse(content, generationType, remainingCount);
 	}
 
 	public DevGuideQueryResponse getDevGuide(Long projectGroupId, Long userId) {
