@@ -35,7 +35,7 @@ public class DevGuideCommandService {
 	 */
 	@Transactional
 	public boolean startInitialGeneration(Long projectGroupId) {
-		ProjectGroup projectGroup = projectGroupRepository.findById(projectGroupId)
+		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
 
 		Optional<DevGuideGeneration> existing = devGuideGenerationRepository.findByProjectGroup_Id(projectGroupId);
