@@ -1,8 +1,12 @@
 package team.po.feature.teamspace.service;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,9 +30,14 @@ import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
+import team.po.feature.teamspace.dto.GetGithubRepositoryContributionResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
+import team.po.feature.teamspace.dto.GithubPullRequestInfo;
+import team.po.feature.teamspace.dto.GithubPullRequestSummary;
+import team.po.feature.teamspace.dto.GithubPullRequestSyncContext;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
+import team.po.feature.teamspace.repository.GithubPullRequestContributionRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
 import team.po.feature.user.domain.GithubAccount;
@@ -45,6 +54,7 @@ public class TeamspaceService {
 	private static final String GITHUB_APP_INSTALLATION_BASE_URL = "https://github.com/apps";
 	private static final String GITHUB_APP_INSTALLATION_STATE_DELIMITER = "|";
 	private static final String GITHUB_APP_SETUP_ACTION_INSTALL = "install";
+	private static final int EXISTING_GITHUB_PR_ID_QUERY_CHUNK_SIZE = 500;
 
 	private final ProjectGroupMemberRepository projectGroupMemberRepository;
 	private final ProjectGroupGithubInstallationRepository projectGroupGithubInstallationRepository;
@@ -58,6 +68,7 @@ public class TeamspaceService {
 	private final GithubAppClient githubAppClient;
 	private final GithubTokenEncryptor githubTokenEncryptor;
 	private final TeamspacePersistenceTxService teamspacePersistenceTxService;
+	private final GithubPullRequestContributionRepository githubPullRequestContributionRepository;
 
 	@Transactional(readOnly = true)
 	public GetGithubInstallationStatusResponse getGithubInstallationStatus(Long projectGroupId, Long requesterUserId) {
@@ -168,6 +179,45 @@ public class TeamspaceService {
 			.toList());
 	}
 
+	@Transactional(readOnly = true)
+	public GetGithubRepositoryContributionResponse getGithubRepositoryContributions(
+		Users user,
+		Long projectGroupId,
+		Long githubRepositoryId
+	) {
+		validateProjectGroupMember(projectGroupId, user.getId());
+		ProjectGroupGithubRepository repository = projectGroupGithubRepositoryRepository
+			.findByProjectGroup_IdAndGithubRepositoryIdAndDeletedAtIsNull(projectGroupId, githubRepositoryId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE,
+				"팀 스페이스에 등록된 Github Repository가 아닙니다."
+			));
+
+		List<GetGithubRepositoryContributionResponse.ContributorResponse> contributors =
+			githubPullRequestContributionRepository
+				.findContributionSummaries(projectGroupId, githubRepositoryId)
+				.stream()
+				.map(summary -> new GetGithubRepositoryContributionResponse.ContributorResponse(
+					summary.getUserId(),
+					summary.getGithubUserId(),
+					summary.getGithubUsername(),
+					summary.getMergedPrCount(),
+					summary.getLinkedIssueCount(),
+					summary.getAdditions(),
+					summary.getDeletions(),
+					summary.getChangedFiles(),
+					calculateContributionScore(summary.getMergedPrCount(), summary.getLinkedIssueCount())
+				))
+				.toList();
+
+		return new GetGithubRepositoryContributionResponse(
+			repository.getGithubRepositoryId(),
+			repository.getRepoName(),
+			repository.getFullName(),
+			contributors
+		);
+	}
+
 	public void setGithubRepositoryList(Users user, Long projectGroupId, SetGithubRepositoryListRequest request) {
 		GithubRepositorySettingContext context = teamspacePersistenceTxService.prepareGithubRepositorySetting(
 			projectGroupId,
@@ -192,6 +242,87 @@ public class TeamspaceService {
 			request.githubRepositoryIds(),
 			repositories
 		);
+	}
+
+	public void syncGithubPullRequestContributions(Long projectGroupId, Long githubRepositoryId) {
+		GithubPullRequestSyncContext context = projectGroupGithubRepositoryRepository
+			.findGithubPullRequestSyncContext(projectGroupId, githubRepositoryId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.GITHUB_REPOSITORY_NOT_ACCESSIBLE,
+				"팀 스페이스에 등록된 Github Repository가 아닙니다."
+			));
+
+		GithubPullRequestSyncSession pullRequestSyncSession = githubAppClient
+			.createPullRequestSyncSession(context.installationId());
+		List<GithubPullRequestSummary> mergedPullRequestSummaries = pullRequestSyncSession
+			.getClosedPullRequests(context.owner(), context.repoName())
+			.stream()
+			.filter(pullRequest -> pullRequest.mergedAt() != null)
+			.toList();
+		Set<Long> mergedGithubPrIds = mergedPullRequestSummaries.stream()
+			.map(GithubPullRequestSummary::githubPullRequestId)
+			.collect(Collectors.toSet());
+		Set<Long> existingGithubPrIds = findExistingGithubPrIdsInChunks(
+			projectGroupId,
+			githubRepositoryId,
+			mergedGithubPrIds
+		);
+
+		List<GithubPullRequestInfo> newMergedPullRequests = mergedPullRequestSummaries.stream()
+			.filter(pullRequest -> !existingGithubPrIds.contains(pullRequest.githubPullRequestId()))
+			.map(pullRequest -> getPullRequestDetail(pullRequestSyncSession, context, pullRequest))
+			.flatMap(Optional::stream)
+			.toList();
+
+		teamspacePersistenceTxService.persistGithubPullRequestContributions(
+			projectGroupId,
+			githubRepositoryId,
+			newMergedPullRequests
+		);
+	}
+
+	public void syncGithubPullRequestContributions(Users user, Long projectGroupId, Long githubRepositoryId) {
+		validateProjectGroupHost(projectGroupId, user.getId());
+		syncGithubPullRequestContributions(projectGroupId, githubRepositoryId);
+	}
+
+	private Optional<GithubPullRequestInfo> getPullRequestDetail(
+		GithubPullRequestSyncSession pullRequestSyncSession,
+		GithubPullRequestSyncContext context,
+		GithubPullRequestSummary pullRequest
+	) {
+		return pullRequestSyncSession.getPullRequest(
+			context.owner(),
+			context.repoName(),
+			pullRequest.pullNumber()
+		);
+	}
+
+	private Set<Long> findExistingGithubPrIdsInChunks(
+		Long projectGroupId,
+		Long githubRepositoryId,
+		Set<Long> githubPrIds
+	) {
+		if (githubPrIds.isEmpty()) {
+			return Set.of();
+		}
+
+		List<Long> githubPrIdList = githubPrIds.stream().toList();
+		Set<Long> existingGithubPrIds = new HashSet<>();
+		for (int start = 0; start < githubPrIdList.size(); start += EXISTING_GITHUB_PR_ID_QUERY_CHUNK_SIZE) {
+			int end = Math.min(start + EXISTING_GITHUB_PR_ID_QUERY_CHUNK_SIZE, githubPrIdList.size());
+			existingGithubPrIds.addAll(githubPullRequestContributionRepository.findExistingGithubPrIds(
+				projectGroupId,
+				githubRepositoryId,
+				Set.copyOf(githubPrIdList.subList(start, end))
+			));
+		}
+
+		return existingGithubPrIds;
+	}
+
+	private long calculateContributionScore(long mergedPrCount, long linkedIssueCount) {
+		return mergedPrCount * 10 + linkedIssueCount * 5;
 	}
 
 	private void validateRequesterCanConnectOrganization(Long requesterUserId, String organizationLogin) {

@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -19,6 +20,7 @@ import org.springframework.web.client.RestClient;
 import team.po.config.GithubAppProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
+import team.po.feature.teamspace.dto.GithubPullRequestInfo;
 import team.po.feature.teamspace.provider.GithubAppJwtProvider;
 import team.po.feature.teamspace.service.GithubAppClient.GithubAppInstallationInfo;
 
@@ -194,6 +196,230 @@ class GithubAppClientTest {
 			assertThat(repositories.get(0).fullName()).isEqualTo("student-team-org/backend");
 			assertThat(repositories.get(0).defaultBranch()).isEqualTo("main");
 			assertThat(repositories.get(0).privateRepository()).isTrue();
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	void getClosedPullRequests_returnsClosedPullRequests() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/12345/access_tokens", exchange -> {
+			assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+			assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isEqualTo("Bearer github-app-jwt");
+			writeResponse(exchange, 201, """
+				{
+				  "token": "github-installation-token"
+				}
+				""");
+		});
+		server.createContext("/repos/student-team-org/backend/pulls", exchange -> {
+			assertThat(exchange.getRequestHeaders().getFirst("Authorization"))
+				.isEqualTo("Bearer github-installation-token");
+			assertThat(exchange.getRequestHeaders().getFirst("Accept")).isEqualTo("application/vnd.github+json");
+			assertThat(exchange.getRequestHeaders().getFirst("X-GitHub-Api-Version")).isEqualTo("2022-11-28");
+			assertThat(exchange.getRequestURI().getQuery()).contains("state=closed", "per_page=100", "page=1");
+			writeResponse(exchange, 200, """
+				[
+				  {
+				    "id": 999,
+				    "number": 9,
+				    "title": "Old PR from deleted user",
+				    "state": "closed",
+				    "merged_at": "2026-04-01T10:15:30Z",
+				    "html_url": "https://github.com/student-team-org/backend/pull/9",
+				    "user": null
+				  },
+				  {
+				    "id": 1001,
+				    "number": 10,
+				    "title": "Add contribution sync",
+				    "state": "closed",
+				    "merged_at": "2026-05-01T10:15:30Z",
+				    "html_url": "https://github.com/student-team-org/backend/pull/10",
+				    "user": {
+				      "id": 501,
+				      "login": "dev-a"
+				    }
+				  }
+				]
+				""");
+		});
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			var pullRequests = client.getClosedPullRequests(12345L, "student-team-org", "backend");
+
+			assertThat(pullRequests).hasSize(1);
+			assertThat(pullRequests.get(0).githubPullRequestId()).isEqualTo(1001L);
+			assertThat(pullRequests.get(0).pullNumber()).isEqualTo(10L);
+			assertThat(pullRequests.get(0).title()).isEqualTo("Add contribution sync");
+			assertThat(pullRequests.get(0).authorGithubUserId()).isEqualTo(501L);
+			assertThat(pullRequests.get(0).authorGithubUsername()).isEqualTo("dev-a");
+			assertThat(pullRequests.get(0).state()).isEqualTo("closed");
+			assertThat(pullRequests.get(0).htmlUrl())
+				.isEqualTo("https://github.com/student-team-org/backend/pull/10");
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	void getPullRequest_returnsPullRequestDetail() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/12345/access_tokens", exchange -> writeResponse(exchange, 201, """
+			{
+			  "token": "github-installation-token"
+			}
+			"""));
+		server.createContext("/repos/student-team-org/backend/pulls/10", exchange -> {
+			assertThat(exchange.getRequestHeaders().getFirst("Authorization"))
+				.isEqualTo("Bearer github-installation-token");
+			assertThat(exchange.getRequestHeaders().getFirst("Accept")).isEqualTo("application/vnd.github+json");
+			assertThat(exchange.getRequestHeaders().getFirst("X-GitHub-Api-Version")).isEqualTo("2022-11-28");
+			writeResponse(exchange, 200, """
+				{
+				  "id": 1001,
+				  "number": 10,
+				  "title": "Add contribution sync",
+				  "state": "closed",
+				  "merged_at": "2026-05-01T10:15:30Z",
+				  "additions": 120,
+				  "deletions": 15,
+				  "changed_files": 8,
+				  "body": "Closes #10\\nFixes #11 and #12\\nResolves student-team-org/frontend#13\\nCloses #10",
+				  "html_url": "https://github.com/student-team-org/backend/pull/10",
+				  "user": {
+				    "id": 501,
+				    "login": "dev-a"
+				  }
+				}
+				""");
+		});
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			var pullRequest = client.getPullRequest(12345L, "student-team-org", "backend", 10L);
+
+			assertThat(pullRequest).isPresent();
+			GithubPullRequestInfo pullRequestInfo = pullRequest.orElseThrow();
+			assertThat(pullRequestInfo.githubPullRequestId()).isEqualTo(1001L);
+			assertThat(pullRequestInfo.pullNumber()).isEqualTo(10L);
+			assertThat(pullRequestInfo.authorGithubUserId()).isEqualTo(501L);
+			assertThat(pullRequestInfo.additions()).isEqualTo(120);
+			assertThat(pullRequestInfo.deletions()).isEqualTo(15);
+			assertThat(pullRequestInfo.changedFiles()).isEqualTo(8);
+			assertThat(pullRequestInfo.linkedIssueCount()).isEqualTo(4);
+			assertThat(pullRequestInfo.htmlUrl()).isEqualTo("https://github.com/student-team-org/backend/pull/10");
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	void pullRequestSyncSession_reusesInstallationAccessToken() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+		AtomicInteger accessTokenRequestCount = new AtomicInteger();
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/12345/access_tokens", exchange -> {
+			accessTokenRequestCount.incrementAndGet();
+			writeResponse(exchange, 201, """
+				{
+				  "token": "github-installation-token"
+				}
+				""");
+		});
+		server.createContext("/repos/student-team-org/backend/pulls", exchange -> writeResponse(exchange, 200, """
+			[
+			  {
+			    "id": 1001,
+			    "number": 10,
+			    "title": "Add contribution sync",
+			    "state": "closed",
+			    "merged_at": "2026-05-01T10:15:30Z",
+			    "html_url": "https://github.com/student-team-org/backend/pull/10",
+			    "user": {
+			      "id": 501,
+			      "login": "dev-a"
+			    }
+			  }
+			]
+			"""));
+		server.createContext("/repos/student-team-org/backend/pulls/10", exchange -> writeResponse(exchange, 200, """
+			{
+			  "id": 1001,
+			  "number": 10,
+			  "title": "Add contribution sync",
+			  "state": "closed",
+			  "merged_at": "2026-05-01T10:15:30Z",
+			  "additions": 120,
+			  "deletions": 15,
+			  "changed_files": 8,
+			  "body": "Closes #10",
+			  "html_url": "https://github.com/student-team-org/backend/pull/10",
+			  "user": {
+			    "id": 501,
+			    "login": "dev-a"
+			  }
+			}
+			"""));
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+			GithubPullRequestSyncSession session = client.createPullRequestSyncSession(12345L);
+
+			assertThat(session.getClosedPullRequests("student-team-org", "backend")).hasSize(1);
+			assertThat(session.getPullRequest("student-team-org", "backend", 10L)).isPresent();
+			assertThat(accessTokenRequestCount).hasValue(1);
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	void getPullRequest_returnsEmpty_whenPullRequestUserIsMissing() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/12345/access_tokens", exchange -> writeResponse(exchange, 201, """
+			{
+			  "token": "github-installation-token"
+			}
+			"""));
+		server.createContext("/repos/student-team-org/backend/pulls/10", exchange -> writeResponse(exchange, 200, """
+			{
+			  "id": 1001,
+			  "number": 10,
+			  "title": "Old PR from deleted user",
+			  "state": "closed",
+			  "merged_at": "2026-05-01T10:15:30Z",
+			  "additions": 120,
+			  "deletions": 15,
+			  "changed_files": 8,
+			  "html_url": "https://github.com/student-team-org/backend/pull/10",
+			  "user": null
+			}
+			"""));
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			assertThat(client.getPullRequest(12345L, "student-team-org", "backend", 10L)).isEmpty();
 		} finally {
 			server.stop(0);
 		}

@@ -19,10 +19,13 @@ import team.po.feature.projectgroup.domain.ProjectGroup;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.teamspace.domain.GithubInstallation;
+import team.po.feature.teamspace.domain.GithubPullRequestContribution;
 import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubRepository;
+import team.po.feature.teamspace.dto.GithubPullRequestInfo;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
+import team.po.feature.teamspace.repository.GithubPullRequestContributionRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
 
@@ -35,6 +38,7 @@ public class TeamspacePersistenceTxService {
 	private final ProjectGroupGithubInstallationRepository projectGroupGithubInstallationRepository;
 	private final ProjectGroupGithubRepositoryRepository projectGroupGithubRepositoryRepository;
 	private final GithubInstallationRepository githubInstallationRepository;
+	private final GithubPullRequestContributionRepository githubPullRequestContributionRepository;
 
 	@Transactional(readOnly = true)
 	public GithubRepositorySettingContext prepareGithubRepositorySetting(Long projectGroupId, Long requesterUserId) {
@@ -137,6 +141,69 @@ public class TeamspacePersistenceTxService {
 			.toList();
 
 		projectGroupGithubRepositoryRepository.saveAll(selectedRepositories);
+	}
+
+	@Transactional
+	public void persistGithubPullRequestContributions(
+		Long projectGroupId,
+		Long githubRepositoryId,
+		List<GithubPullRequestInfo> pullRequests
+	) {
+		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
+
+		List<GithubPullRequestContribution> newContributions = pullRequests.stream()
+			.filter(pullRequest -> githubPullRequestContributionRepository
+				.findByProjectGroup_IdAndGithubRepositoryIdAndGithubPrId(
+					projectGroupId,
+					githubRepositoryId,
+					pullRequest.githubPullRequestId()
+				)
+				.isEmpty())
+			.map(pullRequest -> createGithubPullRequestContribution(
+				projectGroup,
+				githubRepositoryId,
+				pullRequest
+			))
+			.toList();
+
+		if (newContributions.isEmpty()) {
+			return;
+		}
+
+		githubPullRequestContributionRepository.saveAll(newContributions);
+	}
+
+	private GithubPullRequestContribution createGithubPullRequestContribution(
+		ProjectGroup projectGroup,
+		Long githubRepositoryId,
+		GithubPullRequestInfo pullRequest
+	) {
+		return GithubPullRequestContribution.builder()
+			.projectGroup(projectGroup)
+			.githubRepositoryId(githubRepositoryId)
+			.githubPrId(pullRequest.githubPullRequestId())
+			.prNumber(pullRequest.pullNumber())
+			.title(pullRequest.title())
+			.authorGithubUserId(pullRequest.authorGithubUserId())
+			.authorGithubUsername(pullRequest.authorGithubUsername())
+			.state(pullRequest.state())
+			.merged(pullRequest.mergedAt() != null)
+			.mergedAt(pullRequest.mergedAt())
+			.additions(toNonNegativeInt(pullRequest.additions()))
+			.deletions(toNonNegativeInt(pullRequest.deletions()))
+			.changedFiles(toNonNegativeInt(pullRequest.changedFiles()))
+			.linkedIssueCount(toNonNegativeInt(pullRequest.linkedIssueCount()))
+			.htmlUrl(pullRequest.htmlUrl())
+			.syncedAt(Instant.now())
+			.build();
+	}
+
+	private int toNonNegativeInt(Integer value) {
+		if (value == null) {
+			return 0;
+		}
+		return Math.max(value, 0);
 	}
 
 	private void validateProjectGroupHost(Long projectGroupId, Long requesterUserId) {
