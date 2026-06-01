@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import team.po.common.auth.LoginUser;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
+import team.po.feature.teamspace.dto.GenerateWeeklyGithubSummaryResponse;
 import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryContributionResponse;
@@ -125,5 +126,19 @@ public class TeamspaceController {
 		teamspaceService.syncGithubPullRequestContributions(user, projectGroupId, githubRepositoryId);
 
 		return ResponseEntity.ok().build();
+	}
+
+	@Operation(summary = "팀 멤버 Github 주간 요약 생성 API")
+	@PostMapping("/{projectGroupId}/github/weekly-summary")
+	public ResponseEntity<GenerateWeeklyGithubSummaryResponse> generateWeeklyGithubSummary(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId
+	) {
+		GenerateWeeklyGithubSummaryResponse response = teamspaceService.generateWeeklyGithubSummary(
+			user,
+			projectGroupId
+		);
+
+		return ResponseEntity.ok(response);
 	}
 }

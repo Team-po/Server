@@ -27,6 +27,7 @@ import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubRepository;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
+import team.po.feature.teamspace.dto.GenerateWeeklyGithubSummaryResponse;
 import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
@@ -284,6 +285,10 @@ public class TeamspaceService {
 	public void syncGithubPullRequestContributions(Users user, Long projectGroupId, Long githubRepositoryId) {
 		validateProjectGroupHost(projectGroupId, user.getId());
 		syncGithubPullRequestContributions(projectGroupId, githubRepositoryId);
+	}
+
+	public GenerateWeeklyGithubSummaryResponse generateWeeklyGithubSummary(Users user, Long projectGroupId) {
+		throw new UnsupportedOperationException("Github 주간 요약 생성 로직은 아직 구현되지 않았습니다.");
 	}
 
 	private Optional<GithubPullRequestInfo> getPullRequestDetail(
