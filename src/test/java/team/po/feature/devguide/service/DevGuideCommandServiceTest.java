@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,7 +46,7 @@ class DevGuideCommandServiceTest {
 
 	@Test
 	void startInitialGeneration_createsGeneratingStatus_whenNoRecordExists() {
-		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup()));
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup()));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.empty());
 
 		boolean result = devGuideCommandService.startInitialGeneration(1L);
@@ -60,7 +61,7 @@ class DevGuideCommandServiceTest {
 		DevGuideGeneration failedGeneration = DevGuideGeneration.create(projectGroup);
 		failedGeneration.fail();
 
-		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(failedGeneration));
 
 		boolean result = devGuideCommandService.startInitialGeneration(1L);
@@ -74,7 +75,7 @@ class DevGuideCommandServiceTest {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideGeneration generatingStatus = DevGuideGeneration.create(projectGroup);
 
-		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generatingStatus));
 
 		boolean result = devGuideCommandService.startInitialGeneration(1L);
@@ -286,7 +287,8 @@ class DevGuideCommandServiceTest {
 		DevGuideGeneration gen1 = DevGuideGeneration.create(projectGroup);
 		DevGuideGeneration gen2 = DevGuideGeneration.create(projectGroup);
 
-		when(devGuideGenerationRepository.findAllByStatus(DevGuideStatus.GENERATING))
+		when(devGuideGenerationRepository.findAllByStatusAndUpdatedAtBefore(
+			eq(DevGuideStatus.GENERATING), any(LocalDateTime.class)))
 			.thenReturn(List.of(gen1, gen2));
 
 		devGuideCommandService.recoverStaleGenerationsOnStartup();
