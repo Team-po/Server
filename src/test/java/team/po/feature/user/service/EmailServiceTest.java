@@ -31,6 +31,7 @@ import jakarta.mail.Session;
 import jakarta.mail.internet.MimeMessage;
 import team.po.common.redis.RedisService;
 import team.po.config.EmailAuthProperties;
+import team.po.config.PasswordResetProperties;
 import team.po.exception.ApplicationException;
 import team.po.feature.user.dto.SendEmailRequest;
 import team.po.feature.user.dto.ValidateAuthNumberRequest;
@@ -40,6 +41,7 @@ import team.po.feature.user.repository.UserRepository;
 class EmailServiceTest {
 	private static final Duration AUTH_CODE_TTL = Duration.ofMinutes(5);
 	private static final Duration VERIFIED_TTL = Duration.ofMinutes(10);
+	private static final Duration PASSWORD_RESET_TOKEN_TTL = Duration.ofMinutes(30);
 
 	@Mock
 	private JavaMailSender javaMailSender;
@@ -161,6 +163,42 @@ class EmailServiceTest {
 			.doesNotContain("Team-po 계정 생성을 완료하려면")
 			.doesNotContain("회원가입 인증")
 			.doesNotContain("__VERIFICATION_GUIDE_MESSAGE__");
+	}
+
+	@Test
+	void sendPasswordResetEmail_sendsResetLinkHtml() throws Exception {
+		emailService.sendPasswordResetEmail(
+			" Test@Email.com ",
+			"https://team-po.cloud/password-reset#token=reset-token"
+		);
+
+		verify(javaMailSender).send(mimeMessage);
+		mimeMessage.saveChanges();
+		assertThat(mimeMessage.getFrom()[0].toString()).isEqualTo("no-reply@teampo.com");
+		assertThat(mimeMessage.getRecipients(MimeMessage.RecipientType.TO)[0].toString()).isEqualTo("test@email.com");
+		assertThat(mimeMessage.getSubject()).isEqualTo("TeamPo 비밀번호 재설정");
+		assertThat(mimeMessage.getContentType()).contains("text/html");
+		assertThat(mimeMessage.getContent().toString())
+			.contains("비밀번호 재설정")
+			.contains("새 비밀번호를 설정해 주세요")
+			.contains("30분")
+			.contains("https://team-po.cloud/password-reset#token=reset-token")
+			.doesNotContain("__PASSWORD_RESET_URL__")
+			.doesNotContain("__PASSWORD_RESET_TTL__");
+	}
+
+	@Test
+	void sendPasswordResetEmail_throwsWhenMailSendFails() {
+		doThrow(new MailSendException("failed"))
+			.when(javaMailSender)
+			.send(any(MimeMessage.class));
+
+		assertThatThrownBy(() -> emailService.sendPasswordResetEmail(
+			"test@email.com",
+			"https://team-po.cloud/password-reset#token=reset-token"
+		))
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("인증번호 이메일 발송에 실패했습니다.");
 	}
 
 	@Test
@@ -325,7 +363,13 @@ class EmailServiceTest {
 			VERIFIED_TTL,
 			"TeamPo 이메일 인증번호"
 		);
-		return new EmailService(javaMailSender, redisService, userRepository, emailAuthProperties);
+		PasswordResetProperties passwordResetProperties = new PasswordResetProperties(
+			PASSWORD_RESET_TOKEN_TTL,
+			Duration.ofMinutes(1),
+			"https://team-po.cloud/password-reset",
+			"TeamPo 비밀번호 재설정"
+		);
+		return new EmailService(javaMailSender, redisService, userRepository, emailAuthProperties, passwordResetProperties);
 	}
 
 	private String hashEmail(String email) {

@@ -4,8 +4,14 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.Duration;
+import java.util.HexFormat;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,14 +31,18 @@ import org.springframework.test.util.ReflectionTestUtils;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
+import team.po.common.redis.RedisService;
+import team.po.config.PasswordResetProperties;
 import team.po.exception.ApplicationException;
 import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
+import team.po.feature.user.dto.RequestPasswordResetRequest;
 import team.po.feature.user.dto.RefreshTokenRequest;
 import team.po.feature.user.dto.RefreshTokenResponse;
+import team.po.feature.user.dto.ResetPasswordRequest;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
@@ -42,6 +52,8 @@ import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
+	private static final Duration PASSWORD_RESET_TOKEN_TTL = Duration.ofMinutes(30);
+	private static final Duration PASSWORD_RESET_REQUEST_COOLDOWN = Duration.ofMinutes(1);
 
 	@Mock
 	private UserRepository userRepository;
@@ -64,6 +76,12 @@ class UserServiceTest {
 	@Mock
 	private EmailService emailService;
 
+	@Mock
+	private RedisService redisService;
+
+	@Mock
+	private PasswordResetProperties passwordResetProperties;
+
 	@InjectMocks
 	private UserService userService;
 
@@ -72,6 +90,9 @@ class UserServiceTest {
 		ReflectionTestUtils.setField(userService, "s3Endpoint", "https://storage.hwangdo.kr");
 		ReflectionTestUtils.setField(userService, "bucket", "team-po");
 		ReflectionTestUtils.setField(userService, "region", "ap-northeast-2");
+		lenient().when(passwordResetProperties.tokenTtl()).thenReturn(PASSWORD_RESET_TOKEN_TTL);
+		lenient().when(passwordResetProperties.requestCooldown()).thenReturn(PASSWORD_RESET_REQUEST_COOLDOWN);
+		lenient().when(passwordResetProperties.clientResetUrl()).thenReturn("http://localhost:5173/password-reset");
 	}
 
 	@Test
@@ -198,6 +219,190 @@ class UserServiceTest {
 		assertThatThrownBy(() -> userService.signIn(request))
 			.isInstanceOf(BadCredentialsException.class)
 			.hasMessage("이메일 또는 비밀번호가 올바르지 않습니다.");
+	}
+
+	@Test
+	void requestPasswordReset_issuesSingleUseTokenAndSendsResetUrlForPasswordUser() {
+		Users user = authenticatedUser(1L, "test@email.com");
+		when(userRepository.findByEmailAndDeletedAtIsNull("test@email.com")).thenReturn(Optional.of(user));
+		when(redisService.setIfAbsentValue(
+			eq(passwordResetRequestCooldownKey("test@email.com")),
+			eq("true"),
+			eq(PASSWORD_RESET_REQUEST_COOLDOWN)
+		)).thenReturn(true);
+		when(emailService.sendPasswordResetEmailAsync(eq("test@email.com"), any(String.class)))
+			.thenReturn(CompletableFuture.completedFuture(null));
+
+		userService.requestPasswordReset(new RequestPasswordResetRequest(" Test@Email.com "));
+
+		ArgumentCaptor<String> redisKeyCaptor = ArgumentCaptor.forClass(String.class);
+		ArgumentCaptor<String> redisValueCaptor = ArgumentCaptor.forClass(String.class);
+		verify(redisService, times(2)).setValue(
+			redisKeyCaptor.capture(),
+			redisValueCaptor.capture(),
+			eq(PASSWORD_RESET_TOKEN_TTL)
+		);
+		assertThat(redisKeyCaptor.getAllValues()).anySatisfy(key ->
+			assertThat(key).startsWith("password-reset-token:")
+		);
+		assertThat(redisKeyCaptor.getAllValues()).contains("password-reset-user-token:1");
+		assertThat(redisValueCaptor.getAllValues()).contains("1");
+
+		ArgumentCaptor<String> resetUrlCaptor = ArgumentCaptor.forClass(String.class);
+		verify(emailService).sendPasswordResetEmailAsync(eq("test@email.com"), resetUrlCaptor.capture());
+		assertThat(resetUrlCaptor.getValue()).startsWith("http://localhost:5173/password-reset#token=");
+		assertThat(resetUrlCaptor.getValue()).doesNotContain("test@email.com");
+	}
+
+	@Test
+	void requestPasswordReset_invalidatesPreviousTokenAfterResetEmailSucceeds() {
+		Users user = authenticatedUser(1L, "test@email.com");
+		when(userRepository.findByEmailAndDeletedAtIsNull("test@email.com")).thenReturn(Optional.of(user));
+		when(redisService.setIfAbsentValue(any(), any(), any())).thenReturn(true);
+		when(redisService.getStringValue("password-reset-user-token:1")).thenReturn("previous-token-hash");
+		when(emailService.sendPasswordResetEmailAsync(eq("test@email.com"), any(String.class)))
+			.thenReturn(CompletableFuture.completedFuture(null));
+
+		userService.requestPasswordReset(new RequestPasswordResetRequest("test@email.com"));
+
+		verify(redisService).deleteValue("password-reset-token:previous-token-hash");
+		verify(emailService).sendPasswordResetEmailAsync(eq("test@email.com"), any(String.class));
+	}
+
+	@Test
+	void requestPasswordReset_doesNotRevealMissingUser() {
+		when(userRepository.findByEmailAndDeletedAtIsNull("missing@email.com")).thenReturn(Optional.empty());
+
+		userService.requestPasswordReset(new RequestPasswordResetRequest(" missing@email.com "));
+
+		verify(redisService).setIfAbsentValue(
+			eq(passwordResetRequestCooldownKey("missing@email.com")),
+			eq("true"),
+			eq(PASSWORD_RESET_REQUEST_COOLDOWN)
+		);
+		verify(redisService, never()).setValue(any(), any(), any());
+		verifyNoInteractions(emailService);
+	}
+
+	@Test
+	void requestPasswordReset_doesNotIssueTokenForGithubLoginUser() {
+		Users user = Users.builder()
+			.email("github@email.com")
+			.nickname("github")
+			.temperature(50)
+			.level(3)
+			.isGithubLogin(true)
+			.build();
+		ReflectionTestUtils.setField(user, "id", 5L);
+		when(userRepository.findByEmailAndDeletedAtIsNull("github@email.com")).thenReturn(Optional.of(user));
+
+		userService.requestPasswordReset(new RequestPasswordResetRequest("github@email.com"));
+
+		verify(redisService).setIfAbsentValue(
+			eq(passwordResetRequestCooldownKey("github@email.com")),
+			eq("true"),
+			eq(PASSWORD_RESET_REQUEST_COOLDOWN)
+		);
+		verify(redisService, never()).setValue(any(), any(), any());
+		verifyNoInteractions(emailService);
+	}
+
+	@Test
+	void requestPasswordReset_skipsWhenCooldownIsActive() {
+		Users user = authenticatedUser(1L, "test@email.com");
+		when(userRepository.findByEmailAndDeletedAtIsNull("test@email.com")).thenReturn(Optional.of(user));
+		when(redisService.setIfAbsentValue(
+			eq(passwordResetRequestCooldownKey("test@email.com")),
+			eq("true"),
+			eq(PASSWORD_RESET_REQUEST_COOLDOWN)
+		)).thenReturn(false);
+
+		userService.requestPasswordReset(new RequestPasswordResetRequest("test@email.com"));
+
+		verify(redisService, never()).setValue(any(), any(), any());
+		verifyNoInteractions(emailService);
+	}
+
+	@Test
+	void requestPasswordReset_cleansTokenWhenEmailSendFails() {
+		Users user = authenticatedUser(1L, "test@email.com");
+		when(userRepository.findByEmailAndDeletedAtIsNull("test@email.com")).thenReturn(Optional.of(user));
+		when(redisService.setIfAbsentValue(any(), any(), any())).thenReturn(true);
+		when(redisService.getStringValue("password-reset-user-token:1")).thenReturn("previous-token-hash");
+		when(emailService.sendPasswordResetEmailAsync(eq("test@email.com"), any(String.class)))
+			.thenReturn(CompletableFuture.failedFuture(new ApplicationException(team.po.exception.ErrorCode.EMAIL_SEND_FAILED)));
+
+		userService.requestPasswordReset(new RequestPasswordResetRequest("test@email.com"));
+
+		verify(redisService, atLeastOnce()).deleteValue(argThat(key -> key.startsWith("password-reset-token:")));
+		verify(redisService, never()).deleteValue("password-reset-token:previous-token-hash");
+		verify(redisService, never()).deleteValue("password-reset-user-token:1");
+		verify(redisService).deleteValue(passwordResetRequestCooldownKey("test@email.com"));
+	}
+
+	@Test
+	void resetPassword_updatesPasswordAndInvalidatesRefreshTokenWhenTokenIsValid() {
+		Users user = authenticatedUser(1L, "test@email.com");
+		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("reset-token"))).thenReturn("1");
+		when(redisService.getStringValue("password-reset-user-token:1")).thenReturn(hashText("reset-token"));
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(passwordEncoder.encode("new-password123")).thenReturn("encoded-new-password");
+
+		userService.resetPassword(new ResetPasswordRequest("reset-token", "new-password123"));
+
+		assertThat(user.getPassword()).isEqualTo("encoded-new-password");
+		verify(redisService).deleteValue("password-reset-user-token:1");
+		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
+		verify(jwtTokenProvider).revokeAccessTokens(1L);
+	}
+
+	@Test
+	void resetPassword_throwsWhenTokenWasSupersededByNewerToken() {
+		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("old-reset-token"))).thenReturn("1");
+		when(redisService.getStringValue("password-reset-user-token:1")).thenReturn(hashText("new-reset-token"));
+
+		assertThatThrownBy(() -> userService.resetPassword(
+			new ResetPasswordRequest("old-reset-token", "new-password123")
+		))
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("비밀번호 재설정 링크가 만료되었거나 올바르지 않습니다.");
+
+		verify(userRepository, never()).findByIdAndDeletedAtIsNull(any());
+		verifyNoInteractions(passwordEncoder, jwtTokenProvider);
+		verify(redisService, never()).deleteValue("password-reset-user-token:1");
+	}
+
+	@Test
+	void resetPassword_throwsWhenTokenIsInvalid() {
+		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("reset-token"))).thenReturn(null);
+
+		assertThatThrownBy(() -> userService.resetPassword(new ResetPasswordRequest("reset-token", "new-password123")))
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("비밀번호 재설정 링크가 만료되었거나 올바르지 않습니다.");
+
+		verifyNoInteractions(passwordEncoder, jwtTokenProvider);
+	}
+
+	@Test
+	void resetPassword_throwsWhenTokenBelongsToGithubLoginUser() {
+		Users user = Users.builder()
+			.email("github@email.com")
+			.nickname("github")
+			.temperature(50)
+			.level(3)
+			.isGithubLogin(true)
+			.build();
+		ReflectionTestUtils.setField(user, "id", 5L);
+		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("reset-token"))).thenReturn("5");
+		when(redisService.getStringValue("password-reset-user-token:5")).thenReturn(hashText("reset-token"));
+		when(userRepository.findByIdAndDeletedAtIsNull(5L)).thenReturn(Optional.of(user));
+
+		assertThatThrownBy(() -> userService.resetPassword(new ResetPasswordRequest("reset-token", "new-password123")))
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("비밀번호 재설정 링크가 만료되었거나 올바르지 않습니다.");
+
+		verify(passwordEncoder, never()).encode(any());
+		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
 	}
 
 	@Test
@@ -375,6 +580,7 @@ class UserServiceTest {
 		verify(passwordEncoder).encode("new-password123");
 		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
+		verify(jwtTokenProvider).revokeAccessTokens(1L);
 	}
 
 	@Test
@@ -442,6 +648,7 @@ class UserServiceTest {
 		inOrder.verify(emailService).validateVerifiedDeleteUserEmail("test@email.com");
 		inOrder.verify(userRepository).flush();
 		inOrder.verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
+		inOrder.verify(jwtTokenProvider).revokeAccessTokens(1L);
 		inOrder.verify(emailService).consumeVerifiedDeleteUserEmail("test@email.com");
 	}
 
@@ -461,6 +668,7 @@ class UserServiceTest {
 		assertThat(managedUser.getEmail()).startsWith("deleted__1__");
 		assertThat(managedUser.getEmail()).doesNotContain(originalEmail);
 		verify(jwtTokenProvider).deleteRefreshToken(originalEmail);
+		verify(jwtTokenProvider).revokeAccessTokens(1L);
 	}
 
 	@Test
@@ -495,6 +703,24 @@ class UserServiceTest {
 		verify(emailService).validateVerifiedDeleteUserEmail("test@email.com");
 		verify(emailService, never()).consumeVerifiedDeleteUserEmail(any());
 		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
+	}
+
+	private String passwordResetRequestCooldownKey(String email) {
+		return "password-reset-request-cooldown:" + hashText(email);
+	}
+
+	private String passwordResetTokenKey(String token) {
+		return "password-reset-token:" + hashText(token);
+	}
+
+	private String hashText(String text) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			byte[] hash = digest.digest(text.getBytes(StandardCharsets.UTF_8));
+			return HexFormat.of().formatHex(hash);
+		} catch (NoSuchAlgorithmException exception) {
+			throw new IllegalStateException("SHA-256 algorithm is unavailable.", exception);
+		}
 	}
 
 	private Users authenticatedUser(Long id, String email) {

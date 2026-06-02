@@ -25,9 +25,11 @@ public class JwtTokenProvider {
 	public static final String BEARER_TYPE = "Bearer";
 	private static final String USER_ID_KEY = "userId";
 	private static final String TOKEN_TYPE_KEY = "tokenType";
+	private static final String SESSION_VERSION_KEY = "sessionVersion";
 	private static final String ACCESS_TOKEN_TYPE = "access";
 	private static final String REFRESH_TOKEN_TYPE = "refresh";
 	private static final String REFRESH_TOKEN_PREFIX = "RT:";
+	private static final String ACCESS_TOKEN_SESSION_VERSION_PREFIX = "ATSV:";
 
 	private final JwtProperties jwtProperties;
 	private final RedisService redisService;
@@ -121,6 +123,10 @@ public class JwtTokenProvider {
 		redisService.deleteValue(createRefreshTokenKey(email));
 	}
 
+	public void revokeAccessTokens(Long userId) {
+		redisService.incrementValue(createAccessTokenSessionVersionKey(userId));
+	}
+
 	private String generateJwt(Long userId, String email, String tokenType, Instant expiresAt) {
 		Date now = new Date();
 
@@ -128,6 +134,7 @@ public class JwtTokenProvider {
 			.subject(email)
 			.claim(USER_ID_KEY, userId)
 			.claim(TOKEN_TYPE_KEY, tokenType)
+			.claim(SESSION_VERSION_KEY, getCurrentAccessTokenSessionVersion(userId))
 			.issuedAt(now)
 			.expiration(Date.from(expiresAt))
 			.signWith(key)
@@ -152,6 +159,11 @@ public class JwtTokenProvider {
 				return false;
 			}
 
+			if (ACCESS_TOKEN_TYPE.equals(tokenType) && !isAccessTokenSessionVersionValid(claims)) {
+				log.debug("{} token session version revoked", tokenType);
+				return false;
+			}
+
 			return true;
 		} catch (ExpiredJwtException exception) {
 			log.debug("{} token expired", tokenType, exception);
@@ -163,5 +175,29 @@ public class JwtTokenProvider {
 
 	private String createRefreshTokenKey(String email) {
 		return REFRESH_TOKEN_PREFIX + email;
+	}
+
+	private String createAccessTokenSessionVersionKey(Long userId) {
+		return ACCESS_TOKEN_SESSION_VERSION_PREFIX + userId;
+	}
+
+	private long getCurrentAccessTokenSessionVersion(Long userId) {
+		String version = redisService.getStringValue(createAccessTokenSessionVersionKey(userId));
+		if (version == null) {
+			return 0L;
+		}
+
+		return Long.parseLong(version);
+	}
+
+	private boolean isAccessTokenSessionVersionValid(Claims claims) {
+		Number userIdClaim = claims.get(USER_ID_KEY, Number.class);
+		if (userIdClaim == null) {
+			return false;
+		}
+
+		Number tokenSessionVersion = claims.get(SESSION_VERSION_KEY, Number.class);
+		long sessionVersion = tokenSessionVersion == null ? 0L : tokenSessionVersion.longValue();
+		return sessionVersion == getCurrentAccessTokenSessionVersion(userIdClaim.longValue());
 	}
 }

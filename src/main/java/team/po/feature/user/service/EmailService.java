@@ -7,6 +7,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 import java.util.HexFormat;
 import java.util.Locale;
 
@@ -15,15 +16,18 @@ import org.springframework.core.io.Resource;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StreamUtils;
 import org.springframework.util.StringUtils;
+import org.springframework.web.util.HtmlUtils;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import team.po.common.redis.RedisService;
 import team.po.config.EmailAuthProperties;
+import team.po.config.PasswordResetProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.user.dto.SendEmailRequest;
@@ -42,6 +46,9 @@ public class EmailService {
 	private static final String VERIFICATION_GUIDE_MESSAGE_PLACEHOLDER = "__VERIFICATION_GUIDE_MESSAGE__";
 	private static final String VERIFICATION_PREHEADER_PLACEHOLDER = "__VERIFICATION_PREHEADER__";
 	private static final String VERIFICATION_BADGE_TEXT_PLACEHOLDER = "__VERIFICATION_BADGE_TEXT__";
+	private static final String PASSWORD_RESET_TEMPLATE_PATH = "templates/password-reset.html";
+	private static final String PASSWORD_RESET_URL_PLACEHOLDER = "__PASSWORD_RESET_URL__";
+	private static final String PASSWORD_RESET_TTL_PLACEHOLDER = "__PASSWORD_RESET_TTL__";
 	private static final int AUTH_CODE_ORIGIN = 100_000;
 	private static final int AUTH_CODE_BOUND = 900_000;
 	private static final int MAX_AUTH_CODE_FAILURE_COUNT = 5;
@@ -50,6 +57,7 @@ public class EmailService {
 	private final RedisService redisService;
 	private final UserRepository userRepository;
 	private final EmailAuthProperties emailAuthProperties;
+	private final PasswordResetProperties passwordResetProperties;
 	private final SecureRandom secureRandom = new SecureRandom();
 
 	public void sendEmail(SendEmailRequest request) {
@@ -61,6 +69,26 @@ public class EmailService {
 
 	public void sendDeleteUserEmail(String email) {
 		sendAuthCodeEmail(normalizeEmail(email), EmailAuthPurpose.DELETE_USER);
+	}
+
+	public void sendPasswordResetEmail(String email, String resetUrl) {
+		String normalizedEmail = normalizeEmail(email);
+
+		try {
+			javaMailSender.send(createPasswordResetMessage(normalizedEmail, resetUrl));
+		} catch (MailException | MessagingException | IOException exception) {
+			throw new ApplicationException(
+				ErrorCode.EMAIL_SEND_FAILED,
+				ErrorCode.EMAIL_SEND_FAILED.getMessage(),
+				exception
+			);
+		}
+	}
+
+	@Async
+	public CompletableFuture<Void> sendPasswordResetEmailAsync(String email, String resetUrl) {
+		sendPasswordResetEmail(email, resetUrl);
+		return CompletableFuture.completedFuture(null);
 	}
 
 	private void sendAuthCodeEmail(String email, EmailAuthPurpose purpose) {
@@ -184,6 +212,32 @@ public class EmailService {
 			.replace(VERIFICATION_GUIDE_MESSAGE_PLACEHOLDER, purpose.createGuideMessage(authCodeTtlText))
 			.replace(VERIFICATION_PREHEADER_PLACEHOLDER, purpose.createPreheader(authCodeTtlText))
 			.replace(VERIFICATION_BADGE_TEXT_PLACEHOLDER, purpose.badgeText);
+	}
+
+	private MimeMessage createPasswordResetMessage(String email, String resetUrl)
+		throws MessagingException, IOException {
+		MimeMessage message = javaMailSender.createMimeMessage();
+		MimeMessageHelper helper = new MimeMessageHelper(message, false, StandardCharsets.UTF_8.name());
+		if (StringUtils.hasText(emailAuthProperties.username())) {
+			helper.setFrom(emailAuthProperties.username());
+		}
+		helper.setTo(email);
+		helper.setSubject(passwordResetProperties.emailSubject());
+		helper.setText(createPasswordResetHtml(resetUrl), true);
+
+		return message;
+	}
+
+	private String createPasswordResetHtml(String resetUrl) throws IOException {
+		Resource template = new ClassPathResource(PASSWORD_RESET_TEMPLATE_PATH);
+		String html;
+		try (InputStream inputStream = template.getInputStream()) {
+			html = StreamUtils.copyToString(inputStream, StandardCharsets.UTF_8);
+		}
+
+		return html
+			.replace(PASSWORD_RESET_URL_PLACEHOLDER, HtmlUtils.htmlEscape(resetUrl, StandardCharsets.UTF_8.name()))
+			.replace(PASSWORD_RESET_TTL_PLACEHOLDER, formatDuration(passwordResetProperties.tokenTtl()));
 	}
 
 	private String formatDuration(Duration duration) {

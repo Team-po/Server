@@ -3,9 +3,12 @@ package team.po.feature.user.service;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -16,11 +19,15 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+import org.springframework.web.util.UriComponentsBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import team.po.common.redis.RedisService;
 import team.po.common.jwt.JwtToken;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
+import team.po.config.PasswordResetProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.user.domain.GithubAccount;
@@ -28,8 +35,10 @@ import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.EditPasswordRequest;
 import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
+import team.po.feature.user.dto.RequestPasswordResetRequest;
 import team.po.feature.user.dto.RefreshTokenRequest;
 import team.po.feature.user.dto.RefreshTokenResponse;
+import team.po.feature.user.dto.ResetPasswordRequest;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
@@ -41,6 +50,11 @@ import team.po.feature.user.repository.UserRepository;
 @Service
 @RequiredArgsConstructor
 public class UserService {
+	private static final String PASSWORD_RESET_TOKEN_KEY_PREFIX = "password-reset-token:";
+	private static final String PASSWORD_RESET_USER_TOKEN_KEY_PREFIX = "password-reset-user-token:";
+	private static final String PASSWORD_RESET_REQUEST_COOLDOWN_KEY_PREFIX = "password-reset-request-cooldown:";
+	private static final int PASSWORD_RESET_TOKEN_BYTE_LENGTH = 32;
+
 	private final UserRepository userRepository;
 	private final GithubAccountRepository githubAccountRepository;
 	private final PasswordEncoder passwordEncoder;
@@ -48,6 +62,9 @@ public class UserService {
 	private final JwtTokenProvider jwtTokenProvider;
 	private final ProfileImageRedisService profileImageRedisService;
 	private final EmailService emailService;
+	private final RedisService redisService;
+	private final PasswordResetProperties passwordResetProperties;
+	private final SecureRandom secureRandom = new SecureRandom();
 	@Value("${cloud.aws.s3.endpoint:}")
 	private String s3Endpoint;
 	@Value("${cloud.aws.s3.bucket}")
@@ -97,6 +114,75 @@ public class UserService {
 		} catch (org.springframework.security.core.AuthenticationException exception) {
 			throw new BadCredentialsException("이메일 또는 비밀번호가 올바르지 않습니다.", exception);
 		}
+	}
+
+	public void requestPasswordReset(RequestPasswordResetRequest request) {
+		String normalizedEmail = this.normalizeEmail(request.email());
+		String cooldownKey = createPasswordResetRequestCooldownKey(normalizedEmail);
+		boolean canIssueResetEmail = redisService.setIfAbsentValue(
+			cooldownKey,
+			"true",
+			passwordResetProperties.requestCooldown()
+		);
+
+		Users user = userRepository.findByEmailAndDeletedAtIsNull(normalizedEmail).orElse(null);
+		String token = createPasswordResetToken();
+		String tokenHash = sha256Hex(token);
+
+		if (!canIssueResetEmail || isPasswordResetUnavailable(user)) {
+			return;
+		}
+
+		String tokenKey = createPasswordResetTokenKey(tokenHash);
+		String userTokenKey = createPasswordResetUserTokenKey(user.getId());
+		String previousTokenHash = redisService.getStringValue(userTokenKey);
+		redisService.setValue(tokenKey, user.getId().toString(), passwordResetProperties.tokenTtl());
+
+		try {
+			CompletableFuture<Void> delivery = emailService.sendPasswordResetEmailAsync(
+				user.getEmail(),
+				createPasswordResetUrl(token)
+			);
+			delivery.whenComplete((ignored, exception) -> completePasswordResetEmailDelivery(
+				tokenKey,
+				userTokenKey,
+				tokenHash,
+				previousTokenHash,
+				cooldownKey,
+				exception
+			));
+		} catch (RuntimeException exception) {
+			cleanupFailedPasswordResetEmail(tokenKey, cooldownKey, exception);
+		}
+	}
+
+	@Transactional
+	public void resetPassword(ResetPasswordRequest request) {
+		String tokenHash = sha256Hex(request.token().trim());
+		String userIdValue = redisService.getAndDeleteStringValue(createPasswordResetTokenKey(tokenHash));
+
+		if (userIdValue == null) {
+			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN);
+		}
+
+		Long userId = parsePasswordResetUserId(userIdValue);
+		String userTokenKey = createPasswordResetUserTokenKey(userId);
+		String currentTokenHash = redisService.getStringValue(userTokenKey);
+		if (!tokenHash.equals(currentTokenHash)) {
+			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN);
+		}
+		redisService.deleteValue(userTokenKey);
+		Users user = userRepository.findByIdAndDeletedAtIsNull(userId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN));
+
+		if (isPasswordResetUnavailable(user)) {
+			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN);
+		}
+
+		String newPassword = passwordEncoder.encode(request.newPassword());
+		user.editPassword(newPassword);
+		jwtTokenProvider.deleteRefreshToken(user.getEmail());
+		jwtTokenProvider.revokeAccessTokens(user.getId());
 	}
 
 	public void checkEmailDuplication(String email) {
@@ -171,6 +257,7 @@ public class UserService {
 		String newPassword = passwordEncoder.encode(request.afterPassword());
 		user.editPassword(newPassword);
 		jwtTokenProvider.deleteRefreshToken(user.getEmail());
+		jwtTokenProvider.revokeAccessTokens(user.getId());
 	}
 
 	public void sendDeleteUserEmail(Users loginUser) {
@@ -199,6 +286,7 @@ public class UserService {
 			.ifPresent(githubAccount -> githubAccount.softDelete(deletedAt));
 		userRepository.flush();
 		jwtTokenProvider.deleteRefreshToken(email);
+		jwtTokenProvider.revokeAccessTokens(user.getId());
 		emailService.consumeVerifiedDeleteUserEmail(email);
 	}
 
@@ -225,13 +313,86 @@ public class UserService {
 	}
 
 	private String hashEmail(String email) {
+		return sha256Hex(email);
+	}
+
+	private String sha256Hex(String text) {
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
-			byte[] hash = digest.digest(email.getBytes(StandardCharsets.UTF_8));
+			byte[] hash = digest.digest(text.getBytes(StandardCharsets.UTF_8));
 			return HexFormat.of().formatHex(hash);
 		} catch (NoSuchAlgorithmException exception) {
 			throw new IllegalStateException("SHA-256 algorithm is unavailable.", exception);
 		}
+	}
+
+	private String createPasswordResetToken() {
+		byte[] bytes = new byte[PASSWORD_RESET_TOKEN_BYTE_LENGTH];
+		secureRandom.nextBytes(bytes);
+		return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+	}
+
+	private String createPasswordResetUrl(String token) {
+		return UriComponentsBuilder.fromUriString(passwordResetProperties.clientResetUrl())
+			.fragment("token=" + token)
+			.build()
+			.toUriString();
+	}
+
+	private void completePasswordResetEmailDelivery(
+		String tokenKey,
+		String userTokenKey,
+		String tokenHash,
+		String previousTokenHash,
+		String cooldownKey,
+		Throwable exception
+	) {
+		if (exception != null) {
+			cleanupFailedPasswordResetEmail(tokenKey, cooldownKey, exception);
+			return;
+		}
+
+		try {
+			if (previousTokenHash != null) {
+				redisService.deleteValue(createPasswordResetTokenKey(previousTokenHash));
+			}
+			redisService.setValue(userTokenKey, tokenHash, passwordResetProperties.tokenTtl());
+		} catch (RuntimeException cleanupException) {
+			log.warn(
+				"Password reset token finalization failed: {}",
+				cleanupException.getClass().getSimpleName()
+			);
+		}
+	}
+
+	private void cleanupFailedPasswordResetEmail(String tokenKey, String cooldownKey, Throwable exception) {
+		redisService.deleteValue(tokenKey);
+		redisService.deleteValue(cooldownKey);
+		log.warn("Password reset email delivery failed: {}", exception.getClass().getSimpleName());
+	}
+
+	private String createPasswordResetTokenKey(String tokenHash) {
+		return PASSWORD_RESET_TOKEN_KEY_PREFIX + tokenHash;
+	}
+
+	private String createPasswordResetUserTokenKey(Long userId) {
+		return PASSWORD_RESET_USER_TOKEN_KEY_PREFIX + userId;
+	}
+
+	private String createPasswordResetRequestCooldownKey(String email) {
+		return PASSWORD_RESET_REQUEST_COOLDOWN_KEY_PREFIX + hashEmail(email);
+	}
+
+	private Long parsePasswordResetUserId(String userIdValue) {
+		try {
+			return Long.valueOf(userIdValue);
+		} catch (NumberFormatException exception) {
+			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN, exception);
+		}
+	}
+
+	private boolean isPasswordResetUnavailable(Users user) {
+		return user == null || user.isGithubLogin() || !StringUtils.hasText(user.getPassword());
 	}
 
 	private String buildProfileImageUrl(String objectKey) {

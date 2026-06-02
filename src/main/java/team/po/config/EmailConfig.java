@@ -51,15 +51,15 @@ public class EmailConfig {
 		properties.putAll(mailProperties.getProperties());
 
 		if (DEFAULT_PROTOCOL.equals(protocol)) {
-			properties.setProperty("mail.smtp.starttls.enable", "true");
-			properties.setProperty("mail.smtp.starttls.required", "true");
-			properties.setProperty("mail.smtp.ssl.enable", "false");
-			properties.setProperty("mail.smtp.ssl.checkserveridentity", "true");
-			properties.setProperty("mail.smtp.ssl.protocols", "TLSv1.3 TLSv1.2");
+			properties.putIfAbsent("mail.smtp.starttls.enable", "true");
+			properties.putIfAbsent("mail.smtp.starttls.required", "true");
+			properties.putIfAbsent("mail.smtp.ssl.enable", "false");
+			properties.putIfAbsent("mail.smtp.ssl.checkserveridentity", "true");
+			properties.putIfAbsent("mail.smtp.ssl.protocols", "TLSv1.3 TLSv1.2");
 		}
 
 		if (StringUtils.hasText(mailProperties.getUsername())) {
-			properties.setProperty("mail.%s.auth".formatted(protocol), "true");
+			properties.putIfAbsent("mail.%s.auth".formatted(protocol), "true");
 		}
 
 		return properties;
