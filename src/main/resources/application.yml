@@ -79,6 +79,7 @@ password-reset:
   token-ttl: ${PASSWORD_RESET_TOKEN_TTL:PT30M}
   request-cooldown: ${PASSWORD_RESET_REQUEST_COOLDOWN:PT1M}
   client-reset-url: ${PASSWORD_RESET_CLIENT_RESET_URL}
+  client-reset-allowed-hosts: ${PASSWORD_RESET_CLIENT_RESET_ALLOWED_HOSTS:team-po.cloud,www.team-po.cloud}
   email-subject: ${PASSWORD_RESET_EMAIL_SUBJECT:TeamPo 비밀번호 재설정}
 
 github:

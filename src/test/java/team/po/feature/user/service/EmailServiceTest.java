@@ -16,6 +16,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Properties;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -367,6 +368,7 @@ class EmailServiceTest {
 			PASSWORD_RESET_TOKEN_TTL,
 			Duration.ofMinutes(1),
 			"https://team-po.cloud/password-reset",
+			List.of("team-po.cloud"),
 			"TeamPo 비밀번호 재설정"
 		);
 		return new EmailService(javaMailSender, redisService, userRepository, emailAuthProperties, passwordResetProperties);
