@@ -9,7 +9,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -223,6 +225,7 @@ class UserServiceTest {
 
 	@Test
 	void requestPasswordReset_issuesSingleUseTokenAndSendsResetUrlForPasswordUser() {
+		backRedisStringValues();
 		Users user = authenticatedUser(1L, "test@email.com");
 		when(userRepository.findByEmailAndDeletedAtIsNull("test@email.com")).thenReturn(Optional.of(user));
 		when(redisService.setIfAbsentValue(
@@ -237,7 +240,7 @@ class UserServiceTest {
 
 		ArgumentCaptor<String> redisKeyCaptor = ArgumentCaptor.forClass(String.class);
 		ArgumentCaptor<String> redisValueCaptor = ArgumentCaptor.forClass(String.class);
-		verify(redisService, times(2)).setValue(
+		verify(redisService, times(3)).setValue(
 			redisKeyCaptor.capture(),
 			redisValueCaptor.capture(),
 			eq(PASSWORD_RESET_TOKEN_TTL)
@@ -245,7 +248,8 @@ class UserServiceTest {
 		assertThat(redisKeyCaptor.getAllValues()).anySatisfy(key ->
 			assertThat(key).startsWith("password-reset-token:")
 		);
-		assertThat(redisKeyCaptor.getAllValues()).contains("password-reset-user-token:1");
+		assertThat(redisKeyCaptor.getAllValues())
+			.contains("password-reset-pending-token:1", "password-reset-user-token:1");
 		assertThat(redisValueCaptor.getAllValues()).contains("1");
 
 		ArgumentCaptor<String> resetUrlCaptor = ArgumentCaptor.forClass(String.class);
@@ -256,10 +260,11 @@ class UserServiceTest {
 
 	@Test
 	void requestPasswordReset_invalidatesPreviousTokenAfterResetEmailSucceeds() {
+		Map<String, String> redisValues = backRedisStringValues();
+		redisValues.put("password-reset-user-token:1", "previous-token-hash");
 		Users user = authenticatedUser(1L, "test@email.com");
 		when(userRepository.findByEmailAndDeletedAtIsNull("test@email.com")).thenReturn(Optional.of(user));
 		when(redisService.setIfAbsentValue(any(), any(), any())).thenReturn(true);
-		when(redisService.getStringValue("password-reset-user-token:1")).thenReturn("previous-token-hash");
 		when(emailService.sendPasswordResetEmailAsync(eq("test@email.com"), any(String.class)))
 			.thenReturn(CompletableFuture.completedFuture(null));
 
@@ -267,6 +272,34 @@ class UserServiceTest {
 
 		verify(redisService).deleteValue("password-reset-token:previous-token-hash");
 		verify(emailService).sendPasswordResetEmailAsync(eq("test@email.com"), any(String.class));
+	}
+
+	@Test
+	void requestPasswordReset_doesNotLetDelayedOlderDeliveryOverwriteLatestToken() {
+		Map<String, String> redisValues = backRedisStringValues();
+		CompletableFuture<Void> firstDelivery = new CompletableFuture<>();
+		CompletableFuture<Void> secondDelivery = new CompletableFuture<>();
+		Users user = authenticatedUser(1L, "test@email.com");
+		when(userRepository.findByEmailAndDeletedAtIsNull("test@email.com")).thenReturn(Optional.of(user));
+		when(redisService.setIfAbsentValue(any(), any(), any())).thenReturn(true, true);
+		when(emailService.sendPasswordResetEmailAsync(eq("test@email.com"), any(String.class)))
+			.thenReturn(firstDelivery, secondDelivery);
+
+		userService.requestPasswordReset(new RequestPasswordResetRequest("test@email.com"));
+		userService.requestPasswordReset(new RequestPasswordResetRequest("test@email.com"));
+
+		ArgumentCaptor<String> resetUrlCaptor = ArgumentCaptor.forClass(String.class);
+		verify(emailService, times(2)).sendPasswordResetEmailAsync(eq("test@email.com"), resetUrlCaptor.capture());
+		String firstToken = extractPasswordResetToken(resetUrlCaptor.getAllValues().get(0));
+		String secondToken = extractPasswordResetToken(resetUrlCaptor.getAllValues().get(1));
+
+		secondDelivery.complete(null);
+		assertThat(redisValues).containsEntry("password-reset-user-token:1", hashText(secondToken));
+
+		firstDelivery.complete(null);
+
+		assertThat(redisValues).containsEntry("password-reset-user-token:1", hashText(secondToken));
+		assertThat(redisValues).doesNotContainKey(passwordResetTokenKey(firstToken));
 	}
 
 	@Test
@@ -325,10 +358,11 @@ class UserServiceTest {
 
 	@Test
 	void requestPasswordReset_cleansTokenWhenEmailSendFails() {
+		Map<String, String> redisValues = backRedisStringValues();
+		redisValues.put("password-reset-user-token:1", "previous-token-hash");
 		Users user = authenticatedUser(1L, "test@email.com");
 		when(userRepository.findByEmailAndDeletedAtIsNull("test@email.com")).thenReturn(Optional.of(user));
 		when(redisService.setIfAbsentValue(any(), any(), any())).thenReturn(true);
-		when(redisService.getStringValue("password-reset-user-token:1")).thenReturn("previous-token-hash");
 		when(emailService.sendPasswordResetEmailAsync(eq("test@email.com"), any(String.class)))
 			.thenReturn(CompletableFuture.failedFuture(new ApplicationException(team.po.exception.ErrorCode.EMAIL_SEND_FAILED)));
 
@@ -711,6 +745,26 @@ class UserServiceTest {
 
 	private String passwordResetTokenKey(String token) {
 		return "password-reset-token:" + hashText(token);
+	}
+
+	private Map<String, String> backRedisStringValues() {
+		Map<String, String> values = new HashMap<>();
+		lenient().doAnswer(invocation -> {
+			values.put(invocation.getArgument(0), invocation.getArgument(1).toString());
+			return null;
+		}).when(redisService).setValue(anyString(), any(), any(Duration.class));
+		lenient().when(redisService.getStringValue(anyString())).thenAnswer(invocation ->
+			values.get(invocation.getArgument(0))
+		);
+		lenient().doAnswer(invocation -> {
+			values.remove(invocation.getArgument(0));
+			return null;
+		}).when(redisService).deleteValue(anyString());
+		return values;
+	}
+
+	private String extractPasswordResetToken(String resetUrl) {
+		return resetUrl.substring(resetUrl.indexOf("#token=") + "#token=".length());
 	}
 
 	private String hashText(String text) {

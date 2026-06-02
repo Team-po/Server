@@ -52,6 +52,7 @@ import team.po.feature.user.repository.UserRepository;
 public class UserService {
 	private static final String PASSWORD_RESET_TOKEN_KEY_PREFIX = "password-reset-token:";
 	private static final String PASSWORD_RESET_USER_TOKEN_KEY_PREFIX = "password-reset-user-token:";
+	private static final String PASSWORD_RESET_PENDING_TOKEN_KEY_PREFIX = "password-reset-pending-token:";
 	private static final String PASSWORD_RESET_REQUEST_COOLDOWN_KEY_PREFIX = "password-reset-request-cooldown:";
 	private static final int PASSWORD_RESET_TOKEN_BYTE_LENGTH = 32;
 
@@ -135,8 +136,10 @@ public class UserService {
 
 		String tokenKey = createPasswordResetTokenKey(tokenHash);
 		String userTokenKey = createPasswordResetUserTokenKey(user.getId());
+		String pendingTokenKey = createPasswordResetPendingTokenKey(user.getId());
 		String previousTokenHash = redisService.getStringValue(userTokenKey);
 		redisService.setValue(tokenKey, user.getId().toString(), passwordResetProperties.tokenTtl());
+		redisService.setValue(pendingTokenKey, tokenHash, passwordResetProperties.tokenTtl());
 
 		try {
 			CompletableFuture<Void> delivery = emailService.sendPasswordResetEmailAsync(
@@ -146,13 +149,14 @@ public class UserService {
 			delivery.whenComplete((ignored, exception) -> completePasswordResetEmailDelivery(
 				tokenKey,
 				userTokenKey,
+				pendingTokenKey,
 				tokenHash,
 				previousTokenHash,
 				cooldownKey,
 				exception
 			));
 		} catch (RuntimeException exception) {
-			cleanupFailedPasswordResetEmail(tokenKey, cooldownKey, exception);
+			cleanupFailedPasswordResetEmail(tokenKey, pendingTokenKey, tokenHash, cooldownKey, exception);
 		}
 	}
 
@@ -342,21 +346,28 @@ public class UserService {
 	private void completePasswordResetEmailDelivery(
 		String tokenKey,
 		String userTokenKey,
+		String pendingTokenKey,
 		String tokenHash,
 		String previousTokenHash,
 		String cooldownKey,
 		Throwable exception
 	) {
 		if (exception != null) {
-			cleanupFailedPasswordResetEmail(tokenKey, cooldownKey, exception);
+			cleanupFailedPasswordResetEmail(tokenKey, pendingTokenKey, tokenHash, cooldownKey, exception);
 			return;
 		}
 
 		try {
+			if (!isLatestPasswordResetRequest(pendingTokenKey, tokenHash)) {
+				redisService.deleteValue(tokenKey);
+				return;
+			}
+
+			redisService.setValue(userTokenKey, tokenHash, passwordResetProperties.tokenTtl());
 			if (previousTokenHash != null) {
 				redisService.deleteValue(createPasswordResetTokenKey(previousTokenHash));
 			}
-			redisService.setValue(userTokenKey, tokenHash, passwordResetProperties.tokenTtl());
+			redisService.deleteValue(pendingTokenKey);
 		} catch (RuntimeException cleanupException) {
 			log.warn(
 				"Password reset token finalization failed: {}",
@@ -365,10 +376,23 @@ public class UserService {
 		}
 	}
 
-	private void cleanupFailedPasswordResetEmail(String tokenKey, String cooldownKey, Throwable exception) {
+	private void cleanupFailedPasswordResetEmail(
+		String tokenKey,
+		String pendingTokenKey,
+		String tokenHash,
+		String cooldownKey,
+		Throwable exception
+	) {
 		redisService.deleteValue(tokenKey);
-		redisService.deleteValue(cooldownKey);
+		if (isLatestPasswordResetRequest(pendingTokenKey, tokenHash)) {
+			redisService.deleteValue(pendingTokenKey);
+			redisService.deleteValue(cooldownKey);
+		}
 		log.warn("Password reset email delivery failed: {}", exception.getClass().getSimpleName());
+	}
+
+	private boolean isLatestPasswordResetRequest(String pendingTokenKey, String tokenHash) {
+		return tokenHash.equals(redisService.getStringValue(pendingTokenKey));
 	}
 
 	private String createPasswordResetTokenKey(String tokenHash) {
@@ -377,6 +401,10 @@ public class UserService {
 
 	private String createPasswordResetUserTokenKey(Long userId) {
 		return PASSWORD_RESET_USER_TOKEN_KEY_PREFIX + userId;
+	}
+
+	private String createPasswordResetPendingTokenKey(Long userId) {
+		return PASSWORD_RESET_PENDING_TOKEN_KEY_PREFIX + userId;
 	}
 
 	private String createPasswordResetRequestCooldownKey(String email) {
