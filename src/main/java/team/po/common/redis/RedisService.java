@@ -30,6 +30,11 @@ public class RedisService {
 		return Boolean.TRUE.equals(result);
 	}
 
+	public boolean setIfAbsentValue(String key, Object value) {
+		Boolean result = valueOperations.setIfAbsent(key, value);
+		return Boolean.TRUE.equals(result);
+	}
+
 	public Object getValue(String key) {
 		return valueOperations.get(key);
 	}

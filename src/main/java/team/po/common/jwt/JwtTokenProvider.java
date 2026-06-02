@@ -52,7 +52,7 @@ public class JwtTokenProvider {
 
 	public String generateAccessToken(Long userId, String email) {
 		Instant expiresAt = Instant.now().plus(jwtProperties.getAccessTokenExpiration());
-		return generateAccessToken(userId, email, getCurrentAccessTokenSessionVersion(userId));
+		return generateAccessToken(userId, email, getOrInitializeAccessTokenSessionVersion(userId));
 	}
 
 	public String generateAccessToken(Long userId, String email, long sessionVersion) {
@@ -67,7 +67,7 @@ public class JwtTokenProvider {
 			email,
 			REFRESH_TOKEN_TYPE,
 			expiresAt,
-			getCurrentAccessTokenSessionVersion(userId)
+			getOrInitializeAccessTokenSessionVersion(userId)
 		);
 	}
 
@@ -142,7 +142,13 @@ public class JwtTokenProvider {
 
 	public boolean isAccessTokenSessionVersionCurrent(Long userId, long sessionVersion) {
 		try {
-			return sessionVersion == getCurrentAccessTokenSessionVersion(userId);
+			Long currentSessionVersion = getAccessTokenSessionVersion(userId);
+			if (currentSessionVersion == null) {
+				log.warn("Access token session version is missing for user {}", userId);
+				return false;
+			}
+
+			return sessionVersion == currentSessionVersion;
 		} catch (DataAccessException exception) {
 			log.warn("Access token session version check failed because token state storage is unavailable", exception);
 			return false;
@@ -219,10 +225,26 @@ public class JwtTokenProvider {
 		return ACCESS_TOKEN_SESSION_VERSION_PREFIX + userId;
 	}
 
-	private long getCurrentAccessTokenSessionVersion(Long userId) {
+	private long getOrInitializeAccessTokenSessionVersion(Long userId) {
+		Long currentSessionVersion = getAccessTokenSessionVersion(userId);
+		if (currentSessionVersion != null) {
+			return currentSessionVersion;
+		}
+
+		String sessionVersionKey = createAccessTokenSessionVersionKey(userId);
+		redisService.setIfAbsentValue(sessionVersionKey, "0");
+		currentSessionVersion = getAccessTokenSessionVersion(userId);
+		if (currentSessionVersion == null) {
+			throw new IllegalStateException("Access token session version is unavailable.");
+		}
+
+		return currentSessionVersion;
+	}
+
+	private Long getAccessTokenSessionVersion(Long userId) {
 		String version = redisService.getStringValue(createAccessTokenSessionVersionKey(userId));
 		if (version == null) {
-			return 0L;
+			return null;
 		}
 
 		return Long.parseLong(version);

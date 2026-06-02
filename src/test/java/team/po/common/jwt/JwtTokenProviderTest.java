@@ -1,9 +1,7 @@
 package team.po.common.jwt;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -40,8 +38,8 @@ class JwtTokenProviderTest {
 
 	@Test
 	void validateAccessToken_returnsFalseWhenSessionVersionWasRevoked() {
-		when(redisService.getStringValue("ATSV:1")).thenReturn(null, "1");
-		String accessToken = jwtTokenProvider.generateAccessToken(1L, "test@email.com");
+		when(redisService.getStringValue("ATSV:1")).thenReturn("1");
+		String accessToken = jwtTokenProvider.generateAccessToken(1L, "test@email.com", 0L);
 		when(redisService.incrementValue("ATSV:1")).thenReturn(1L);
 
 		jwtTokenProvider.revokeAccessTokens(1L);
@@ -52,9 +50,9 @@ class JwtTokenProviderTest {
 
 	@Test
 	void validateAccessToken_returnsTrueWhenSessionVersionMatchesCurrentValue() {
-		when(redisService.getStringValue("ATSV:1")).thenReturn("1", "1");
+		when(redisService.getStringValue("ATSV:1")).thenReturn("1");
 
-		String accessToken = jwtTokenProvider.generateAccessToken(1L, "test@email.com");
+		String accessToken = jwtTokenProvider.generateAccessToken(1L, "test@email.com", 1L);
 
 		assertThat(jwtTokenProvider.validateAccessToken(accessToken)).isTrue();
 	}
@@ -77,9 +75,25 @@ class JwtTokenProviderTest {
 	}
 
 	@Test
-	void validateAccessToken_returnsFalseWhenSessionVersionStorageFails() {
+	void generateAccessToken_initializesSessionVersionWhenMissing() {
+		when(redisService.getStringValue("ATSV:1")).thenReturn(null, "0");
+
+		jwtTokenProvider.generateAccessToken(1L, "test@email.com");
+
+		verify(redisService).setIfAbsentValue("ATSV:1", "0");
+	}
+
+	@Test
+	void validateAccessToken_returnsFalseWhenSessionVersionKeyIsMissing() {
 		when(redisService.getStringValue("ATSV:1")).thenReturn(null);
-		String accessToken = jwtTokenProvider.generateAccessToken(1L, "test@email.com");
+		String accessToken = jwtTokenProvider.generateAccessToken(1L, "test@email.com", 0L);
+
+		assertThat(jwtTokenProvider.validateAccessToken(accessToken)).isFalse();
+	}
+
+	@Test
+	void validateAccessToken_returnsFalseWhenSessionVersionStorageFails() {
+		String accessToken = jwtTokenProvider.generateAccessToken(1L, "test@email.com", 0L);
 		when(redisService.getStringValue("ATSV:1"))
 			.thenThrow(new DataAccessResourceFailureException("redis unavailable"));
 
