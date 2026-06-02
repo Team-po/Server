@@ -4,8 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Date;
+
+import javax.crypto.SecretKey;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +18,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
 
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
 import team.po.common.redis.RedisService;
 
 @ExtendWith(MockitoExtension.class)
@@ -80,7 +87,7 @@ class JwtTokenProviderTest {
 
 		jwtTokenProvider.generateAccessToken(1L, "test@email.com");
 
-		verify(redisService).setIfAbsentValue("ATSV:1", "0");
+		verify(redisService).setIfAbsentValue("ATSV:1", 0L);
 	}
 
 	@Test
@@ -92,11 +99,34 @@ class JwtTokenProviderTest {
 	}
 
 	@Test
+	void validateAccessToken_initializesSessionVersionForLegacyAccessToken() {
+		when(redisService.getStringValue("ATSV:1")).thenReturn(null, "0");
+		String accessToken = generateLegacyAccessToken(1L, "test@email.com");
+
+		assertThat(jwtTokenProvider.validateAccessToken(accessToken)).isTrue();
+		verify(redisService).setIfAbsentValue("ATSV:1", 0L);
+	}
+
+	@Test
 	void validateAccessToken_returnsFalseWhenSessionVersionStorageFails() {
 		String accessToken = jwtTokenProvider.generateAccessToken(1L, "test@email.com", 0L);
 		when(redisService.getStringValue("ATSV:1"))
 			.thenThrow(new DataAccessResourceFailureException("redis unavailable"));
 
 		assertThat(jwtTokenProvider.validateAccessToken(accessToken)).isFalse();
+	}
+
+	private String generateLegacyAccessToken(Long userId, String email) {
+		SecretKey key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(SECRET));
+		Instant expiresAt = Instant.now().plus(Duration.ofMinutes(30));
+
+		return Jwts.builder()
+			.subject(email)
+			.claim("userId", userId)
+			.claim("tokenType", "access")
+			.issuedAt(new Date())
+			.expiration(Date.from(expiresAt))
+			.signWith(key)
+			.compact();
 	}
 }

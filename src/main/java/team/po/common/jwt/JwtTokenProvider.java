@@ -140,11 +140,27 @@ public class JwtTokenProvider {
 		return sessionVersionClaim.longValue();
 	}
 
+	public boolean hasSessionVersion(String token) {
+		return parseClaims(token).get(SESSION_VERSION_KEY, Number.class) != null;
+	}
+
 	public boolean isAccessTokenSessionVersionCurrent(Long userId, long sessionVersion) {
+		return isAccessTokenSessionVersionCurrent(userId, sessionVersion, false);
+	}
+
+	public boolean isAccessTokenSessionVersionCurrent(
+		Long userId,
+		long sessionVersion,
+		boolean initializeMissingVersion
+	) {
 		try {
 			Long currentSessionVersion = getAccessTokenSessionVersion(userId);
+			if (currentSessionVersion == null && initializeMissingVersion && sessionVersion == 0L) {
+				currentSessionVersion = initializeAccessTokenSessionVersion(userId);
+			}
+
 			if (currentSessionVersion == null) {
-				log.warn("Access token session version is missing for user {}", userId);
+				log.warn("Access token session version is missing");
 				return false;
 			}
 
@@ -232,13 +248,18 @@ public class JwtTokenProvider {
 		}
 
 		String sessionVersionKey = createAccessTokenSessionVersionKey(userId);
-		redisService.setIfAbsentValue(sessionVersionKey, "0");
-		currentSessionVersion = getAccessTokenSessionVersion(userId);
+		currentSessionVersion = initializeAccessTokenSessionVersion(userId);
 		if (currentSessionVersion == null) {
 			throw new IllegalStateException("Access token session version is unavailable.");
 		}
 
 		return currentSessionVersion;
+	}
+
+	private Long initializeAccessTokenSessionVersion(Long userId) {
+		String sessionVersionKey = createAccessTokenSessionVersionKey(userId);
+		redisService.setIfAbsentValue(sessionVersionKey, 0L);
+		return getAccessTokenSessionVersion(userId);
 	}
 
 	private Long getAccessTokenSessionVersion(Long userId) {
@@ -257,7 +278,10 @@ public class JwtTokenProvider {
 		}
 
 		Number tokenSessionVersion = claims.get(SESSION_VERSION_KEY, Number.class);
-		long sessionVersion = tokenSessionVersion == null ? 0L : tokenSessionVersion.longValue();
-		return isAccessTokenSessionVersionCurrent(userIdClaim.longValue(), sessionVersion);
+		if (tokenSessionVersion == null) {
+			return isAccessTokenSessionVersionCurrent(userIdClaim.longValue(), 0L, true);
+		}
+
+		return isAccessTokenSessionVersionCurrent(userIdClaim.longValue(), tokenSessionVersion.longValue());
 	}
 }

@@ -491,7 +491,8 @@ class UserServiceTest {
 		when(userRepository.findById(1L)).thenReturn(java.util.Optional.of(user));
 		when(jwtTokenProvider.isRefreshTokenMatched("test@email.com", "refresh-token")).thenReturn(true);
 		when(jwtTokenProvider.getSessionVersion("refresh-token")).thenReturn(0L);
-		when(jwtTokenProvider.isAccessTokenSessionVersionCurrent(1L, 0L)).thenReturn(true);
+		when(jwtTokenProvider.hasSessionVersion("refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.isAccessTokenSessionVersionCurrent(1L, 0L, false)).thenReturn(true);
 		when(jwtTokenProvider.generateAccessToken(1L, "test@email.com", 0L)).thenReturn("new-access-token");
 		when(jwtTokenProvider.getExpiration("new-access-token")).thenReturn(accessTokenExpiresAt);
 
@@ -569,7 +570,8 @@ class UserServiceTest {
 		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
 		when(jwtTokenProvider.isRefreshTokenMatched("test@email.com", "refresh-token")).thenReturn(true);
 		when(jwtTokenProvider.getSessionVersion("refresh-token")).thenReturn(0L);
-		when(jwtTokenProvider.isAccessTokenSessionVersionCurrent(1L, 0L)).thenReturn(false);
+		when(jwtTokenProvider.hasSessionVersion("refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.isAccessTokenSessionVersionCurrent(1L, 0L, false)).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.refreshToken(request))
 			.isInstanceOf(ApplicationException.class)
@@ -577,6 +579,35 @@ class UserServiceTest {
 
 		verify(jwtTokenProvider, never()).generateAccessToken(any(), any(), anyLong());
 		verify(jwtTokenProvider, never()).getExpiration(any());
+	}
+
+	@Test
+	void refreshToken_allowsLegacyRefreshTokenToInitializeMissingSessionVersion() {
+		RefreshTokenRequest request = new RefreshTokenRequest("legacy-refresh-token");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+		Instant accessTokenExpiresAt = Instant.parse("2026-03-16T12:00:00Z");
+
+		when(jwtTokenProvider.validateRefreshToken("legacy-refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.getUserId("legacy-refresh-token")).thenReturn(1L);
+		when(jwtTokenProvider.getEmail("legacy-refresh-token")).thenReturn("test@email.com");
+		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+		when(jwtTokenProvider.isRefreshTokenMatched("test@email.com", "legacy-refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.getSessionVersion("legacy-refresh-token")).thenReturn(0L);
+		when(jwtTokenProvider.hasSessionVersion("legacy-refresh-token")).thenReturn(false);
+		when(jwtTokenProvider.isAccessTokenSessionVersionCurrent(1L, 0L, true)).thenReturn(true);
+		when(jwtTokenProvider.generateAccessToken(1L, "test@email.com", 0L)).thenReturn("new-access-token");
+		when(jwtTokenProvider.getExpiration("new-access-token")).thenReturn(accessTokenExpiresAt);
+
+		RefreshTokenResponse response = userService.refreshToken(request);
+
+		assertThat(response.accessToken()).isEqualTo("new-access-token");
+		assertThat(response.expiresAt()).isEqualTo(accessTokenExpiresAt);
 	}
 
 	@Test

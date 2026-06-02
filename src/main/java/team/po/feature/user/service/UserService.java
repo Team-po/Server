@@ -233,7 +233,12 @@ public class UserService {
 		}
 
 		long refreshTokenSessionVersion = jwtTokenProvider.getSessionVersion(token);
-		if (!jwtTokenProvider.isAccessTokenSessionVersionCurrent(userId, refreshTokenSessionVersion)) {
+		boolean legacyRefreshToken = !jwtTokenProvider.hasSessionVersion(token);
+		if (!jwtTokenProvider.isAccessTokenSessionVersionCurrent(
+			userId,
+			refreshTokenSessionVersion,
+			legacyRefreshToken
+		)) {
 			throw new ApplicationException(ErrorCode.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
 		}
 
