@@ -52,12 +52,23 @@ public class JwtTokenProvider {
 
 	public String generateAccessToken(Long userId, String email) {
 		Instant expiresAt = Instant.now().plus(jwtProperties.getAccessTokenExpiration());
-		return generateJwt(userId, email, ACCESS_TOKEN_TYPE, expiresAt);
+		return generateAccessToken(userId, email, getCurrentAccessTokenSessionVersion(userId));
+	}
+
+	public String generateAccessToken(Long userId, String email, long sessionVersion) {
+		Instant expiresAt = Instant.now().plus(jwtProperties.getAccessTokenExpiration());
+		return generateJwt(userId, email, ACCESS_TOKEN_TYPE, expiresAt, sessionVersion);
 	}
 
 	public String generateRefreshToken(Long userId, String email) {
 		Instant expiresAt = Instant.now().plus(jwtProperties.getRefreshTokenExpiration());
-		return generateJwt(userId, email, REFRESH_TOKEN_TYPE, expiresAt);
+		return generateJwt(
+			userId,
+			email,
+			REFRESH_TOKEN_TYPE,
+			expiresAt,
+			getCurrentAccessTokenSessionVersion(userId)
+		);
 	}
 
 	public Instant getExpiration(String token) {
@@ -120,6 +131,24 @@ public class JwtTokenProvider {
 		return userIdClaim.longValue();
 	}
 
+	public long getSessionVersion(String token) {
+		Number sessionVersionClaim = parseClaims(token).get(SESSION_VERSION_KEY, Number.class);
+		if (sessionVersionClaim == null) {
+			return 0L;
+		}
+
+		return sessionVersionClaim.longValue();
+	}
+
+	public boolean isAccessTokenSessionVersionCurrent(Long userId, long sessionVersion) {
+		try {
+			return sessionVersion == getCurrentAccessTokenSessionVersion(userId);
+		} catch (DataAccessException exception) {
+			log.warn("Access token session version check failed because token state storage is unavailable", exception);
+			return false;
+		}
+	}
+
 	public void deleteRefreshToken(String email) {
 		redisService.deleteValue(createRefreshTokenKey(email));
 	}
@@ -128,14 +157,20 @@ public class JwtTokenProvider {
 		redisService.incrementValue(createAccessTokenSessionVersionKey(userId));
 	}
 
-	private String generateJwt(Long userId, String email, String tokenType, Instant expiresAt) {
+	private String generateJwt(
+		Long userId,
+		String email,
+		String tokenType,
+		Instant expiresAt,
+		long sessionVersion
+	) {
 		Date now = new Date();
 
 		return Jwts.builder()
 			.subject(email)
 			.claim(USER_ID_KEY, userId)
 			.claim(TOKEN_TYPE_KEY, tokenType)
-			.claim(SESSION_VERSION_KEY, getCurrentAccessTokenSessionVersion(userId))
+			.claim(SESSION_VERSION_KEY, sessionVersion)
 			.issuedAt(now)
 			.expiration(Date.from(expiresAt))
 			.signWith(key)
@@ -201,6 +236,6 @@ public class JwtTokenProvider {
 
 		Number tokenSessionVersion = claims.get(SESSION_VERSION_KEY, Number.class);
 		long sessionVersion = tokenSessionVersion == null ? 0L : tokenSessionVersion.longValue();
-		return sessionVersion == getCurrentAccessTokenSessionVersion(userIdClaim.longValue());
+		return isAccessTokenSessionVersionCurrent(userIdClaim.longValue(), sessionVersion);
 	}
 }

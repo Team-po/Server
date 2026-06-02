@@ -380,7 +380,7 @@ class UserServiceTest {
 		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("reset-token"))).thenReturn("1:0");
 		when(redisService.getStringValue("password-reset-session-version:1")).thenReturn(null);
 		when(redisService.getStringValue("password-reset-user-token:1")).thenReturn(hashText("reset-token"));
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(user));
 		when(passwordEncoder.encode("new-password123")).thenReturn("encoded-new-password");
 
 		userService.resetPassword(new ResetPasswordRequest("reset-token", "new-password123"));
@@ -404,7 +404,7 @@ class UserServiceTest {
 			.isInstanceOf(ApplicationException.class)
 			.hasMessage("비밀번호 재설정 링크가 만료되었거나 올바르지 않습니다.");
 
-		verify(userRepository, never()).findByIdAndDeletedAtIsNull(any());
+		verify(userRepository, never()).findByIdAndDeletedAtIsNullForUpdate(any());
 		verifyNoInteractions(passwordEncoder, jwtTokenProvider);
 		verify(redisService, never()).deleteValue("password-reset-user-token:1");
 	}
@@ -418,9 +418,25 @@ class UserServiceTest {
 			.isInstanceOf(ApplicationException.class)
 			.hasMessage("비밀번호 재설정 링크가 만료되었거나 올바르지 않습니다.");
 
-		verify(userRepository, never()).findByIdAndDeletedAtIsNull(any());
+		verify(userRepository, never()).findByIdAndDeletedAtIsNullForUpdate(any());
 		verifyNoInteractions(passwordEncoder, jwtTokenProvider);
 		verify(redisService, never()).deleteValue("password-reset-user-token:1");
+	}
+
+	@Test
+	void resetPassword_throwsWhenPasswordResetSessionIsRevokedAfterUserLock() {
+		Users user = authenticatedUser(1L, "test@email.com");
+		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("reset-token"))).thenReturn("1:0");
+		when(redisService.getStringValue("password-reset-session-version:1")).thenReturn(null, "1");
+		when(redisService.getStringValue("password-reset-user-token:1")).thenReturn(hashText("reset-token"));
+		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(user));
+
+		assertThatThrownBy(() -> userService.resetPassword(new ResetPasswordRequest("reset-token", "new-password123")))
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("비밀번호 재설정 링크가 만료되었거나 올바르지 않습니다.");
+
+		verify(passwordEncoder, never()).encode(any());
+		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
 	}
 
 	@Test
@@ -447,7 +463,7 @@ class UserServiceTest {
 		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("reset-token"))).thenReturn("5:0");
 		when(redisService.getStringValue("password-reset-session-version:5")).thenReturn(null);
 		when(redisService.getStringValue("password-reset-user-token:5")).thenReturn(hashText("reset-token"));
-		when(userRepository.findByIdAndDeletedAtIsNull(5L)).thenReturn(Optional.of(user));
+		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(5L)).thenReturn(Optional.of(user));
 
 		assertThatThrownBy(() -> userService.resetPassword(new ResetPasswordRequest("reset-token", "new-password123")))
 			.isInstanceOf(ApplicationException.class)
@@ -474,7 +490,9 @@ class UserServiceTest {
 		when(jwtTokenProvider.getEmail("refresh-token")).thenReturn("test@email.com");
 		when(userRepository.findById(1L)).thenReturn(java.util.Optional.of(user));
 		when(jwtTokenProvider.isRefreshTokenMatched("test@email.com", "refresh-token")).thenReturn(true);
-		when(jwtTokenProvider.generateAccessToken(1L, "test@email.com")).thenReturn("new-access-token");
+		when(jwtTokenProvider.getSessionVersion("refresh-token")).thenReturn(0L);
+		when(jwtTokenProvider.isAccessTokenSessionVersionCurrent(1L, 0L)).thenReturn(true);
+		when(jwtTokenProvider.generateAccessToken(1L, "test@email.com", 0L)).thenReturn("new-access-token");
 		when(jwtTokenProvider.getExpiration("new-access-token")).thenReturn(accessTokenExpiresAt);
 
 		RefreshTokenResponse response = userService.refreshToken(request);
@@ -531,6 +549,33 @@ class UserServiceTest {
 			.hasMessage("유효하지 않은 리프레시 토큰입니다.");
 
 		verify(jwtTokenProvider, never()).generateAccessToken(any(), any());
+		verify(jwtTokenProvider, never()).getExpiration(any());
+	}
+
+	@Test
+	void refreshToken_throwsWhenRefreshTokenSessionWasRevokedDuringRefreshFlow() {
+		RefreshTokenRequest request = new RefreshTokenRequest("refresh-token");
+		Users user = Users.builder()
+			.email("test@email.com")
+			.password("encoded-password")
+			.nickname("tester")
+			.temperature(50)
+			.level(3)
+			.build();
+
+		when(jwtTokenProvider.validateRefreshToken("refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.getUserId("refresh-token")).thenReturn(1L);
+		when(jwtTokenProvider.getEmail("refresh-token")).thenReturn("test@email.com");
+		when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+		when(jwtTokenProvider.isRefreshTokenMatched("test@email.com", "refresh-token")).thenReturn(true);
+		when(jwtTokenProvider.getSessionVersion("refresh-token")).thenReturn(0L);
+		when(jwtTokenProvider.isAccessTokenSessionVersionCurrent(1L, 0L)).thenReturn(false);
+
+		assertThatThrownBy(() -> userService.refreshToken(request))
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("유효하지 않은 리프레시 토큰입니다.");
+
+		verify(jwtTokenProvider, never()).generateAccessToken(any(), any(), anyLong());
 		verify(jwtTokenProvider, never()).getExpiration(any());
 	}
 
@@ -622,7 +667,7 @@ class UserServiceTest {
 		Users managedUser = authenticatedUser(1L, "test@email.com");
 		EditPasswordRequest request = new EditPasswordRequest("current-password", "new-password123");
 		managedUser.editPassword("encoded-current-password");
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
 		when(passwordEncoder.encode("new-password123")).thenReturn("encoded-new-password");
 
@@ -630,7 +675,7 @@ class UserServiceTest {
 
 		assertThat(managedUser.getPassword()).isEqualTo("encoded-new-password");
 		verify(passwordEncoder).encode("new-password123");
-		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
+		verify(userRepository).findByIdAndDeletedAtIsNullForUpdate(1L);
 		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
 		verify(jwtTokenProvider).revokeAccessTokens(1L);
 	}
@@ -641,7 +686,7 @@ class UserServiceTest {
 		Users managedUser = authenticatedUser(1L, "test@email.com");
 		EditPasswordRequest request = new EditPasswordRequest("current-password", "new-password123");
 		managedUser.editPassword("encoded-current-password");
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
 		when(passwordEncoder.encode("new-password123")).thenReturn("encoded-new-password");
 		when(redisService.getStringValue("password-reset-user-token:1")).thenReturn(hashText("reset-token"));
@@ -662,7 +707,7 @@ class UserServiceTest {
 		Users managedUser = authenticatedUser(1L, "test@email.com");
 		EditPasswordRequest request = new EditPasswordRequest("wrong-password", "new-password123");
 		managedUser.editPassword("encoded-current-password");
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(managedUser));
 		when(passwordEncoder.matches("wrong-password", "encoded-current-password")).thenReturn(false);
 
 		assertThatThrownBy(() -> userService.editPassword(loginUser, request))

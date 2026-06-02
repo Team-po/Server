@@ -176,7 +176,8 @@ public class UserService {
 
 		PasswordResetTokenPayload tokenPayload = parsePasswordResetTokenPayload(tokenPayloadValue);
 		Long userId = tokenPayload.userId();
-		if (tokenPayload.sessionVersion() != getCurrentPasswordResetSessionVersion(userId)) {
+		long sessionVersion = tokenPayload.sessionVersion();
+		if (sessionVersion != getCurrentPasswordResetSessionVersion(userId)) {
 			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN);
 		}
 
@@ -185,8 +186,12 @@ public class UserService {
 		if (!tokenHash.equals(currentTokenHash)) {
 			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN);
 		}
-		Users user = userRepository.findByIdAndDeletedAtIsNull(userId)
+		Users user = userRepository.findByIdAndDeletedAtIsNullForUpdate(userId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN));
+
+		if (sessionVersion != getCurrentPasswordResetSessionVersion(userId)) {
+			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN);
+		}
 
 		if (isPasswordResetUnavailable(user)) {
 			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN);
@@ -227,7 +232,16 @@ public class UserService {
 			throw new ApplicationException(ErrorCode.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
 		}
 
-		String accessToken = jwtTokenProvider.generateAccessToken(userId, user.getEmail());
+		long refreshTokenSessionVersion = jwtTokenProvider.getSessionVersion(token);
+		if (!jwtTokenProvider.isAccessTokenSessionVersionCurrent(userId, refreshTokenSessionVersion)) {
+			throw new ApplicationException(ErrorCode.INVALID_TOKEN, "유효하지 않은 리프레시 토큰입니다.");
+		}
+
+		String accessToken = jwtTokenProvider.generateAccessToken(
+			userId,
+			user.getEmail(),
+			refreshTokenSessionVersion
+		);
 		return new RefreshTokenResponse(accessToken, jwtTokenProvider.getExpiration(accessToken));
 	}
 
@@ -263,7 +277,7 @@ public class UserService {
 
 	@Transactional
 	public void editPassword(Users loginUser, EditPasswordRequest request) {
-		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId()).orElseThrow(
+		Users user = userRepository.findByIdAndDeletedAtIsNullForUpdate(loginUser.getId()).orElseThrow(
 			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
 		if (!passwordEncoder.matches(request.currentPassword(), user.getPassword()))
 			throw new ApplicationException(ErrorCode.UNMATCHED_PASSWORD);

@@ -60,6 +60,23 @@ class JwtTokenProviderTest {
 	}
 
 	@Test
+	void validateAccessToken_returnsFalseWhenGeneratedWithRevokedSessionVersion() {
+		when(redisService.getStringValue("ATSV:1")).thenReturn("1");
+		String accessToken = jwtTokenProvider.generateAccessToken(1L, "test@email.com", 0L);
+
+		assertThat(jwtTokenProvider.validateAccessToken(accessToken)).isFalse();
+	}
+
+	@Test
+	void getSessionVersion_returnsRefreshTokenIssuedSessionVersion() {
+		when(redisService.getStringValue("ATSV:1")).thenReturn("2");
+
+		String refreshToken = jwtTokenProvider.generateRefreshToken(1L, "test@email.com");
+
+		assertThat(jwtTokenProvider.getSessionVersion(refreshToken)).isEqualTo(2L);
+	}
+
+	@Test
 	void validateAccessToken_returnsFalseWhenSessionVersionStorageFails() {
 		when(redisService.getStringValue("ATSV:1")).thenReturn(null);
 		String accessToken = jwtTokenProvider.generateAccessToken(1L, "test@email.com");
