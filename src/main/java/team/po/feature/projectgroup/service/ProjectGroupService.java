@@ -33,6 +33,7 @@ import team.po.feature.user.repository.UserRepository;
 @Service
 @RequiredArgsConstructor
 public class ProjectGroupService {
+	private static final long REQUIRED_TEAM_MEMBER_COUNT = 4L;
 
 	private final ProjectGroupRepository projectGroupRepository;
 	private final ProjectGroupMemberRepository projectGroupMemberRepository;
@@ -169,16 +170,8 @@ public class ProjectGroupService {
 
 		requesterMember.agreeFinish();
 
-		long memberCount = projectGroupMemberRepository.countByProjectGroup_Id(projectGroupId);
-		if (memberCount != 4L) {
-			throw new ApplicationException(
-				ErrorCode.INVALID_PROJECT_GROUP_REQUEST,
-				"팀 인원은 정확히 4명이어야 종료 동의가 가능합니다."
-			);
-		}
-
 		long agreedCount = projectGroupMemberRepository.countByProjectGroup_IdAndFinishAgreedTrue(projectGroupId);
-		if (agreedCount == memberCount) {
+		if (agreedCount == REQUIRED_TEAM_MEMBER_COUNT) {
 			projectGroup.finish();
 		}
 	}

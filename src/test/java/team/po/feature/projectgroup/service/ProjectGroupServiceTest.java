@@ -298,7 +298,6 @@ class ProjectGroupServiceTest {
 
 		when(projectGroupRepository.findByIdForUpdate(50L)).thenReturn(Optional.of(projectGroup));
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(50L, 1L)).thenReturn(Optional.of(requester));
-		when(projectGroupMemberRepository.countByProjectGroup_Id(50L)).thenReturn(4L);
 		when(projectGroupMemberRepository.countByProjectGroup_IdAndFinishAgreedTrue(50L)).thenReturn(4L);
 
 		projectGroupService.finishProjectGroup(50L, 1L);
@@ -318,7 +317,6 @@ class ProjectGroupServiceTest {
 
 		when(projectGroupRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(projectGroup));
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(60L, 2L)).thenReturn(Optional.of(requester));
-		when(projectGroupMemberRepository.countByProjectGroup_Id(60L)).thenReturn(4L);
 		when(projectGroupMemberRepository.countByProjectGroup_IdAndFinishAgreedTrue(60L)).thenReturn(2L);
 
 		projectGroupService.finishProjectGroup(60L, 2L);
@@ -357,25 +355,6 @@ class ProjectGroupServiceTest {
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(70L, 1L)).thenReturn(Optional.of(requester));
 
 		assertThatThrownBy(() -> projectGroupService.finishProjectGroup(70L, 1L))
-			.isInstanceOf(ApplicationException.class)
-			.extracting("code")
-			.isEqualTo(ErrorCode.INVALID_PROJECT_GROUP_REQUEST.getCode());
-	}
-
-	@Test
-	void finishProjectGroup_throwsBadRequest_whenMemberCountIsNotFour() {
-		ProjectGroup projectGroup = ProjectGroup.builder()
-			.projectName("Teampo Alpha")
-			.projectTitle("주제 A")
-			.status(ProjectGroupStatus.ACTIVE)
-			.build();
-		ProjectGroupMember requester = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
-
-		when(projectGroupRepository.findByIdForUpdate(80L)).thenReturn(Optional.of(projectGroup));
-		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(80L, 1L)).thenReturn(Optional.of(requester));
-		when(projectGroupMemberRepository.countByProjectGroup_Id(80L)).thenReturn(3L);
-
-		assertThatThrownBy(() -> projectGroupService.finishProjectGroup(80L, 1L))
 			.isInstanceOf(ApplicationException.class)
 			.extracting("code")
 			.isEqualTo(ErrorCode.INVALID_PROJECT_GROUP_REQUEST.getCode());

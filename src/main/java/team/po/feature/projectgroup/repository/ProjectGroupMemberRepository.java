@@ -26,7 +26,5 @@ public interface ProjectGroupMemberRepository extends JpaRepository<ProjectGroup
 
 	boolean existsByProjectGroup_IdAndUser_IdAndGroupRole(Long projectGroupId, Long userId, GroupRole groupRole);
 
-	long countByProjectGroup_Id(Long projectGroupId);
-
 	long countByProjectGroup_IdAndFinishAgreedTrue(Long projectGroupId);
 }
