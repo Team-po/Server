@@ -250,7 +250,7 @@ class UserServiceTest {
 		);
 		assertThat(redisKeyCaptor.getAllValues())
 			.contains("password-reset-pending-token:1", "password-reset-user-token:1");
-		assertThat(redisValueCaptor.getAllValues()).contains("1");
+		assertThat(redisValueCaptor.getAllValues()).contains("1:0");
 
 		ArgumentCaptor<String> resetUrlCaptor = ArgumentCaptor.forClass(String.class);
 		verify(emailService).sendPasswordResetEmailAsync(eq("test@email.com"), resetUrlCaptor.capture());
@@ -377,7 +377,8 @@ class UserServiceTest {
 	@Test
 	void resetPassword_updatesPasswordAndInvalidatesRefreshTokenWhenTokenIsValid() {
 		Users user = authenticatedUser(1L, "test@email.com");
-		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("reset-token"))).thenReturn("1");
+		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("reset-token"))).thenReturn("1:0");
+		when(redisService.getStringValue("password-reset-session-version:1")).thenReturn(null);
 		when(redisService.getStringValue("password-reset-user-token:1")).thenReturn(hashText("reset-token"));
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
 		when(passwordEncoder.encode("new-password123")).thenReturn("encoded-new-password");
@@ -386,18 +387,34 @@ class UserServiceTest {
 
 		assertThat(user.getPassword()).isEqualTo("encoded-new-password");
 		verify(redisService).deleteValue("password-reset-user-token:1");
+		verify(redisService).incrementValue("password-reset-session-version:1");
 		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
 		verify(jwtTokenProvider).revokeAccessTokens(1L);
 	}
 
 	@Test
 	void resetPassword_throwsWhenTokenWasSupersededByNewerToken() {
-		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("old-reset-token"))).thenReturn("1");
+		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("old-reset-token"))).thenReturn("1:0");
+		when(redisService.getStringValue("password-reset-session-version:1")).thenReturn(null);
 		when(redisService.getStringValue("password-reset-user-token:1")).thenReturn(hashText("new-reset-token"));
 
 		assertThatThrownBy(() -> userService.resetPassword(
 			new ResetPasswordRequest("old-reset-token", "new-password123")
 		))
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("비밀번호 재설정 링크가 만료되었거나 올바르지 않습니다.");
+
+		verify(userRepository, never()).findByIdAndDeletedAtIsNull(any());
+		verifyNoInteractions(passwordEncoder, jwtTokenProvider);
+		verify(redisService, never()).deleteValue("password-reset-user-token:1");
+	}
+
+	@Test
+	void resetPassword_throwsWhenTokenWasIssuedBeforePasswordResetRevocation() {
+		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("reset-token"))).thenReturn("1:0");
+		when(redisService.getStringValue("password-reset-session-version:1")).thenReturn("1");
+
+		assertThatThrownBy(() -> userService.resetPassword(new ResetPasswordRequest("reset-token", "new-password123")))
 			.isInstanceOf(ApplicationException.class)
 			.hasMessage("비밀번호 재설정 링크가 만료되었거나 올바르지 않습니다.");
 
@@ -427,7 +444,8 @@ class UserServiceTest {
 			.isGithubLogin(true)
 			.build();
 		ReflectionTestUtils.setField(user, "id", 5L);
-		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("reset-token"))).thenReturn("5");
+		when(redisService.getAndDeleteStringValue(passwordResetTokenKey("reset-token"))).thenReturn("5:0");
+		when(redisService.getStringValue("password-reset-session-version:5")).thenReturn(null);
 		when(redisService.getStringValue("password-reset-user-token:5")).thenReturn(hashText("reset-token"));
 		when(userRepository.findByIdAndDeletedAtIsNull(5L)).thenReturn(Optional.of(user));
 
@@ -615,6 +633,27 @@ class UserServiceTest {
 		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 		verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
 		verify(jwtTokenProvider).revokeAccessTokens(1L);
+	}
+
+	@Test
+	void editPassword_revokesOutstandingPasswordResetTokens() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		EditPasswordRequest request = new EditPasswordRequest("current-password", "new-password123");
+		managedUser.editPassword("encoded-current-password");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		when(passwordEncoder.matches("current-password", "encoded-current-password")).thenReturn(true);
+		when(passwordEncoder.encode("new-password123")).thenReturn("encoded-new-password");
+		when(redisService.getStringValue("password-reset-user-token:1")).thenReturn(hashText("reset-token"));
+		when(redisService.getStringValue("password-reset-pending-token:1")).thenReturn(hashText("pending-reset-token"));
+
+		userService.editPassword(loginUser, request);
+
+		verify(redisService).deleteValue(passwordResetTokenKey("reset-token"));
+		verify(redisService).deleteValue(passwordResetTokenKey("pending-reset-token"));
+		verify(redisService).deleteValue("password-reset-user-token:1");
+		verify(redisService).deleteValue("password-reset-pending-token:1");
+		verify(redisService).incrementValue("password-reset-session-version:1");
 	}
 
 	@Test

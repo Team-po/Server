@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 
 import team.po.common.redis.RedisService;
 
@@ -56,5 +57,15 @@ class JwtTokenProviderTest {
 		String accessToken = jwtTokenProvider.generateAccessToken(1L, "test@email.com");
 
 		assertThat(jwtTokenProvider.validateAccessToken(accessToken)).isTrue();
+	}
+
+	@Test
+	void validateAccessToken_returnsFalseWhenSessionVersionStorageFails() {
+		when(redisService.getStringValue("ATSV:1")).thenReturn(null);
+		String accessToken = jwtTokenProvider.generateAccessToken(1L, "test@email.com");
+		when(redisService.getStringValue("ATSV:1"))
+			.thenThrow(new DataAccessResourceFailureException("redis unavailable"));
+
+		assertThat(jwtTokenProvider.validateAccessToken(accessToken)).isFalse();
 	}
 }

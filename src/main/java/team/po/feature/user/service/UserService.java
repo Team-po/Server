@@ -53,6 +53,7 @@ public class UserService {
 	private static final String PASSWORD_RESET_TOKEN_KEY_PREFIX = "password-reset-token:";
 	private static final String PASSWORD_RESET_USER_TOKEN_KEY_PREFIX = "password-reset-user-token:";
 	private static final String PASSWORD_RESET_PENDING_TOKEN_KEY_PREFIX = "password-reset-pending-token:";
+	private static final String PASSWORD_RESET_SESSION_VERSION_KEY_PREFIX = "password-reset-session-version:";
 	private static final String PASSWORD_RESET_REQUEST_COOLDOWN_KEY_PREFIX = "password-reset-request-cooldown:";
 	private static final int PASSWORD_RESET_TOKEN_BYTE_LENGTH = 32;
 
@@ -138,7 +139,11 @@ public class UserService {
 		String userTokenKey = createPasswordResetUserTokenKey(user.getId());
 		String pendingTokenKey = createPasswordResetPendingTokenKey(user.getId());
 		String previousTokenHash = redisService.getStringValue(userTokenKey);
-		redisService.setValue(tokenKey, user.getId().toString(), passwordResetProperties.tokenTtl());
+		redisService.setValue(
+			tokenKey,
+			createPasswordResetTokenPayload(user.getId(), getCurrentPasswordResetSessionVersion(user.getId())),
+			passwordResetProperties.tokenTtl()
+		);
 		redisService.setValue(pendingTokenKey, tokenHash, passwordResetProperties.tokenTtl());
 
 		try {
@@ -163,19 +168,23 @@ public class UserService {
 	@Transactional
 	public void resetPassword(ResetPasswordRequest request) {
 		String tokenHash = sha256Hex(request.token().trim());
-		String userIdValue = redisService.getAndDeleteStringValue(createPasswordResetTokenKey(tokenHash));
+		String tokenPayloadValue = redisService.getAndDeleteStringValue(createPasswordResetTokenKey(tokenHash));
 
-		if (userIdValue == null) {
+		if (tokenPayloadValue == null) {
 			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN);
 		}
 
-		Long userId = parsePasswordResetUserId(userIdValue);
+		PasswordResetTokenPayload tokenPayload = parsePasswordResetTokenPayload(tokenPayloadValue);
+		Long userId = tokenPayload.userId();
+		if (tokenPayload.sessionVersion() != getCurrentPasswordResetSessionVersion(userId)) {
+			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN);
+		}
+
 		String userTokenKey = createPasswordResetUserTokenKey(userId);
 		String currentTokenHash = redisService.getStringValue(userTokenKey);
 		if (!tokenHash.equals(currentTokenHash)) {
 			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN);
 		}
-		redisService.deleteValue(userTokenKey);
 		Users user = userRepository.findByIdAndDeletedAtIsNull(userId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN));
 
@@ -185,6 +194,7 @@ public class UserService {
 
 		String newPassword = passwordEncoder.encode(request.newPassword());
 		user.editPassword(newPassword);
+		revokePasswordResetTokens(user.getId());
 		jwtTokenProvider.deleteRefreshToken(user.getEmail());
 		jwtTokenProvider.revokeAccessTokens(user.getId());
 	}
@@ -260,6 +270,7 @@ public class UserService {
 
 		String newPassword = passwordEncoder.encode(request.afterPassword());
 		user.editPassword(newPassword);
+		revokePasswordResetTokens(user.getId());
 		jwtTokenProvider.deleteRefreshToken(user.getEmail());
 		jwtTokenProvider.revokeAccessTokens(user.getId());
 	}
@@ -395,6 +406,37 @@ public class UserService {
 		return tokenHash.equals(redisService.getStringValue(pendingTokenKey));
 	}
 
+	private void revokePasswordResetTokens(Long userId) {
+		String userTokenKey = createPasswordResetUserTokenKey(userId);
+		String tokenHash = redisService.getStringValue(userTokenKey);
+		if (tokenHash != null) {
+			redisService.deleteValue(createPasswordResetTokenKey(tokenHash));
+		}
+
+		String pendingTokenKey = createPasswordResetPendingTokenKey(userId);
+		String pendingTokenHash = redisService.getStringValue(pendingTokenKey);
+		if (pendingTokenHash != null) {
+			redisService.deleteValue(createPasswordResetTokenKey(pendingTokenHash));
+		}
+
+		redisService.deleteValue(userTokenKey);
+		redisService.deleteValue(pendingTokenKey);
+		redisService.incrementValue(createPasswordResetSessionVersionKey(userId));
+	}
+
+	private String createPasswordResetTokenPayload(Long userId, long sessionVersion) {
+		return userId + ":" + sessionVersion;
+	}
+
+	private long getCurrentPasswordResetSessionVersion(Long userId) {
+		String version = redisService.getStringValue(createPasswordResetSessionVersionKey(userId));
+		if (version == null) {
+			return 0L;
+		}
+
+		return Long.parseLong(version);
+	}
+
 	private String createPasswordResetTokenKey(String tokenHash) {
 		return PASSWORD_RESET_TOKEN_KEY_PREFIX + tokenHash;
 	}
@@ -407,13 +449,22 @@ public class UserService {
 		return PASSWORD_RESET_PENDING_TOKEN_KEY_PREFIX + userId;
 	}
 
+	private String createPasswordResetSessionVersionKey(Long userId) {
+		return PASSWORD_RESET_SESSION_VERSION_KEY_PREFIX + userId;
+	}
+
 	private String createPasswordResetRequestCooldownKey(String email) {
 		return PASSWORD_RESET_REQUEST_COOLDOWN_KEY_PREFIX + hashEmail(email);
 	}
 
-	private Long parsePasswordResetUserId(String userIdValue) {
+	private PasswordResetTokenPayload parsePasswordResetTokenPayload(String tokenPayloadValue) {
+		String[] parts = tokenPayloadValue.split(":", -1);
+		if (parts.length != 2) {
+			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN);
+		}
+
 		try {
-			return Long.valueOf(userIdValue);
+			return new PasswordResetTokenPayload(Long.valueOf(parts[0]), Long.parseLong(parts[1]));
 		} catch (NumberFormatException exception) {
 			throw new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN, exception);
 		}
@@ -441,5 +492,8 @@ public class UserService {
 	private Users getActiveUser(Long id) {
 		return  userRepository.findByIdAndDeletedAtIsNull(id).orElseThrow(
 			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
+	}
+
+	private record PasswordResetTokenPayload(Long userId, long sessionVersion) {
 	}
 }

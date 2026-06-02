@@ -5,6 +5,7 @@ import java.util.Date;
 
 import javax.crypto.SecretKey;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
@@ -167,6 +168,8 @@ public class JwtTokenProvider {
 			return true;
 		} catch (ExpiredJwtException exception) {
 			log.debug("{} token expired", tokenType, exception);
+		} catch (DataAccessException exception) {
+			log.warn("{} token validation failed because token state storage is unavailable", tokenType, exception);
 		} catch (JwtException | IllegalArgumentException exception) {
 			log.debug("{} token invalid", tokenType, exception);
 		}

@@ -39,6 +39,9 @@ jwt:
   access-token-expiration: 30m
   refresh-token-expiration: 14d
 
+password-reset:
+  client-reset-url: http://localhost:5173/password-reset
+
 github:
   oauth:
     success-redirect-uri: http://localhost:5173/oauth/github/callback
