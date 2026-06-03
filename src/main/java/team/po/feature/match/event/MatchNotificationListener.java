@@ -31,8 +31,7 @@ public class MatchNotificationListener {
 	@Async
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	public void handleMatchAcceptedEvent(MatchAcceptedEvent event) {
-		log.debug("매칭 수락 이벤트 수신: matchSessionId={}, acceptedUserId={}",
-			event.matchSessionId(), event.acceptedUserId());
+		log.debug("매칭 수락 이벤트 수신: matchSessionId={}", event.matchSessionId());
 		// TODO: 수락 알림 (나머지 멤버 또는 이미 수락한 멤버)
 	}
 
@@ -47,32 +46,30 @@ public class MatchNotificationListener {
 	@Async
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	public void handleMatchRejectedEvent(MatchRejectedEvent event) {
-		log.debug("매칭 거절 이벤트 수신: matchSessionId={}, rejectedUserId={}",
-			event.matchSessionId(), event.rejectedUserId());
+		log.debug("매칭 거절 이벤트 수신: matchSessionId={}", event.matchSessionId());
 		// TODO: 나머지 멤버에게 (또는 팀장에게) 거절 및 재매칭 예정 알림
 	}
 
 	@Async
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	public void handleMatchMemberCanceledEvent(MatchMemberCanceledEvent event) {
-		log.debug("매칭 취소 이벤트 수신: matchSessionId={}, canceledUserId={}",
-			event.matchSessionId(), event.canceledUserId());
+		log.debug("매칭 취소 이벤트 수신: matchSessionId={}", event.matchSessionId());
 		// TODO: 나머지 멤버에게 (또는 팀장에게) 취소 및 재매칭 예정 알림
 	}
 
 	@Async
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	public void handleMatchSessionDisbandedEvent(MatchSessionDisbandedEvent event) {
-		log.debug("매칭 세션 해산 이벤트 수신: matchSessionId={}, restoreMemberIds={}",
-			event.matchSessionId(), event.restoreMemberUserIds());
+		log.debug("매칭 세션 해산 이벤트 수신: matchSessionId={}, restoredCount={}",
+			event.matchSessionId(), event.restoreMemberUserIds().size());
 		// TODO: WAITING 복귀 멤버들에게 매칭 재진행 알림
 	}
 
 	@Async
 	@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
 	public void handleMatchOrphanSessionCleanedEvent(MatchOrphanSessionCleanedEvent event) {
-		log.debug("호스트 누락 세션 정리 이벤트 수신: matchSessionId={}, restoreMemberIds={}",
-			event.matchSessionId(), event.restoreMemberUserIds());
+		log.debug("호스트 누락 세션 정리 이벤트 수신: matchSessionId={}, restoredCount={}",
+			event.matchSessionId(), event.restoreMemberUserIds().size());
 		// TODO: WAITING 복귀 멤버들에게 매칭 재진행 알림
 	}
 }
