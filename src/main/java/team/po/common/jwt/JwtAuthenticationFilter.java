@@ -1,6 +1,7 @@
 package team.po.common.jwt;
 
 import java.io.IOException;
+import java.util.Set;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -23,7 +24,12 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 
 	private static final String AUTHORIZATION_HEADER = "Authorization";
 	private static final String BEARER_PREFIX = "Bearer ";
-	private static final String REFRESH_TOKEN_PATH = "/api/users/refresh-token";
+	private static final String POST_METHOD = "POST";
+	private static final Set<String> PUBLIC_AUTHENTICATION_POST_PATHS = Set.of(
+		"/api/users/refresh-token",
+		"/api/users/password-reset",
+		"/api/users/password-reset/confirm"
+	);
 
 	private final JwtTokenProvider jwtTokenProvider;
 	private final ObjectMapper objectMapper;
@@ -42,7 +48,7 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 		throws IOException, ServletException {
 		HttpServletRequest httpServletRequest = (HttpServletRequest)request;
 
-		if (isRefreshTokenRequest(httpServletRequest)) {
+		if (isPublicAuthenticationPostRequest(httpServletRequest)) {
 			chain.doFilter(request, response);
 			return;
 		}
@@ -77,8 +83,9 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 		return null;
 	}
 
-	private boolean isRefreshTokenRequest(HttpServletRequest request) {
-		return REFRESH_TOKEN_PATH.equals(request.getRequestURI());
+	private boolean isPublicAuthenticationPostRequest(HttpServletRequest request) {
+		return POST_METHOD.equalsIgnoreCase(request.getMethod())
+			&& PUBLIC_AUTHENTICATION_POST_PATHS.contains(request.getRequestURI());
 	}
 
 	private void writeUnauthorizedResponse(HttpServletResponse response) throws IOException {

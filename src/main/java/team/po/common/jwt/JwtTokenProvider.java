@@ -5,6 +5,7 @@ import java.util.Date;
 
 import javax.crypto.SecretKey;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
@@ -25,9 +26,11 @@ public class JwtTokenProvider {
 	public static final String BEARER_TYPE = "Bearer";
 	private static final String USER_ID_KEY = "userId";
 	private static final String TOKEN_TYPE_KEY = "tokenType";
+	private static final String SESSION_VERSION_KEY = "sessionVersion";
 	private static final String ACCESS_TOKEN_TYPE = "access";
 	private static final String REFRESH_TOKEN_TYPE = "refresh";
 	private static final String REFRESH_TOKEN_PREFIX = "RT:";
+	private static final String ACCESS_TOKEN_SESSION_VERSION_PREFIX = "ATSV:";
 
 	private final JwtProperties jwtProperties;
 	private final RedisService redisService;
@@ -49,12 +52,23 @@ public class JwtTokenProvider {
 
 	public String generateAccessToken(Long userId, String email) {
 		Instant expiresAt = Instant.now().plus(jwtProperties.getAccessTokenExpiration());
-		return generateJwt(userId, email, ACCESS_TOKEN_TYPE, expiresAt);
+		return generateAccessToken(userId, email, getOrInitializeAccessTokenSessionVersion(userId));
+	}
+
+	public String generateAccessToken(Long userId, String email, long sessionVersion) {
+		Instant expiresAt = Instant.now().plus(jwtProperties.getAccessTokenExpiration());
+		return generateJwt(userId, email, ACCESS_TOKEN_TYPE, expiresAt, sessionVersion);
 	}
 
 	public String generateRefreshToken(Long userId, String email) {
 		Instant expiresAt = Instant.now().plus(jwtProperties.getRefreshTokenExpiration());
-		return generateJwt(userId, email, REFRESH_TOKEN_TYPE, expiresAt);
+		return generateJwt(
+			userId,
+			email,
+			REFRESH_TOKEN_TYPE,
+			expiresAt,
+			getOrInitializeAccessTokenSessionVersion(userId)
+		);
 	}
 
 	public Instant getExpiration(String token) {
@@ -117,17 +131,68 @@ public class JwtTokenProvider {
 		return userIdClaim.longValue();
 	}
 
+	public long getSessionVersion(String token) {
+		Number sessionVersionClaim = parseClaims(token).get(SESSION_VERSION_KEY, Number.class);
+		if (sessionVersionClaim == null) {
+			return 0L;
+		}
+
+		return sessionVersionClaim.longValue();
+	}
+
+	public boolean hasSessionVersion(String token) {
+		return parseClaims(token).get(SESSION_VERSION_KEY, Number.class) != null;
+	}
+
+	public boolean isAccessTokenSessionVersionCurrent(Long userId, long sessionVersion) {
+		return isAccessTokenSessionVersionCurrent(userId, sessionVersion, false);
+	}
+
+	public boolean isAccessTokenSessionVersionCurrent(
+		Long userId,
+		long sessionVersion,
+		boolean initializeMissingVersion
+	) {
+		try {
+			Long currentSessionVersion = getAccessTokenSessionVersion(userId);
+			if (currentSessionVersion == null && initializeMissingVersion && sessionVersion == 0L) {
+				currentSessionVersion = initializeAccessTokenSessionVersion(userId);
+			}
+
+			if (currentSessionVersion == null) {
+				log.warn("Access token session version is missing");
+				return false;
+			}
+
+			return sessionVersion == currentSessionVersion;
+		} catch (DataAccessException exception) {
+			log.warn("Access token session version check failed because token state storage is unavailable", exception);
+			return false;
+		}
+	}
+
 	public void deleteRefreshToken(String email) {
 		redisService.deleteValue(createRefreshTokenKey(email));
 	}
 
-	private String generateJwt(Long userId, String email, String tokenType, Instant expiresAt) {
+	public void revokeAccessTokens(Long userId) {
+		redisService.incrementValue(createAccessTokenSessionVersionKey(userId));
+	}
+
+	private String generateJwt(
+		Long userId,
+		String email,
+		String tokenType,
+		Instant expiresAt,
+		long sessionVersion
+	) {
 		Date now = new Date();
 
 		return Jwts.builder()
 			.subject(email)
 			.claim(USER_ID_KEY, userId)
 			.claim(TOKEN_TYPE_KEY, tokenType)
+			.claim(SESSION_VERSION_KEY, sessionVersion)
 			.issuedAt(now)
 			.expiration(Date.from(expiresAt))
 			.signWith(key)
@@ -152,9 +217,16 @@ public class JwtTokenProvider {
 				return false;
 			}
 
+			if (ACCESS_TOKEN_TYPE.equals(tokenType) && !isAccessTokenSessionVersionValid(claims)) {
+				log.debug("{} token session version revoked", tokenType);
+				return false;
+			}
+
 			return true;
 		} catch (ExpiredJwtException exception) {
 			log.debug("{} token expired", tokenType, exception);
+		} catch (DataAccessException exception) {
+			log.warn("{} token validation failed because token state storage is unavailable", tokenType, exception);
 		} catch (JwtException | IllegalArgumentException exception) {
 			log.debug("{} token invalid", tokenType, exception);
 		}
@@ -163,5 +235,53 @@ public class JwtTokenProvider {
 
 	private String createRefreshTokenKey(String email) {
 		return REFRESH_TOKEN_PREFIX + email;
+	}
+
+	private String createAccessTokenSessionVersionKey(Long userId) {
+		return ACCESS_TOKEN_SESSION_VERSION_PREFIX + userId;
+	}
+
+	private long getOrInitializeAccessTokenSessionVersion(Long userId) {
+		Long currentSessionVersion = getAccessTokenSessionVersion(userId);
+		if (currentSessionVersion != null) {
+			return currentSessionVersion;
+		}
+
+		String sessionVersionKey = createAccessTokenSessionVersionKey(userId);
+		currentSessionVersion = initializeAccessTokenSessionVersion(userId);
+		if (currentSessionVersion == null) {
+			throw new IllegalStateException("Access token session version is unavailable.");
+		}
+
+		return currentSessionVersion;
+	}
+
+	private Long initializeAccessTokenSessionVersion(Long userId) {
+		String sessionVersionKey = createAccessTokenSessionVersionKey(userId);
+		redisService.setIfAbsentValue(sessionVersionKey, 0L);
+		return getAccessTokenSessionVersion(userId);
+	}
+
+	private Long getAccessTokenSessionVersion(Long userId) {
+		String version = redisService.getStringValue(createAccessTokenSessionVersionKey(userId));
+		if (version == null) {
+			return null;
+		}
+
+		return Long.parseLong(version);
+	}
+
+	private boolean isAccessTokenSessionVersionValid(Claims claims) {
+		Number userIdClaim = claims.get(USER_ID_KEY, Number.class);
+		if (userIdClaim == null) {
+			return false;
+		}
+
+		Number tokenSessionVersion = claims.get(SESSION_VERSION_KEY, Number.class);
+		if (tokenSessionVersion == null) {
+			return isAccessTokenSessionVersionCurrent(userIdClaim.longValue(), 0L, true);
+		}
+
+		return isAccessTokenSessionVersionCurrent(userIdClaim.longValue(), tokenSessionVersion.longValue());
 	}
 }

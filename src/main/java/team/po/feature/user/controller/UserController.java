@@ -21,8 +21,10 @@ import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.ProfileImageUploadUrlRequest;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
+import team.po.feature.user.dto.RequestPasswordResetRequest;
 import team.po.feature.user.dto.RefreshTokenRequest;
 import team.po.feature.user.dto.RefreshTokenResponse;
+import team.po.feature.user.dto.ResetPasswordRequest;
 import team.po.feature.user.dto.SignInRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.SignUpRequest;
@@ -65,6 +67,20 @@ public class UserController {
 	public ResponseEntity<SignInResponse> signIn(@Valid @RequestBody SignInRequest request) {
 		SignInResponse response = userService.signIn(request);
 		return ResponseEntity.ok().body(response);
+	}
+
+	@Operation(summary = "비밀번호 재설정 링크 요청 API")
+	@PostMapping(value = "/password-reset")
+	public ResponseEntity<Void> requestPasswordReset(@Valid @RequestBody RequestPasswordResetRequest request) {
+		userService.requestPasswordReset(request);
+		return ResponseEntity.ok().build();
+	}
+
+	@Operation(summary = "비밀번호 재설정 API")
+	@PostMapping(value = "/password-reset/confirm")
+	public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+		userService.resetPassword(request);
+		return ResponseEntity.ok().build();
 	}
 
 	@Operation(summary = "토큰 재발급 API")

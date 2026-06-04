@@ -57,6 +57,8 @@ public class SecurityConfig {
 					.requestMatchers(HttpMethod.POST, "/api/signup/number-validation").permitAll()
 					.requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
 					.requestMatchers(HttpMethod.POST, "/api/users/sign-in").permitAll()
+					.requestMatchers(HttpMethod.POST, "/api/users/password-reset").permitAll()
+					.requestMatchers(HttpMethod.POST, "/api/users/password-reset/confirm").permitAll()
 					.requestMatchers(HttpMethod.POST, "/api/users/refresh-token").permitAll()
 					.requestMatchers(HttpMethod.POST, "/api/oauth/github/token").permitAll()
 					.requestMatchers("/oauth2/authorization/github", "/api/auth/github/callback").permitAll()
