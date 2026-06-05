@@ -53,4 +53,14 @@ public class ProjectGroupController {
 		projectGroupService.revokeAdminPermission(projectGroupId, requester.getId(), targetUserId);
 		return ResponseEntity.ok().build();
 	}
+
+	@Operation(summary = "팀 스페이스 종료 API")
+	@PatchMapping("/{projectGroupId}/finish")
+	public ResponseEntity<Void> finishProjectGroup(
+		@Parameter(hidden = true) @LoginUser Users requester,
+		@PathVariable Long projectGroupId
+	) {
+		projectGroupService.finishProjectGroup(projectGroupId, requester.getId());
+		return ResponseEntity.ok().build();
+	}
 }

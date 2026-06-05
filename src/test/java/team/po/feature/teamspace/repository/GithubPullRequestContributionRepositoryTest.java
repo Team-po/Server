@@ -120,9 +120,9 @@ class GithubPullRequestContributionRepositoryTest {
 	private void insertProjectGroupMember(Long userId, Long projectGroupId) {
 		entityManager.createNativeQuery("""
 			INSERT INTO project_group_member (
-				user_id, project_group_id, role, group_role, is_admin, created_at
+				user_id, project_group_id, role, group_role, is_admin, is_finish_agreed, created_at
 			) VALUES (
-				:userId, :projectGroupId, 'BACKEND', 'MEMBER', false, CURRENT_TIMESTAMP
+				:userId, :projectGroupId, 'BACKEND', 'MEMBER', false, false, CURRENT_TIMESTAMP
 			)
 			""")
 			.setParameter("userId", userId)

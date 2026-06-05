@@ -33,6 +33,7 @@ import team.po.feature.user.repository.UserRepository;
 @Service
 @RequiredArgsConstructor
 public class ProjectGroupService {
+	private static final long REQUIRED_TEAM_MEMBER_COUNT = 4L;
 
 	private final ProjectGroupRepository projectGroupRepository;
 	private final ProjectGroupMemberRepository projectGroupMemberRepository;
@@ -146,6 +147,33 @@ public class ProjectGroupService {
 	@Transactional
 	public void revokeAdminPermission(Long projectGroupId, Long requesterUserId, Long targetUserId) {
 		this.changeAdminPermission(projectGroupId, requesterUserId, targetUserId, false);
+	}
+
+	@Transactional
+	public void finishProjectGroup(Long projectGroupId, Long requesterUserId) {
+		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
+
+		ProjectGroupMember requesterMember = projectGroupMemberRepository
+			.findByProjectGroup_IdAndUser_Id(projectGroupId, requesterUserId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.PROJECT_GROUP_ACCESS_DENIED,
+				"팀원만 팀 스페이스 종료에 동의할 수 있습니다."
+			));
+
+		if (projectGroup.getStatus() == ProjectGroupStatus.FINISHED) {
+			throw new ApplicationException(
+				ErrorCode.INVALID_PROJECT_GROUP_REQUEST,
+				"이미 종료된 팀 스페이스입니다."
+			);
+		}
+
+		requesterMember.agreeFinish();
+
+		long agreedCount = projectGroupMemberRepository.countByProjectGroup_IdAndFinishAgreedTrue(projectGroupId);
+		if (agreedCount == REQUIRED_TEAM_MEMBER_COUNT) {
+			projectGroup.finish();
+		}
 	}
 
 	private void validateCreateRequest(CreateProjectGroupRequest request) {
