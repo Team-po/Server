@@ -121,6 +121,10 @@ public class DevGuide {
 		this.isConfirmed = false;
 	}
 
+	public void confirm() {
+		this.isConfirmed = true;
+	}
+
 	public void delete() {
 		this.deletedAt = LocalDateTime.now();
 	}

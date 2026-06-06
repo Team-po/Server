@@ -123,6 +123,13 @@ public class DevGuideService {
 		return new DevGuideQueryResponse(content, status, remainingCount);
 	}
 
+	public void confirm(Long projectGroupId, Long userId, Long devGuideId) {
+		// 프로젝트 그룹 소속 검증
+		validateProjectGroupMember(projectGroupId, userId);
+		// 버전 확정은 트랜잭션 안에서 수행
+		devGuideCommandService.confirm(projectGroupId, devGuideId);
+	}
+
 	private void validateProjectGroupMember(Long projectGroupId, Long userId) {
 		if (!projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(projectGroupId, userId)) {
 			throw new ApplicationException(ErrorCode.PROJECT_GROUP_ACCESS_DENIED);

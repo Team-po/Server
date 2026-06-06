@@ -1,5 +1,6 @@
 package team.po.feature.devguide.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,6 +14,10 @@ public interface DevGuideRepository extends JpaRepository<DevGuide, Long> {
 	boolean existsByProjectGroup_IdAndIsConfirmedTrue(Long projectGroupId);
 
 	Optional<DevGuide> findByProjectGroup_IdAndIsConfirmedTrue(Long projectGroupId);
+
+	Optional<DevGuide> findByIdAndProjectGroup_IdAndDeletedAtIsNull(Long id, Long projectGroupId);
+
+	List<DevGuide> findAllByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(Long projectGroupId);
 
 	@Query("SELECT COALESCE(MAX(d.versionNo), 0) FROM DevGuide d WHERE d.projectGroup.id = :projectGroupId")
 	int findMaxVersionNoByProjectGroupId(@Param("projectGroupId") Long projectGroupId);

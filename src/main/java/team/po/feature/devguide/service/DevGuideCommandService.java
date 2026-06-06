@@ -143,6 +143,34 @@ public class DevGuideCommandService {
 		return generation.getMaxRegenerationCount() - manualCount;
 	}
 
+	@Transactional
+	public void confirm(Long projectGroupId, Long devGuideId) {
+		// 프로젝트 그룹 조회
+		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
+
+		// 종료된 프로젝트에서는 가이드라인 확정 불가
+		if (projectGroup.getStatus() == ProjectGroupStatus.FINISHED) {
+			throw new ApplicationException(ErrorCode.DEV_GUIDE_WRITE_NOT_ALLOWED);
+		}
+
+		// 생성 중인 가이드라인이 존재하면 확정 불가
+		devGuideGenerationRepository.findByProjectGroup_Id(projectGroupId)
+			.filter(DevGuideGeneration::isGenerating)
+			.ifPresent(generation -> {
+				throw new ApplicationException(ErrorCode.DEV_GUIDE_GENERATING);
+			});
+
+		// 확정할 가이드라인 조회
+		DevGuide target = devGuideRepository.findByIdAndProjectGroup_IdAndDeletedAtIsNull(devGuideId, projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND));
+
+		// 이미 확정된 가이드라인이 있다면 해제하고 target 가이드라인 확정
+		devGuideRepository.findAllByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(projectGroupId)
+			.forEach(DevGuide::unconfirm);
+		target.confirm();
+	}
+
 	/**
 	 * 서버 기동 시 일정 시간(STALE_THRESHOLD_MINUTES) 이상 갱신되지 않은 GENERATING 레코드를 FAILED로 전환한다.
 	 * 블루/그린 배포 시 신규 인스턴스가 기동되더라도, 기존 인스턴스가 처리 중인 최근 작업은 건드리지 않는다.
