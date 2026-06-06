@@ -50,4 +50,16 @@ public class DevGuideController {
 
 		return ResponseEntity.ok(response);
 	}
+
+	@Operation(summary = "팀 스페이스 개발 가이드라인 버전 확정 API")
+	@PostMapping("/{projectGroupId}/dev-guide/{devGuideId}/confirm")
+	public ResponseEntity<Void> confirmDevGuide(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId,
+		@PathVariable Long devGuideId
+	) {
+		devGuideService.confirm(projectGroupId, user.getId(), devGuideId);
+
+		return ResponseEntity.ok().build();
+	}
 }
