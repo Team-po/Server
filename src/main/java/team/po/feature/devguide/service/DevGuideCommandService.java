@@ -52,17 +52,16 @@ public class DevGuideCommandService {
 		return true;
 	}
 
-	/**
-	 * 초기 가이드라인 생성 완료 시 호출. DevGuide 저장 후 상태를 COMPLETED로 전환한다.
-	 */
 	@Transactional
 	public void create(Long projectGroupId, DevGuideContent content) {
-		if (devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(projectGroupId)) {
+		// 최초 생성 시 이미 가이드라인이 존재하는지 확인
+		if (devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(projectGroupId)) {
 			throw new ApplicationException(ErrorCode.DEV_GUIDE_ALREADY_EXISTS);
 		}
 		ProjectGroup projectGroup = projectGroupRepository.findById(projectGroupId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
 
+		// 최초 생성 성공 시 현재 기준 가이드라인으로 자동 확정한다.
 		devGuideRepository.save(
 			DevGuide.create(projectGroup, content, 1, DevGuideGenerationType.INITIAL, true)
 		);
@@ -71,15 +70,7 @@ public class DevGuideCommandService {
 			.ifPresent(DevGuideGeneration::complete);
 	}
 
-	/**
-	 * 재생성 요청 시 Gemini 호출 전에 호출. lock 획득 후 조건을 검증하고 상태를 GENERATING으로 전환한다.
-	 *
-	 * 타입 결정 기준:
-	 *   - FAILED 상태 또는 confirmed 가이드 없음 → RECOVERY (횟수 미차감, 실패 재시도)
-	 *   - COMPLETED 이고 confirmed 가이드 있음    → MANUAL   (횟수 차감)
-	 *
-	 * @return 결정된 생성 타입 (Gemini 호출 후 completeRegeneration에 전달)
-	 */
+	// 재생성 시 Gemini 호출 전에 lock 획득 후 generation 상태를 GENERATING으로 전환한다.
 	@Transactional
 	public DevGuideGenerationType startRegeneration(Long projectGroupId) {
 		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
@@ -100,9 +91,10 @@ public class DevGuideCommandService {
 		boolean hasConfirmed = devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(projectGroupId);
 		DevGuideGenerationType generationType;
 
+		// FAILED 또는 isConfirmed 가이드라인이 없으면 RECOVERY, 재생성 횟수 차감하지 않음
 		if (generation.getStatus() == DevGuideStatus.FAILED || !hasConfirmed) {
 			generationType = DevGuideGenerationType.RECOVERY;
-		} else {
+		} else { // COMPLETED 상태이면서 isConfirmed 가이드라인이 있으면 MANUAL, 재생성 횟수 차감
 			int manualCount = devGuideRepository.countByProjectGroup_IdAndGenerationType(
 				projectGroupId, DevGuideGenerationType.MANUAL);
 			if (manualCount >= generation.getMaxRegenerationCount()) {
@@ -113,14 +105,10 @@ public class DevGuideCommandService {
 
 		generation.startGenerating();
 		devGuideGenerationRepository.save(generation);
+		// 생성 타입 리턴
 		return generationType;
 	}
 
-	/**
-	 * 재생성 Gemini 호출 성공 후 호출. 기존 confirmed 가이드를 해제하고 새 버전을 저장한 뒤 COMPLETED로 전환한다.
-	 *
-	 * @return 남은 재생성 횟수 (MANUAL 횟수 기준)
-	 */
 	@Transactional
 	public int completeRegeneration(Long projectGroupId, DevGuideContent content,
 		DevGuideGenerationType generationType) {
@@ -131,6 +119,7 @@ public class DevGuideCommandService {
 			.ifPresent(DevGuide::unconfirm);
 
 		int nextVersionNo = devGuideRepository.findMaxVersionNoByProjectGroupId(projectGroupId) + 1;
+		// 재생성 성공 시 새 버전을 현재 기준 가이드라인으로 자동 확정한다.
 		devGuideRepository.save(DevGuide.create(projectGroup, content, nextVersionNo, generationType, true));
 
 		DevGuideGeneration generation = devGuideGenerationRepository

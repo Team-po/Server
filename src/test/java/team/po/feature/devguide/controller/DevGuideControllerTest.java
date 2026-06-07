@@ -162,6 +162,44 @@ class DevGuideControllerTest {
 			.andExpect(status().isTooManyRequests());
 	}
 
+	// ─── POST /dev-guide/{devGuideId}/confirm ────────────────────────────────
+
+	@Test
+	void confirmDevGuide_returnsOk() throws Exception {
+		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/{devGuideId}/confirm", 1L, 2L))
+			.andExpect(status().isOk())
+			.andExpect(content().string(""));
+
+		verify(devGuideService).confirm(1L, 1L, 2L);
+	}
+
+	@Test
+	void confirmDevGuide_returnsConflict_whenGuideIsGenerating() throws Exception {
+		doThrow(new ApplicationException(ErrorCode.DEV_GUIDE_GENERATING))
+			.when(devGuideService).confirm(1L, 1L, 2L);
+
+		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/{devGuideId}/confirm", 1L, 2L))
+			.andExpect(status().isConflict());
+	}
+
+	@Test
+	void confirmDevGuide_returnsForbidden_whenProjectGroupIsFinished() throws Exception {
+		doThrow(new ApplicationException(ErrorCode.DEV_GUIDE_WRITE_NOT_ALLOWED))
+			.when(devGuideService).confirm(1L, 1L, 2L);
+
+		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/{devGuideId}/confirm", 1L, 2L))
+			.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void confirmDevGuide_returnsNotFound_whenDevGuideDoesNotExist() throws Exception {
+		doThrow(new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND))
+			.when(devGuideService).confirm(1L, 1L, 2L);
+
+		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/{devGuideId}/confirm", 1L, 2L))
+			.andExpect(status().isNotFound());
+	}
+
 	// ─── fixtures ────────────────────────────────────────────────────────────
 
 	private DevGuideContent sampleContent(String overview) {

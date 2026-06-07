@@ -61,8 +61,8 @@ class DevGuideServiceTest {
 	// ─── generate ────────────────────────────────────────────────────────────
 
 	@Test
-	void generate_skips_whenConfirmedGuideAlreadyExists() {
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(true);
+	void generate_skips_whenDevGuideAlreadyExists() {
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(true);
 
 		devGuideService.generate(1L);
 
@@ -72,7 +72,7 @@ class DevGuideServiceTest {
 
 	@Test
 	void generate_skips_whenAlreadyGenerating() {
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(false);
 		when(devGuideCommandService.startInitialGeneration(1L)).thenReturn(false);
 
 		devGuideService.generate(1L);
@@ -85,7 +85,7 @@ class DevGuideServiceTest {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideContent content = devGuideContent();
 
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(false);
 		when(devGuideCommandService.startInitialGeneration(1L)).thenReturn(true);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup));
 		when(promptBuilder.build("주제 A", "설명", "MVP")).thenReturn("prompt");
@@ -99,7 +99,7 @@ class DevGuideServiceTest {
 
 	@Test
 	void generate_callsFailGeneration_andRethrows_whenGeminiFails() {
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(false);
 		when(devGuideCommandService.startInitialGeneration(1L)).thenReturn(true);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup()));
 		when(promptBuilder.build(any(), any(), any())).thenReturn("prompt");
@@ -310,6 +310,29 @@ class DevGuideServiceTest {
 			.isEqualTo(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode());
 
 		verify(devGuideRepository, never()).findByProjectGroup_IdAndIsConfirmedTrue(any());
+	}
+
+	// ─── confirm ─────────────────────────────────────────────────────────────
+
+	@Test
+	void confirm_delegatesToCommandService_whenUserIsMember() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+
+		devGuideService.confirm(1L, 10L, 2L);
+
+		verify(devGuideCommandService).confirm(1L, 2L);
+	}
+
+	@Test
+	void confirm_throwsAccessDenied_whenUserIsNotMember() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(false);
+
+		assertThatThrownBy(() -> devGuideService.confirm(1L, 10L, 2L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode());
+
+		verify(devGuideCommandService, never()).confirm(any(), any());
 	}
 
 	// ─── fixtures ────────────────────────────────────────────────────────────

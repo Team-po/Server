@@ -87,8 +87,8 @@ class DevGuideCommandServiceTest {
 	// ─── create ──────────────────────────────────────────────────────────────
 
 	@Test
-	void create_throwsAlreadyExists_whenConfirmedDevGuideExists() {
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(true);
+	void create_throwsAlreadyExists_whenDevGuideExists() {
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(true);
 
 		assertThatThrownBy(() -> devGuideCommandService.create(1L, devGuideContent()))
 			.isInstanceOf(ApplicationException.class)
@@ -103,7 +103,7 @@ class DevGuideCommandServiceTest {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
 
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(false);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
 
@@ -225,7 +225,7 @@ class DevGuideCommandServiceTest {
 	// ─── completeRegeneration ────────────────────────────────────────────────
 
 	@Test
-	void completeRegeneration_unconfirmsOldAndSavesNewVersion() {
+	void completeRegeneration_unconfirmsOldAndSavesNewVersionAsConfirmed() {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideContent content = devGuideContent();
 		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
@@ -250,6 +250,93 @@ class DevGuideCommandServiceTest {
 				&& g.getGenerationType() == DevGuideGenerationType.MANUAL
 				&& g.isConfirmed()
 		));
+	}
+
+	// ─── confirm ─────────────────────────────────────────────────────────────
+
+	@Test
+	void confirm_unconfirmsExistingGuideAndConfirmsTarget() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
+		generation.complete();
+		DevGuide existingConfirmed = DevGuide.create(projectGroup, devGuideContent(), 1,
+			DevGuideGenerationType.INITIAL, true);
+		DevGuide target = DevGuide.create(projectGroup, devGuideContent(), 2,
+			DevGuideGenerationType.MANUAL, false);
+
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+		when(devGuideRepository.findByIdAndProjectGroup_IdAndDeletedAtIsNull(2L, 1L))
+			.thenReturn(Optional.of(target));
+		when(devGuideRepository.findAllByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L))
+			.thenReturn(List.of(existingConfirmed));
+
+		devGuideCommandService.confirm(1L, 2L);
+
+		assertThat(existingConfirmed.isConfirmed()).isFalse();
+		assertThat(target.isConfirmed()).isTrue();
+	}
+
+	@Test
+	void confirm_throwsNotFound_whenProjectGroupDoesNotExist() {
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> devGuideCommandService.confirm(1L, 2L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_NOT_FOUND.getCode());
+
+		verify(devGuideRepository, never()).findByIdAndProjectGroup_IdAndDeletedAtIsNull(any(), any());
+	}
+
+	@Test
+	void confirm_throwsWriteNotAllowed_whenProjectGroupIsFinished() {
+		ProjectGroup projectGroup = projectGroup();
+		projectGroup.finish();
+
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
+
+		assertThatThrownBy(() -> devGuideCommandService.confirm(1L, 2L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.DEV_GUIDE_WRITE_NOT_ALLOWED.getCode());
+
+		verify(devGuideRepository, never()).findByIdAndProjectGroup_IdAndDeletedAtIsNull(any(), any());
+	}
+
+	@Test
+	void confirm_throwsGenerating_whenDevGuideGenerationIsInProgress() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
+
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+
+		assertThatThrownBy(() -> devGuideCommandService.confirm(1L, 2L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.DEV_GUIDE_GENERATING.getCode());
+
+		verify(devGuideRepository, never()).findByIdAndProjectGroup_IdAndDeletedAtIsNull(any(), any());
+	}
+
+	@Test
+	void confirm_throwsNotFound_whenTargetDevGuideDoesNotExistInProjectGroup() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
+		generation.complete();
+
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+		when(devGuideRepository.findByIdAndProjectGroup_IdAndDeletedAtIsNull(2L, 1L))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> devGuideCommandService.confirm(1L, 2L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.DEV_GUIDE_NOT_FOUND.getCode());
+
+		verify(devGuideRepository, never()).findAllByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(any());
 	}
 
 	// ─── failGeneration ──────────────────────────────────────────────────────

@@ -36,7 +36,8 @@ public class DevGuideService {
 
 	// 이벤트 핸들러에서 호출 — 트랜잭션 없이 Gemini API 호출
 	public void generate(Long projectGroupId) {
-		if (devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(projectGroupId)) {
+		// 최초 생성 시 이미 가이드라인이 존재하는지 확인
+		if (devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(projectGroupId)) {
 			return;
 		}
 
