@@ -15,6 +15,8 @@ import team.po.feature.devguide.domain.DevGuideStatus;
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.dto.DevGuideQueryResponse;
 import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
+import team.po.feature.devguide.dto.DevGuideVersionListResponse;
+import team.po.feature.devguide.dto.DevGuideVersionResponse;
 import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.prompt.DevGuideSchema;
 import team.po.feature.devguide.repository.DevGuideGenerationRepository;
@@ -129,6 +131,25 @@ public class DevGuideService {
 		validateProjectGroupMember(projectGroupId, userId);
 		// 버전 확정은 트랜잭션 안에서 수행
 		devGuideCommandService.confirm(projectGroupId, devGuideId);
+	}
+
+	public DevGuideVersionListResponse getVersions(Long projectGroupId, Long userId) {
+		// 프로젝트 그룹 소속 검증
+		validateProjectGroupMember(projectGroupId, userId);
+
+		// 가이드라인 생성 중에는 버전 목록 조회 불가
+		devGuideGenerationRepository.findByProjectGroup_Id(projectGroupId)
+			.filter(DevGuideGeneration::isGenerating)
+			.ifPresent(generation -> {
+				throw new ApplicationException(ErrorCode.DEV_GUIDE_GENERATING);
+			});
+
+		return new DevGuideVersionListResponse(
+			devGuideRepository.findAllByProjectGroup_IdAndDeletedAtIsNullOrderByVersionNoDesc(projectGroupId)
+				.stream()
+				.map(DevGuideVersionResponse::from)
+				.toList()
+		);
 	}
 
 	private void validateProjectGroupMember(Long projectGroupId, Long userId) {

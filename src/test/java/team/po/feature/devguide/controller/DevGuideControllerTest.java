@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +27,8 @@ import team.po.feature.devguide.domain.DevGuideStatus;
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.dto.DevGuideQueryResponse;
 import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
+import team.po.feature.devguide.dto.DevGuideVersionListResponse;
+import team.po.feature.devguide.dto.DevGuideVersionResponse;
 import team.po.feature.devguide.service.DevGuideService;
 import team.po.feature.user.domain.Users;
 
@@ -111,6 +114,40 @@ class DevGuideControllerTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.generationStatus").value("FAILED"))
 			.andExpect(jsonPath("$.content").doesNotExist());
+	}
+
+	// ─── GET /dev-guide/versions ─────────────────────────────────────────────
+
+	@Test
+	void getDevGuideVersions_returnsVersionList() throws Exception {
+		DevGuideVersionListResponse response = new DevGuideVersionListResponse(List.of(
+			new DevGuideVersionResponse(2L, 2, DevGuideGenerationType.MANUAL, true,
+				LocalDateTime.of(2026, 6, 7, 12, 30)),
+			new DevGuideVersionResponse(1L, 1, DevGuideGenerationType.INITIAL, false,
+				LocalDateTime.of(2026, 6, 7, 12, 0))
+		));
+
+		when(devGuideService.getVersions(1L, 1L)).thenReturn(response);
+
+		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide/versions", 1L))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.versions[0].devGuideId").value(2))
+			.andExpect(jsonPath("$.versions[0].versionNo").value(2))
+			.andExpect(jsonPath("$.versions[0].generationType").value("MANUAL"))
+			.andExpect(jsonPath("$.versions[0].confirmed").value(true))
+			.andExpect(jsonPath("$.versions[1].devGuideId").value(1))
+			.andExpect(jsonPath("$.versions[1].versionNo").value(1))
+			.andExpect(jsonPath("$.versions[1].generationType").value("INITIAL"))
+			.andExpect(jsonPath("$.versions[1].confirmed").value(false));
+	}
+
+	@Test
+	void getDevGuideVersions_returnsConflict_whenGuideIsGenerating() throws Exception {
+		when(devGuideService.getVersions(1L, 1L))
+			.thenThrow(new ApplicationException(ErrorCode.DEV_GUIDE_GENERATING));
+
+		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide/versions", 1L))
+			.andExpect(status().isConflict());
 	}
 
 	// ─── POST /dev-guide/regenerate ───────────────────────────────────────────

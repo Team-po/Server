@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
@@ -23,6 +25,7 @@ import team.po.feature.devguide.domain.DevGuideStatus;
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.dto.DevGuideQueryResponse;
 import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
+import team.po.feature.devguide.dto.DevGuideVersionListResponse;
 import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.repository.DevGuideGenerationRepository;
 import team.po.feature.devguide.repository.DevGuideRepository;
@@ -312,6 +315,75 @@ class DevGuideServiceTest {
 		verify(devGuideRepository, never()).findByProjectGroup_IdAndIsConfirmedTrue(any());
 	}
 
+	// ─── getVersions ─────────────────────────────────────────────────────────
+
+	@Test
+	void getVersions_returnsVersionList_whenGenerationIsNotInProgress() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
+		generation.complete();
+		DevGuide version2 = devGuide(projectGroup, 2L, 2, DevGuideGenerationType.MANUAL, true,
+			LocalDateTime.of(2026, 6, 7, 12, 30));
+		DevGuide version1 = devGuide(projectGroup, 1L, 1, DevGuideGenerationType.INITIAL, false,
+			LocalDateTime.of(2026, 6, 7, 12, 0));
+
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+		when(devGuideRepository.findAllByProjectGroup_IdAndDeletedAtIsNullOrderByVersionNoDesc(1L))
+			.thenReturn(List.of(version2, version1));
+
+		DevGuideVersionListResponse result = devGuideService.getVersions(1L, 10L);
+
+		assertThat(result.versions()).hasSize(2);
+		assertThat(result.versions().get(0).devGuideId()).isEqualTo(2L);
+		assertThat(result.versions().get(0).versionNo()).isEqualTo(2);
+		assertThat(result.versions().get(0).generationType()).isEqualTo(DevGuideGenerationType.MANUAL);
+		assertThat(result.versions().get(0).confirmed()).isTrue();
+		assertThat(result.versions().get(1).devGuideId()).isEqualTo(1L);
+		assertThat(result.versions().get(1).versionNo()).isEqualTo(1);
+		assertThat(result.versions().get(1).confirmed()).isFalse();
+	}
+
+	@Test
+	void getVersions_returnsEmptyList_whenNoDevGuideExists() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.empty());
+		when(devGuideRepository.findAllByProjectGroup_IdAndDeletedAtIsNullOrderByVersionNoDesc(1L))
+			.thenReturn(List.of());
+
+		DevGuideVersionListResponse result = devGuideService.getVersions(1L, 10L);
+
+		assertThat(result.versions()).isEmpty();
+	}
+
+	@Test
+	void getVersions_throwsGenerating_whenDevGuideGenerationIsInProgress() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
+
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+
+		assertThatThrownBy(() -> devGuideService.getVersions(1L, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.DEV_GUIDE_GENERATING.getCode());
+
+		verify(devGuideRepository, never()).findAllByProjectGroup_IdAndDeletedAtIsNullOrderByVersionNoDesc(any());
+	}
+
+	@Test
+	void getVersions_throwsAccessDenied_whenUserIsNotMember() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(false);
+
+		assertThatThrownBy(() -> devGuideService.getVersions(1L, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode());
+
+		verify(devGuideGenerationRepository, never()).findByProjectGroup_Id(any());
+	}
+
 	// ─── confirm ─────────────────────────────────────────────────────────────
 
 	@Test
@@ -345,6 +417,14 @@ class DevGuideServiceTest {
 			.projectMvp("MVP")
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
+	}
+
+	private DevGuide devGuide(ProjectGroup projectGroup, Long id, int versionNo,
+		DevGuideGenerationType generationType, boolean confirmed, LocalDateTime createdAt) {
+		DevGuide devGuide = DevGuide.create(projectGroup, devGuideContent(), versionNo, generationType, confirmed);
+		ReflectionTestUtils.setField(devGuide, "id", id);
+		ReflectionTestUtils.setField(devGuide, "createdAt", createdAt);
+		return devGuide;
 	}
 
 	private DevGuideContent devGuideContent() {

@@ -17,6 +17,7 @@ import team.po.common.auth.LoginUser;
 import team.po.feature.devguide.dto.DevGuideQueryResponse;
 import team.po.feature.devguide.dto.DevGuideRegenerateRequest;
 import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
+import team.po.feature.devguide.dto.DevGuideVersionListResponse;
 import team.po.feature.devguide.service.DevGuideService;
 import team.po.feature.user.domain.Users;
 
@@ -34,6 +35,17 @@ public class DevGuideController {
 		@PathVariable Long projectGroupId
 	) {
 		DevGuideQueryResponse response = devGuideService.getDevGuide(projectGroupId, user.getId());
+
+		return ResponseEntity.ok(response);
+	}
+
+	@Operation(summary = "팀 스페이스 개발 가이드라인 버전 목록 조회 API")
+	@GetMapping("/{projectGroupId}/dev-guide/versions")
+	public ResponseEntity<DevGuideVersionListResponse> getDevGuideVersions(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId
+	) {
+		DevGuideVersionListResponse response = devGuideService.getVersions(projectGroupId, user.getId());
 
 		return ResponseEntity.ok(response);
 	}

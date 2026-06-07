@@ -21,6 +21,8 @@ public interface DevGuideRepository extends JpaRepository<DevGuide, Long> {
 
 	List<DevGuide> findAllByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(Long projectGroupId);
 
+	List<DevGuide> findAllByProjectGroup_IdAndDeletedAtIsNullOrderByVersionNoDesc(Long projectGroupId);
+
 	@Query("SELECT COALESCE(MAX(d.versionNo), 0) FROM DevGuide d WHERE d.projectGroup.id = :projectGroupId")
 	int findMaxVersionNoByProjectGroupId(@Param("projectGroupId") Long projectGroupId);
 
