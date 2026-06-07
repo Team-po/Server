@@ -63,6 +63,7 @@ public class DevGuideService {
 
 			devGuideCommandService.create(projectGroupId, content);
 		} catch (ApplicationException e) {
+			devGuideCommandService.failGeneration(projectGroupId);
 			throw e;
 		} catch (Exception e) {
 			devGuideCommandService.failGeneration(projectGroupId);
@@ -94,6 +95,7 @@ public class DevGuideService {
 			int remainingCount = devGuideCommandService.completeRegeneration(projectGroupId, content, generationType);
 			return new DevGuideRegenerateResponse(content, generationType, remainingCount);
 		} catch (ApplicationException e) {
+			devGuideCommandService.failGeneration(projectGroupId);
 			throw e;
 		} catch (Exception e) {
 			devGuideCommandService.failGeneration(projectGroupId);

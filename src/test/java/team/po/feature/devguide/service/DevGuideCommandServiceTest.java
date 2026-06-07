@@ -212,7 +212,6 @@ class DevGuideCommandServiceTest {
 
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(true);
 		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
 			.thenReturn(3); // default max is 3
 
@@ -220,6 +219,30 @@ class DevGuideCommandServiceTest {
 			.isInstanceOf(ApplicationException.class)
 			.extracting("code")
 			.isEqualTo(ErrorCode.DEV_GUIDE_REGENERATION_LIMIT_EXCEEDED.getCode());
+
+		verify(devGuideRepository, never()).existsByProjectGroup_IdAndIsConfirmedTrue(any());
+		verify(devGuideGenerationRepository, never()).save(any());
+	}
+
+	@Test
+	void startRegeneration_throwsLimitExceeded_beforeRecovery_whenStatusIsFailed() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
+		generation.fail();
+
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
+			.thenReturn(3); // default max is 3
+
+		assertThatThrownBy(() -> devGuideCommandService.startRegeneration(1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.DEV_GUIDE_REGENERATION_LIMIT_EXCEEDED.getCode());
+
+		assertThat(generation.getStatus()).isEqualTo(DevGuideStatus.FAILED);
+		verify(devGuideRepository, never()).existsByProjectGroup_IdAndIsConfirmedTrue(any());
+		verify(devGuideGenerationRepository, never()).save(any());
 	}
 
 	// ─── completeRegeneration ────────────────────────────────────────────────

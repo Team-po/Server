@@ -115,6 +115,23 @@ class DevGuideServiceTest {
 		verify(devGuideCommandService).failGeneration(1L);
 	}
 
+	@Test
+	void generate_callsFailGeneration_andRethrows_whenGeminiThrowsApplicationException() {
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(false);
+		when(devGuideCommandService.startInitialGeneration(1L)).thenReturn(true);
+		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup()));
+		when(promptBuilder.build(any(), any(), any())).thenReturn("prompt");
+		when(geminiClient.generateDevGuide(any(), any()))
+			.thenThrow(new ApplicationException(ErrorCode.GEMINI_API_ERROR));
+
+		assertThatThrownBy(() -> devGuideService.generate(1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GEMINI_API_ERROR.getCode());
+
+		verify(devGuideCommandService).failGeneration(1L);
+	}
+
 	// ─── regenerate ──────────────────────────────────────────────────────────
 
 	@Test
@@ -147,11 +164,28 @@ class DevGuideServiceTest {
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup()));
 		when(devGuideCommandService.startRegeneration(1L)).thenReturn(DevGuideGenerationType.MANUAL);
-		when(promptBuilder.build(any(), any(), any())).thenReturn("prompt");
+		when(promptBuilder.build(any(), any(), any(), any())).thenReturn("prompt");
 		when(geminiClient.generateDevGuide(any(), any())).thenThrow(new RuntimeException("Gemini error"));
 
 		assertThatThrownBy(() -> devGuideService.regenerate(1L, 10L, null))
 			.isInstanceOf(RuntimeException.class);
+
+		verify(devGuideCommandService).failGeneration(1L);
+	}
+
+	@Test
+	void regenerate_callsFailGeneration_andRethrows_whenGeminiThrowsApplicationException() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup()));
+		when(devGuideCommandService.startRegeneration(1L)).thenReturn(DevGuideGenerationType.MANUAL);
+		when(promptBuilder.build(any(), any(), any(), any())).thenReturn("prompt");
+		when(geminiClient.generateDevGuide(any(), any()))
+			.thenThrow(new ApplicationException(ErrorCode.GEMINI_API_ERROR));
+
+		assertThatThrownBy(() -> devGuideService.regenerate(1L, 10L, null))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GEMINI_API_ERROR.getCode());
 
 		verify(devGuideCommandService).failGeneration(1L);
 	}
