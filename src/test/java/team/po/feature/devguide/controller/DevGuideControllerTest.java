@@ -201,16 +201,16 @@ class DevGuideControllerTest {
 	}
 
 	@Test
-	void regenerateDevGuide_returnsRecoveryType_whenRetryingAfterFailure() throws Exception {
-		DevGuideContent content = sampleContent("복구된 개요입니다.");
+	void regenerateDevGuide_returnsInitialType_whenRetryingInitialGenerationFailure() throws Exception {
+		DevGuideContent content = sampleContent("초기 생성 재시도 개요입니다.");
 		DevGuideRegenerateResponse response =
-			new DevGuideRegenerateResponse(content, DevGuideGenerationType.RECOVERY, 3);
+			new DevGuideRegenerateResponse(content, DevGuideGenerationType.INITIAL, 3);
 
 		when(devGuideService.regenerate(1L, 1L, null)).thenReturn(response);
 
 		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.generationType").value("RECOVERY"))
+			.andExpect(jsonPath("$.generationType").value("INITIAL"))
 			.andExpect(jsonPath("$.remainingRegenerationCount").value(3));
 	}
 

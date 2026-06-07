@@ -88,20 +88,18 @@ public class DevGuideCommandService {
 
 		DevGuideGeneration generation = existing.orElseGet(() -> DevGuideGeneration.create(projectGroup));
 
-		int manualCount = devGuideRepository.countByProjectGroup_IdAndGenerationType(
-			projectGroupId, DevGuideGenerationType.MANUAL);
-		if (manualCount >= generation.getMaxRegenerationCount()) {
-			throw new ApplicationException(ErrorCode.DEV_GUIDE_REGENERATION_LIMIT_EXCEEDED);
-		}
-
 		boolean hasConfirmed = devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(projectGroupId);
 		DevGuideGenerationType generationType;
 
-		// FAILED 또는 isConfirmed 가이드라인이 없으면 RECOVERY, 성공 횟수는 completeRegeneration에서 MANUAL만 차감
-		if (generation.getStatus() == DevGuideStatus.FAILED || !hasConfirmed) {
-			generationType = DevGuideGenerationType.RECOVERY;
-		} else { // COMPLETED 상태이면서 isConfirmed 가이드라인이 있으면 MANUAL, 재생성 횟수 차감
+		if (hasConfirmed) {
+			if (countRegenerationUsage(projectGroupId) >= generation.getMaxRegenerationCount()) {
+				throw new ApplicationException(ErrorCode.DEV_GUIDE_REGENERATION_LIMIT_EXCEEDED);
+			}
 			generationType = DevGuideGenerationType.MANUAL;
+		} else if (devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(projectGroupId)) {
+			throw new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND);
+		} else {
+			generationType = DevGuideGenerationType.INITIAL;
 		}
 
 		generation.startGenerating();
@@ -128,9 +126,11 @@ public class DevGuideCommandService {
 			.orElseThrow(() -> new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND));
 		generation.complete();
 
-		int manualCount = devGuideRepository.countByProjectGroup_IdAndGenerationType(
-			projectGroupId, DevGuideGenerationType.MANUAL);
-		return generation.getMaxRegenerationCount() - manualCount;
+		return generation.getMaxRegenerationCount() - countRegenerationUsage(projectGroupId);
+	}
+
+	private int countRegenerationUsage(Long projectGroupId) {
+		return devGuideRepository.countByProjectGroup_IdAndGenerationType(projectGroupId, DevGuideGenerationType.MANUAL);
 	}
 
 	@Transactional

@@ -26,6 +26,6 @@ public interface DevGuideRepository extends JpaRepository<DevGuide, Long> {
 	@Query("SELECT COALESCE(MAX(d.versionNo), 0) FROM DevGuide d WHERE d.projectGroup.id = :projectGroupId")
 	int findMaxVersionNoByProjectGroupId(@Param("projectGroupId") Long projectGroupId);
 
-	// 재생성 횟수 제한 체크용 (RECOVERY는 횟수 미차감, MANUAL만 차감)
+	// 재생성 횟수 제한 체크용 (최초 생성 INITIAL은 제외하고 MANUAL만 차감)
 	int countByProjectGroup_IdAndGenerationType(Long projectGroupId, DevGuideGenerationType generationType);
 }

@@ -14,11 +14,11 @@ public record DevGuideHistoryResponse(
 ) {
 	public static DevGuideHistoryResponse from(DevGuide devGuide) {
 		return new DevGuideHistoryResponse(
-			devGuide.getId(),
-			devGuide.getVersionNo(),
-			devGuide.getGenerationType(),
-			devGuide.isConfirmed(),
-			devGuide.getCreatedAt()
-		);
+				devGuide.getId(),
+				devGuide.getVersionNo(),
+				devGuide.getGenerationType(),
+				devGuide.isConfirmed(),
+				devGuide.getCreatedAt()
+			);
 	}
 }

@@ -144,36 +144,40 @@ class DevGuideCommandServiceTest {
 	}
 
 	@Test
-	void startRegeneration_returnsRecovery_whenNoGenerationRecordExists() {
+	void startRegeneration_returnsInitial_whenNoGenerationRecordAndNoGuideExists() {
 		ProjectGroup projectGroup = projectGroup();
 
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.empty());
 		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(false);
 
 		DevGuideGenerationType result = devGuideCommandService.startRegeneration(1L);
 
-		assertThat(result).isEqualTo(DevGuideGenerationType.RECOVERY);
+		assertThat(result).isEqualTo(DevGuideGenerationType.INITIAL);
 		verify(devGuideGenerationRepository).save(argThat(g -> g.getStatus() == DevGuideStatus.GENERATING));
 	}
 
 	@Test
-	void startRegeneration_returnsRecovery_whenStatusIsFailed() {
+	void startRegeneration_returnsManual_whenStatusIsFailedAndConfirmedGuideExists() {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
 		generation.fail();
 
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(true);
+		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
+			.thenReturn(0);
 
 		DevGuideGenerationType result = devGuideCommandService.startRegeneration(1L);
 
-		assertThat(result).isEqualTo(DevGuideGenerationType.RECOVERY);
+		assertThat(result).isEqualTo(DevGuideGenerationType.MANUAL);
 		assertThat(generation.getStatus()).isEqualTo(DevGuideStatus.GENERATING);
 	}
 
 	@Test
-	void startRegeneration_returnsRecovery_whenNoConfirmedGuideExists() {
+	void startRegeneration_throwsNotFound_whenOnlyUnconfirmedGuideExists() {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
 		generation.complete();
@@ -181,10 +185,15 @@ class DevGuideCommandServiceTest {
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
 		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(true);
 
-		DevGuideGenerationType result = devGuideCommandService.startRegeneration(1L);
+		assertThatThrownBy(() -> devGuideCommandService.startRegeneration(1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.DEV_GUIDE_NOT_FOUND.getCode());
 
-		assertThat(result).isEqualTo(DevGuideGenerationType.RECOVERY);
+		assertThat(generation.getStatus()).isEqualTo(DevGuideStatus.COMPLETED);
+		verify(devGuideGenerationRepository, never()).save(any());
 	}
 
 	@Test
@@ -212,6 +221,7 @@ class DevGuideCommandServiceTest {
 
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(true);
 		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
 			.thenReturn(3); // default max is 3
 
@@ -220,18 +230,18 @@ class DevGuideCommandServiceTest {
 			.extracting("code")
 			.isEqualTo(ErrorCode.DEV_GUIDE_REGENERATION_LIMIT_EXCEEDED.getCode());
 
-		verify(devGuideRepository, never()).existsByProjectGroup_IdAndIsConfirmedTrue(any());
 		verify(devGuideGenerationRepository, never()).save(any());
 	}
 
 	@Test
-	void startRegeneration_throwsLimitExceeded_beforeRecovery_whenStatusIsFailed() {
+	void startRegeneration_throwsLimitExceeded_whenStatusIsFailedAndConfirmedGuideExists() {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
 		generation.fail();
 
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(true);
 		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
 			.thenReturn(3); // default max is 3
 
@@ -241,7 +251,6 @@ class DevGuideCommandServiceTest {
 			.isEqualTo(ErrorCode.DEV_GUIDE_REGENERATION_LIMIT_EXCEEDED.getCode());
 
 		assertThat(generation.getStatus()).isEqualTo(DevGuideStatus.FAILED);
-		verify(devGuideRepository, never()).existsByProjectGroup_IdAndIsConfirmedTrue(any());
 		verify(devGuideGenerationRepository, never()).save(any());
 	}
 

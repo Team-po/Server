@@ -86,6 +86,9 @@ public class DevGuideService {
 				projectGroup.getProjectTitle(),
 				projectGroup.getProjectDescription(),
 				projectGroup.getProjectMvp(),
+				devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(projectGroupId)
+					.map(DevGuide::toContent)
+					.orElse(null),
 				feedback
 			);
 
@@ -120,11 +123,11 @@ public class DevGuideService {
 
 		DevGuideContent content = devGuide.map(DevGuide::toContent).orElse(null);
 
-		Integer remainingCount = generation
-			.map(g -> g.getMaxRegenerationCount()
-				- devGuideRepository.countByProjectGroup_IdAndGenerationType(
-				projectGroupId, DevGuideGenerationType.MANUAL))
-			.orElse(null);
+			Integer remainingCount = generation
+				.map(g -> g.getMaxRegenerationCount()
+						- devGuideRepository.countByProjectGroup_IdAndGenerationType(
+						projectGroupId, DevGuideGenerationType.MANUAL))
+				.orElse(null);
 
 		return new DevGuideQueryResponse(content, status, remainingCount);
 	}

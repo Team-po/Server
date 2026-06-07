@@ -17,12 +17,12 @@ public record DevGuideHistoryContentResponse(
 ) {
 	public static DevGuideHistoryContentResponse from(DevGuide devGuide) {
 		return new DevGuideHistoryContentResponse(
-			devGuide.getId(),
-			devGuide.getVersionNo(),
-			devGuide.getGenerationType(),
-			devGuide.isConfirmed(),
-			devGuide.getCreatedAt(),
-			devGuide.toContent()
-		);
+				devGuide.getId(),
+				devGuide.getVersionNo(),
+				devGuide.getGenerationType(),
+				devGuide.isConfirmed(),
+				devGuide.getCreatedAt(),
+				devGuide.toContent()
+			);
 	}
 }

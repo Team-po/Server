@@ -164,7 +164,8 @@ class DevGuideServiceTest {
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup()));
 		when(devGuideCommandService.startRegeneration(1L)).thenReturn(DevGuideGenerationType.MANUAL);
-		when(promptBuilder.build(any(), any(), any(), any())).thenReturn("prompt");
+		when(promptBuilder.build(any(), any(), any(), nullable(DevGuideContent.class), nullable(String.class)))
+			.thenReturn("prompt");
 		when(geminiClient.generateDevGuide(any(), any())).thenThrow(new RuntimeException("Gemini error"));
 
 		assertThatThrownBy(() -> devGuideService.regenerate(1L, 10L, null))
@@ -178,7 +179,8 @@ class DevGuideServiceTest {
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup()));
 		when(devGuideCommandService.startRegeneration(1L)).thenReturn(DevGuideGenerationType.MANUAL);
-		when(promptBuilder.build(any(), any(), any(), any())).thenReturn("prompt");
+		when(promptBuilder.build(any(), any(), any(), nullable(DevGuideContent.class), nullable(String.class)))
+			.thenReturn("prompt");
 		when(geminiClient.generateDevGuide(any(), any()))
 			.thenThrow(new ApplicationException(ErrorCode.GEMINI_API_ERROR));
 
@@ -193,12 +195,21 @@ class DevGuideServiceTest {
 	@Test
 	void regenerate_returnsResponse_withManualType() {
 		ProjectGroup projectGroup = projectGroup();
+		DevGuideContent currentContent = devGuideContent();
 		DevGuideContent content = devGuideContent();
+		DevGuide currentGuide = DevGuide.create(projectGroup, currentContent, 1, DevGuideGenerationType.INITIAL, true);
 
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideCommandService.startRegeneration(1L)).thenReturn(DevGuideGenerationType.MANUAL);
-		when(promptBuilder.build(eq("주제 A"), eq("설명"), eq("MVP"), any())).thenReturn("prompt");
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.of(currentGuide));
+		when(promptBuilder.build(
+			eq("주제 A"),
+			eq("설명"),
+			eq("MVP"),
+			eq(currentContent),
+			nullable(String.class)
+		)).thenReturn("prompt");
 		when(geminiClient.generateDevGuide(eq("prompt"), any())).thenReturn(content);
 		when(devGuideCommandService.completeRegeneration(1L, content, DevGuideGenerationType.MANUAL)).thenReturn(2);
 
@@ -211,20 +222,27 @@ class DevGuideServiceTest {
 	}
 
 	@Test
-	void regenerate_returnsResponse_withRecoveryType() {
+	void regenerate_returnsResponse_withInitialType_whenRetryingInitialGenerationWithoutConfirmedGuide() {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideContent content = devGuideContent();
 
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup));
-		when(devGuideCommandService.startRegeneration(1L)).thenReturn(DevGuideGenerationType.RECOVERY);
-		when(promptBuilder.build(eq("주제 A"), eq("설명"), eq("MVP"), any())).thenReturn("prompt");
+		when(devGuideCommandService.startRegeneration(1L)).thenReturn(DevGuideGenerationType.INITIAL);
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.empty());
+		when(promptBuilder.build(
+			eq("주제 A"),
+			eq("설명"),
+			eq("MVP"),
+			nullable(DevGuideContent.class),
+			nullable(String.class)
+		)).thenReturn("prompt");
 		when(geminiClient.generateDevGuide(eq("prompt"), any())).thenReturn(content);
-		when(devGuideCommandService.completeRegeneration(1L, content, DevGuideGenerationType.RECOVERY)).thenReturn(3);
+		when(devGuideCommandService.completeRegeneration(1L, content, DevGuideGenerationType.INITIAL)).thenReturn(3);
 
 		DevGuideRegenerateResponse result = devGuideService.regenerate(1L, 10L, null);
 
-		assertThat(result.generationType()).isEqualTo(DevGuideGenerationType.RECOVERY);
+		assertThat(result.generationType()).isEqualTo(DevGuideGenerationType.INITIAL);
 		assertThat(result.remainingRegenerationCount()).isEqualTo(3);
 	}
 
