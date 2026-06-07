@@ -11,13 +11,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import lombok.RequiredArgsConstructor;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import team.po.common.auth.LoginUser;
 import team.po.feature.devguide.dto.DevGuideQueryResponse;
 import team.po.feature.devguide.dto.DevGuideRegenerateRequest;
 import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
-import team.po.feature.devguide.dto.DevGuideVersionListResponse;
+import team.po.feature.devguide.dto.DevGuideHistoryContentResponse;
+import team.po.feature.devguide.dto.DevGuideHistoryListResponse;
 import team.po.feature.devguide.service.DevGuideService;
 import team.po.feature.user.domain.Users;
 
@@ -39,13 +40,25 @@ public class DevGuideController {
 		return ResponseEntity.ok(response);
 	}
 
-	@Operation(summary = "팀 스페이스 개발 가이드라인 버전 목록 조회 API")
-	@GetMapping("/{projectGroupId}/dev-guide/versions")
-	public ResponseEntity<DevGuideVersionListResponse> getDevGuideVersions(
+	@Operation(summary = "팀 스페이스 개발 가이드라인 히스토리 목록 조회 API")
+	@GetMapping("/{projectGroupId}/dev-guide/history")
+	public ResponseEntity<DevGuideHistoryListResponse> getDevGuideHistories(
 		@Parameter(hidden = true) @LoginUser Users user,
 		@PathVariable Long projectGroupId
 	) {
-		DevGuideVersionListResponse response = devGuideService.getVersions(projectGroupId, user.getId());
+		DevGuideHistoryListResponse response = devGuideService.getHistories(projectGroupId, user.getId());
+
+		return ResponseEntity.ok(response);
+	}
+
+	@Operation(summary = "팀 스페이스 개발 가이드라인 히스토리 본문 조회 API")
+	@GetMapping("/{projectGroupId}/dev-guide/history/{devGuideId}")
+	public ResponseEntity<DevGuideHistoryContentResponse> getDevGuideHistoryContent(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId,
+		@PathVariable Long devGuideId
+	) {
+		DevGuideHistoryContentResponse response = devGuideService.getHistoryContent(projectGroupId, user.getId(), devGuideId);
 
 		return ResponseEntity.ok(response);
 	}

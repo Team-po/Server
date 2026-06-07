@@ -13,10 +13,11 @@ import team.po.feature.devguide.domain.DevGuideGeneration;
 import team.po.feature.devguide.domain.DevGuideGenerationType;
 import team.po.feature.devguide.domain.DevGuideStatus;
 import team.po.feature.devguide.dto.DevGuideContent;
+import team.po.feature.devguide.dto.DevGuideHistoryContentResponse;
+import team.po.feature.devguide.dto.DevGuideHistoryListResponse;
+import team.po.feature.devguide.dto.DevGuideHistoryResponse;
 import team.po.feature.devguide.dto.DevGuideQueryResponse;
 import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
-import team.po.feature.devguide.dto.DevGuideVersionListResponse;
-import team.po.feature.devguide.dto.DevGuideVersionResponse;
 import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.prompt.DevGuideSchema;
 import team.po.feature.devguide.repository.DevGuideGenerationRepository;
@@ -133,7 +134,7 @@ public class DevGuideService {
 		devGuideCommandService.confirm(projectGroupId, devGuideId);
 	}
 
-	public DevGuideVersionListResponse getVersions(Long projectGroupId, Long userId) {
+	public DevGuideHistoryListResponse getHistories(Long projectGroupId, Long userId) {
 		// 프로젝트 그룹 소속 검증
 		validateProjectGroupMember(projectGroupId, userId);
 
@@ -144,12 +145,24 @@ public class DevGuideService {
 				throw new ApplicationException(ErrorCode.DEV_GUIDE_GENERATING);
 			});
 
-		return new DevGuideVersionListResponse(
+		return new DevGuideHistoryListResponse(
 			devGuideRepository.findAllByProjectGroup_IdAndDeletedAtIsNullOrderByVersionNoDesc(projectGroupId)
 				.stream()
-				.map(DevGuideVersionResponse::from)
+				.map(DevGuideHistoryResponse::from)
 				.toList()
 		);
+	}
+
+	public DevGuideHistoryContentResponse getHistoryContent(Long projectGroupId, Long userId, Long devGuideId) {
+		// 프로젝트 그룹 소속 검증
+		validateProjectGroupMember(projectGroupId, userId);
+
+		// 개발 가이드라인 존재 여부
+		DevGuide devGuide = devGuideRepository.findByIdAndProjectGroup_IdAndDeletedAtIsNull(devGuideId, projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND));
+
+		// 해당 가이드라인 내용 리턴
+		return DevGuideHistoryContentResponse.from(devGuide);
 	}
 
 	private void validateProjectGroupMember(Long projectGroupId, Long userId) {
