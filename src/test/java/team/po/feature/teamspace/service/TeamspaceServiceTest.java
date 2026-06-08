@@ -32,8 +32,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import team.po.common.ai.client.GeminiClient;
 import team.po.common.redis.RedisService;
 import team.po.config.GithubAppProperties;
@@ -153,7 +151,6 @@ class TeamspaceServiceTest {
 			githubPullRequestContributionRepository,
 			geminiClient,
 			githubWeeklySummaryPromptBuilder,
-			new ObjectMapper(),
 			weeklyGithubSummaryRepository
 		);
 	}

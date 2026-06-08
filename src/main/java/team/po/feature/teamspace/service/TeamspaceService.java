@@ -90,8 +90,8 @@ public class TeamspaceService {
 	private final GithubPullRequestContributionRepository githubPullRequestContributionRepository;
 	private final GeminiClient geminiClient;
 	private final GithubWeeklySummaryPromptBuilder githubWeeklySummaryPromptBuilder;
-	private final ObjectMapper objectMapper;
 	private final WeeklyGithubSummaryRepository weeklyGithubSummaryRepository;
+	private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
 	@Transactional(readOnly = true)
 	public GetGithubInstallationStatusResponse getGithubInstallationStatus(Long projectGroupId, Long requesterUserId) {
