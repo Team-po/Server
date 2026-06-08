@@ -15,7 +15,9 @@ public class GithubWeeklySummaryPromptBuilder {
 	private static final Pattern EMAIL_PATTERN = Pattern.compile(
 		"(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b"
 	);
-	private static final Pattern GITHUB_TOKEN_PATTERN = Pattern.compile("\\bgh[pousr]_[A-Za-z0-9_]{20,}\\b");
+	private static final Pattern GITHUB_TOKEN_PATTERN = Pattern.compile(
+		"\\b(?:gh[pousr]|github_pat)_[A-Za-z0-9_]{20,}\\b"
+	);
 	private static final Pattern AWS_ACCESS_KEY_PATTERN = Pattern.compile("\\bAKIA[0-9A-Z]{16}\\b");
 	private static final Pattern BEARER_TOKEN_PATTERN = Pattern.compile("(?i)\\bBearer\\s+[A-Za-z0-9._~+/=-]{12,}");
 	private static final Pattern SECRET_ASSIGNMENT_PATTERN = Pattern.compile(
