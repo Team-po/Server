@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -21,6 +23,7 @@ import team.po.config.GithubAppProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.teamspace.dto.GithubPullRequestInfo;
+import team.po.feature.teamspace.dto.GithubRepositoryInfo;
 import team.po.feature.teamspace.provider.GithubAppJwtProvider;
 import team.po.feature.teamspace.service.GithubAppClient.GithubAppInstallationInfo;
 
@@ -321,6 +324,127 @@ class GithubAppClientTest {
 			assertThat(pullRequestInfo.changedFiles()).isEqualTo(8);
 			assertThat(pullRequestInfo.linkedIssueCount()).isEqualTo(4);
 			assertThat(pullRequestInfo.htmlUrl()).isEqualTo("https://github.com/student-team-org/backend/pull/10");
+		} finally {
+			server.stop(0);
+		}
+	}
+
+	@Test
+	void getWeeklySummaryData_returnsAuthorPullRequestsAndIssuesInPeriod() throws Exception {
+		GithubAppJwtProvider jwtProvider = Mockito.mock(GithubAppJwtProvider.class);
+		when(jwtProvider.generateJwt()).thenReturn("github-app-jwt");
+
+		HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+		server.createContext("/app/installations/12345/access_tokens", exchange -> writeResponse(exchange, 201, """
+			{
+			  "token": "github-installation-token"
+			}
+			"""));
+		server.createContext("/repos/student-team-org/backend/pulls", exchange -> {
+			assertThat(exchange.getRequestHeaders().getFirst("Authorization"))
+				.isEqualTo("Bearer github-installation-token");
+			assertThat(exchange.getRequestURI().getQuery())
+				.contains("state=all", "sort=updated", "direction=desc", "per_page=100", "page=1");
+			writeResponse(exchange, 200, """
+				[
+				  {
+				    "id": 1001,
+				    "number": 10,
+				    "title": "Add weekly summary",
+				    "body": "## 작업 내용\\n- Github 주간 요약 조회",
+				    "state": "open",
+				    "created_at": "2026-05-26T10:15:30Z",
+				    "updated_at": "2026-05-27T10:15:30Z",
+				    "closed_at": null,
+				    "merged_at": null,
+				    "html_url": "https://github.com/student-team-org/backend/pull/10",
+				    "user": {
+				      "id": 123,
+				      "login": "octocat"
+				    }
+				  },
+				  {
+				    "id": 1002,
+				    "number": 11,
+				    "title": "Other user PR",
+				    "state": "open",
+				    "created_at": "2026-05-27T10:15:30Z",
+				    "updated_at": "2026-05-27T10:15:30Z",
+				    "html_url": "https://github.com/student-team-org/backend/pull/11",
+				    "user": {
+				      "id": 999,
+				      "login": "other"
+				    }
+				  }
+				]
+				""");
+		});
+		server.createContext("/repos/student-team-org/backend/issues", exchange -> {
+			assertThat(exchange.getRequestHeaders().getFirst("Authorization"))
+				.isEqualTo("Bearer github-installation-token");
+			assertThat(exchange.getRequestURI().getQuery())
+				.contains("state=all", "since=2026-05-25", "sort=updated", "direction=desc", "per_page=100", "page=1");
+			writeResponse(exchange, 200, """
+				[
+				  {
+				    "id": 2001,
+				    "number": 20,
+				    "title": "주간 요약 API",
+				    "body": "요청자 기준 Github 활동을 요약한다.",
+				    "state": "open",
+				    "created_at": "2026-05-26T11:00:00Z",
+				    "updated_at": "2026-05-26T11:00:00Z",
+				    "closed_at": null,
+				    "html_url": "https://github.com/student-team-org/backend/issues/20",
+				    "user": {
+				      "id": 123,
+				      "login": "octocat"
+				    }
+				  },
+				  {
+				    "id": 2002,
+				    "number": 21,
+				    "title": "Pull request issue wrapper",
+				    "state": "open",
+				    "created_at": "2026-05-26T11:00:00Z",
+				    "updated_at": "2026-05-26T11:00:00Z",
+				    "html_url": "https://github.com/student-team-org/backend/pull/21",
+				    "pull_request": {
+				      "url": "https://api.github.com/repos/student-team-org/backend/pulls/21"
+				    },
+				    "user": {
+				      "id": 123,
+				      "login": "octocat"
+				    }
+				  }
+				]
+				""");
+		});
+		server.start();
+
+		try {
+			GithubAppClient client = githubAppClient(server, jwtProvider);
+
+			var data = client.getWeeklySummaryData(
+				12345L,
+				List.of(new GithubRepositoryInfo(
+					100L,
+					"student-team-org",
+					"backend",
+					"student-team-org/backend",
+					"main",
+					true
+				)),
+				123L,
+				Instant.parse("2026-05-25T00:00:00Z"),
+				Instant.parse("2026-06-01T00:00:00Z")
+			);
+
+			assertThat(data.pullRequestCount()).isEqualTo(1);
+			assertThat(data.issueCount()).isEqualTo(1);
+			assertThat(data.repositories()).hasSize(1);
+			assertThat(data.repositories().get(0).pullRequests().get(0).pullNumber()).isEqualTo(10L);
+			assertThat(data.repositories().get(0).issues().get(0).issueNumber()).isEqualTo(20L);
 		} finally {
 			server.stop(0);
 		}

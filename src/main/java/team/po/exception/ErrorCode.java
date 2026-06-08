@@ -74,6 +74,8 @@ public enum ErrorCode {
 		"GitHub Organization 관리자만 연결할 수 있습니다."),
 	GITHUB_REPOSITORY_NOT_ACCESSIBLE(HttpStatus.BAD_REQUEST, "GITHUB_REPOSITORY_NOT_ACCESSIBLE",
 		"선택한 GitHub Repository에 접근할 수 없습니다."),
+	GITHUB_REPOSITORY_NOT_CONFIGURED(HttpStatus.BAD_REQUEST, "GITHUB_REPOSITORY_NOT_CONFIGURED",
+		"팀 스페이스에 등록된 GitHub Repository가 없습니다."),
 	GITHUB_API_REQUEST_FAILED(HttpStatus.BAD_GATEWAY, "GITHUB_API_REQUEST_FAILED", "GitHub API 요청에 실패했습니다."),
 	PROJECT_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "PROJECT_REQUEST_NOT_FOUND", "진행 중인 매칭 요청이 없습니다."),
 	PROJECT_REQUEST_ALREADY_EXISTS(HttpStatus.CONFLICT, "PROJECT_REQUEST_ALREADY_EXISTS", "이미 진행 중인 매칭 요청이 있습니다."),

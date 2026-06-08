@@ -23,6 +23,7 @@ import team.po.feature.teamspace.domain.GithubPullRequestContribution;
 import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubRepository;
 import team.po.feature.teamspace.dto.GithubPullRequestInfo;
+import team.po.feature.teamspace.dto.GithubRepositoryInfo;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.GithubPullRequestContributionRepository;
@@ -62,11 +63,11 @@ public class TeamspacePersistenceTxService {
 		Long projectGroupId,
 		Long githubInstallationId,
 		List<Long> githubRepositoryIds,
-		List<GithubAppClient.GithubRepositoryInfo> accessibleRepositories
+		List<GithubRepositoryInfo> accessibleRepositories
 	) {
-		Map<Long, GithubAppClient.GithubRepositoryInfo> accessibleRepositoryMap = accessibleRepositories.stream()
+		Map<Long, GithubRepositoryInfo> accessibleRepositoryMap = accessibleRepositories.stream()
 			.collect(Collectors.toMap(
-				GithubAppClient.GithubRepositoryInfo::githubRepositoryId,
+				GithubRepositoryInfo::githubRepositoryId,
 				Function.identity(),
 				(first, second) -> first
 			));
@@ -102,7 +103,7 @@ public class TeamspacePersistenceTxService {
 				return;
 			}
 
-			GithubAppClient.GithubRepositoryInfo latestRepositoryInfo = accessibleRepositoryMap.get(githubRepositoryId);
+			GithubRepositoryInfo latestRepositoryInfo = accessibleRepositoryMap.get(githubRepositoryId);
 			repository.updateRepositoryInfo(
 				latestRepositoryInfo.owner(),
 				latestRepositoryInfo.repoName(),

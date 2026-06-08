@@ -10,6 +10,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -46,7 +47,9 @@ import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.GithubPullRequestInfo;
 import team.po.feature.teamspace.dto.GithubPullRequestSummary;
 import team.po.feature.teamspace.dto.GithubPullRequestSyncContext;
+import team.po.feature.teamspace.dto.GithubRepositoryInfo;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
+import team.po.feature.teamspace.dto.GithubWeeklySummaryData;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.GithubPullRequestContributionRepository;
@@ -188,9 +191,9 @@ class TeamspaceServiceTest {
 		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
 			.thenReturn(Optional.of(githubConnection));
 		when(githubAppClient.getInstallationRepositories(12345L)).thenReturn(List.of(
-			new GithubAppClient.GithubRepositoryInfo(100L, "student-team-org", "backend",
+			new GithubRepositoryInfo(100L, "student-team-org", "backend",
 				"student-team-org/backend", "main", true),
-			new GithubAppClient.GithubRepositoryInfo(200L, "student-team-org", "frontend",
+			new GithubRepositoryInfo(200L, "student-team-org", "frontend",
 				"student-team-org/frontend", "main", true)
 		));
 
@@ -362,10 +365,10 @@ class TeamspaceServiceTest {
 	void setGithubRepositoryList_fetchesRepositoriesAndPersistsSetting_whenRequestIsValid() {
 		Users requester = user();
 		SetGithubRepositoryListRequest request = new SetGithubRepositoryListRequest(List.of(100L, 100L, 200L));
-		List<GithubAppClient.GithubRepositoryInfo> repositories = List.of(
-			new GithubAppClient.GithubRepositoryInfo(100L, "student-team-org", "backend",
+		List<GithubRepositoryInfo> repositories = List.of(
+			new GithubRepositoryInfo(100L, "student-team-org", "backend",
 				"student-team-org/backend", "main", true),
-			new GithubAppClient.GithubRepositoryInfo(200L, "student-team-org", "frontend",
+			new GithubRepositoryInfo(200L, "student-team-org", "frontend",
 				"student-team-org/frontend", "develop", false)
 		);
 		when(teamspacePersistenceTxService.prepareGithubRepositorySetting(10L, 1L))
@@ -429,8 +432,8 @@ class TeamspaceServiceTest {
 	void setGithubRepositoryList_propagatesPersistException_whenRepositoryIsNotAccessible() {
 		Users requester = user();
 		SetGithubRepositoryListRequest request = new SetGithubRepositoryListRequest(List.of(999L));
-		List<GithubAppClient.GithubRepositoryInfo> repositories = List.of(
-			new GithubAppClient.GithubRepositoryInfo(100L, "student-team-org", "backend",
+		List<GithubRepositoryInfo> repositories = List.of(
+			new GithubRepositoryInfo(100L, "student-team-org", "backend",
 				"student-team-org/backend", "main", true)
 		);
 		when(teamspacePersistenceTxService.prepareGithubRepositorySetting(10L, 1L))
@@ -670,6 +673,104 @@ class TeamspaceServiceTest {
 			.findGithubPullRequestSyncContext(any(), any());
 		verify(githubAppClient, never()).createPullRequestSyncSession(any());
 		verify(teamspacePersistenceTxService, never()).persistGithubPullRequestContributions(any(), any(), any());
+	}
+
+	@Test
+	void generateWeeklyGithubSummary_callsGithubApiAfterPrerequisitesAreValid() {
+		Users requester = user();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(Optional.of(projectGroupGithubInstallation()));
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L))
+			.thenReturn(Optional.of(githubAccount()));
+		when(projectGroupGithubRepositoryRepository.findAllByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(List.of(projectGroupGithubRepository()));
+		when(githubAppClient.getWeeklySummaryData(eq(12345L), any(), eq(123L), any(), any()))
+			.thenReturn(new GithubWeeklySummaryData(
+				Instant.parse("2026-05-25T00:00:00Z"),
+				Instant.parse("2026-06-01T00:00:00Z"),
+				List.of()
+			));
+
+		assertThatThrownBy(() -> teamspaceService.generateWeeklyGithubSummary(requester, 10L))
+			.isInstanceOf(UnsupportedOperationException.class);
+
+		verify(projectGroupMemberRepository).existsByProjectGroup_IdAndUser_Id(10L, 1L);
+		verify(projectGroupGithubInstallationRepository).findByProjectGroup_IdAndDeletedAtIsNull(10L);
+		verify(githubAccountRepository).findByUserIdAndDeletedAtIsNull(1L);
+		verify(projectGroupGithubRepositoryRepository).findAllByProjectGroup_IdAndDeletedAtIsNull(10L);
+		verify(githubAppClient).getWeeklySummaryData(eq(12345L), any(), eq(123L), any(), any());
+		verifyNoInteractions(teamspacePersistenceTxService);
+	}
+
+	@Test
+	void generateWeeklyGithubSummary_throwsForbidden_whenRequesterIsNotMember() {
+		Users requester = user();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(false);
+
+		assertThatThrownBy(() -> teamspaceService.generateWeeklyGithubSummary(requester, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
+
+		verify(projectGroupGithubInstallationRepository, never()).findByProjectGroup_IdAndDeletedAtIsNull(any());
+		verify(githubAccountRepository, never()).findByUserIdAndDeletedAtIsNull(any());
+		verify(projectGroupGithubRepositoryRepository, never()).findAllByProjectGroup_IdAndDeletedAtIsNull(any());
+		verifyNoInteractions(githubAppClient);
+	}
+
+	@Test
+	void generateWeeklyGithubSummary_throwsNotFound_whenGithubAppIsNotConnected() {
+		Users requester = user();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> teamspaceService.generateWeeklyGithubSummary(requester, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GITHUB_APP_INSTALLATION_NOT_CONNECTED.getCode());
+
+		verify(githubAccountRepository, never()).findByUserIdAndDeletedAtIsNull(any());
+		verify(projectGroupGithubRepositoryRepository, never()).findAllByProjectGroup_IdAndDeletedAtIsNull(any());
+		verifyNoInteractions(githubAppClient);
+	}
+
+	@Test
+	void generateWeeklyGithubSummary_throwsNotFound_whenRequesterGithubAccountIsNotLinked() {
+		Users requester = user();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(Optional.of(projectGroupGithubInstallation()));
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> teamspaceService.generateWeeklyGithubSummary(requester, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GITHUB_ACCOUNT_NOT_LINKED.getCode());
+
+		verify(projectGroupGithubRepositoryRepository, never()).findAllByProjectGroup_IdAndDeletedAtIsNull(any());
+		verifyNoInteractions(githubAppClient);
+	}
+
+	@Test
+	void generateWeeklyGithubSummary_throwsBadRequest_whenGithubRepositoryIsNotConfigured() {
+		Users requester = user();
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(Optional.of(projectGroupGithubInstallation()));
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L))
+			.thenReturn(Optional.of(githubAccount()));
+		when(projectGroupGithubRepositoryRepository.findAllByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(List.of());
+
+		assertThatThrownBy(() -> teamspaceService.generateWeeklyGithubSummary(requester, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GITHUB_REPOSITORY_NOT_CONFIGURED.getCode());
+
+		verifyNoInteractions(githubAppClient);
 	}
 
 	@Test
@@ -959,6 +1060,27 @@ class TeamspaceServiceTest {
 			.build();
 		ReflectionTestUtils.setField(githubInstallation, "id", 5L);
 		return githubInstallation;
+	}
+
+	private ProjectGroupGithubInstallation projectGroupGithubInstallation() {
+		return ProjectGroupGithubInstallation.builder()
+			.projectGroup(projectGroup())
+			.githubInstallation(githubInstallation())
+			.connectedBy(user())
+			.build();
+	}
+
+	private ProjectGroupGithubRepository projectGroupGithubRepository() {
+		return ProjectGroupGithubRepository.builder()
+			.projectGroup(projectGroup())
+			.githubInstallation(githubInstallation())
+			.githubRepositoryId(100L)
+			.owner("student-team-org")
+			.repoName("backend")
+			.fullName("student-team-org/backend")
+			.defaultBranch("main")
+			.privateRepository(true)
+			.build();
 	}
 
 	private GithubAccount githubAccount() {

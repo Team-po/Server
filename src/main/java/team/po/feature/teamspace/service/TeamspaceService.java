@@ -1,6 +1,7 @@
 package team.po.feature.teamspace.service;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -36,7 +37,9 @@ import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.GithubPullRequestInfo;
 import team.po.feature.teamspace.dto.GithubPullRequestSummary;
 import team.po.feature.teamspace.dto.GithubPullRequestSyncContext;
+import team.po.feature.teamspace.dto.GithubRepositoryInfo;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
+import team.po.feature.teamspace.dto.GithubWeeklySummaryData;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.GithubPullRequestContributionRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
@@ -56,6 +59,7 @@ public class TeamspaceService {
 	private static final String GITHUB_APP_INSTALLATION_STATE_DELIMITER = "|";
 	private static final String GITHUB_APP_SETUP_ACTION_INSTALL = "install";
 	private static final int EXISTING_GITHUB_PR_ID_QUERY_CHUNK_SIZE = 500;
+	private static final int WEEKLY_SUMMARY_PERIOD_DAYS = 7;
 
 	private final ProjectGroupMemberRepository projectGroupMemberRepository;
 	private final ProjectGroupGithubInstallationRepository projectGroupGithubInstallationRepository;
@@ -152,7 +156,7 @@ public class TeamspaceService {
 		validateProjectGroupHost(projectGroupId, user.getId());
 		ConnectedGithubInstallationIds installation = getConnectedGithubInstallationIds(projectGroupId);
 
-		List<GithubAppClient.GithubRepositoryInfo> repositories = githubAppClient
+		List<GithubRepositoryInfo> repositories = githubAppClient
 			.getInstallationRepositories(installation.installationId());
 
 		return new GetAvailableGithubRepositoryList(repositories.stream()
@@ -234,7 +238,7 @@ public class TeamspaceService {
 			return;
 		}
 
-		List<GithubAppClient.GithubRepositoryInfo> repositories = githubAppClient
+		List<GithubRepositoryInfo> repositories = githubAppClient
 			.getInstallationRepositories(context.installationId());
 
 		teamspacePersistenceTxService.persistGithubRepositorySetting(
@@ -288,6 +292,21 @@ public class TeamspaceService {
 	}
 
 	public GenerateWeeklyGithubSummaryResponse generateWeeklyGithubSummary(Users user, Long projectGroupId) {
+		validateProjectGroupMember(projectGroupId, user.getId());
+		ConnectedGithubInstallationIds installation = getConnectedGithubInstallationIds(projectGroupId);
+		GithubAccount githubAccount = getGithubAccountLinked(user.getId());
+		List<ProjectGroupGithubRepository> repositories = getGithubRepositoriesConfigured(projectGroupId);
+
+		Instant periodEnd = Instant.now();
+		Instant periodStart = periodEnd.minus(WEEKLY_SUMMARY_PERIOD_DAYS, ChronoUnit.DAYS);
+		GithubWeeklySummaryData weeklySummaryData = githubAppClient.getWeeklySummaryData(
+			installation.installationId(),
+			toGithubRepositoryInfos(repositories),
+			githubAccount.getGithubUserId(),
+			periodStart,
+			periodEnd
+		);
+
 		throw new UnsupportedOperationException("Github 주간 요약 생성 로직은 아직 구현되지 않았습니다.");
 	}
 
@@ -328,6 +347,42 @@ public class TeamspaceService {
 
 	private long calculateContributionScore(long mergedPrCount, long linkedIssueCount) {
 		return mergedPrCount * 10 + linkedIssueCount * 5;
+	}
+
+	private GithubAccount getGithubAccountLinked(Long requesterUserId) {
+		return githubAccountRepository.findByUserIdAndDeletedAtIsNull(requesterUserId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.GITHUB_ACCOUNT_NOT_LINKED,
+				"Github 주간 요약 생성을 위해 Github 계정 연동이 필요합니다."
+			));
+	}
+
+	private List<ProjectGroupGithubRepository> getGithubRepositoriesConfigured(Long projectGroupId) {
+		List<ProjectGroupGithubRepository> repositories = projectGroupGithubRepositoryRepository
+			.findAllByProjectGroup_IdAndDeletedAtIsNull(projectGroupId);
+		if (!repositories.isEmpty()) {
+			return repositories;
+		}
+
+		throw new ApplicationException(
+			ErrorCode.GITHUB_REPOSITORY_NOT_CONFIGURED,
+			"Github 주간 요약 생성을 위해 팀 스페이스에 Github Repository를 등록해야 합니다."
+		);
+	}
+
+	private List<GithubRepositoryInfo> toGithubRepositoryInfos(
+		List<ProjectGroupGithubRepository> repositories
+	) {
+		return repositories.stream()
+			.map(repository -> new GithubRepositoryInfo(
+				repository.getGithubRepositoryId(),
+				repository.getOwner(),
+				repository.getRepoName(),
+				repository.getFullName(),
+				repository.getDefaultBranch(),
+				repository.isPrivateRepository()
+			))
+			.toList();
 	}
 
 	private void validateRequesterCanConnectOrganization(Long requesterUserId, String organizationLogin) {
