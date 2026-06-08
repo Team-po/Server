@@ -45,6 +45,8 @@ import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryContributionResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
+import team.po.feature.teamspace.dto.GetWeeklyGithubSummaryListResponse;
+import team.po.feature.teamspace.dto.GetWeeklyGithubSummaryResponse;
 import team.po.feature.teamspace.dto.GithubPullRequestInfo;
 import team.po.feature.teamspace.dto.GithubPullRequestSummary;
 import team.po.feature.teamspace.dto.GithubPullRequestSyncContext;
@@ -371,6 +373,44 @@ public class TeamspaceService {
 			savedSummary.getSourcePrCount(),
 			savedSummary.getSourceIssueCount(),
 			summary
+		);
+	}
+
+	@Transactional(readOnly = true)
+	public GetWeeklyGithubSummaryListResponse getWeeklyGithubSummaries(
+		Users user,
+		Long projectGroupId,
+		Long targetUserId
+	) {
+		projectGroupMemberRepository
+			.findByProjectGroup_IdAndUser_Id(projectGroupId, user.getId())
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.PROJECT_GROUP_PERMISSION_DENIED,
+				"팀 스페이스 멤버만 Github 주간 요약을 조회할 수 있습니다."
+			));
+
+		ProjectGroupMember targetMember = projectGroupMemberRepository
+			.findByProjectGroup_IdAndUser_Id(projectGroupId, targetUserId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.PROJECT_GROUP_MEMBER_NOT_FOUND,
+				"Github 주간 요약 조회 대상 팀 스페이스 멤버를 찾을 수 없습니다."
+			));
+
+		List<GetWeeklyGithubSummaryResponse> summaries = weeklyGithubSummaryRepository
+			.findAllByProjectGroupMember_IdOrderByPeriodEndDesc(targetMember.getId())
+			.stream()
+			.map(weeklyGithubSummary -> new GetWeeklyGithubSummaryResponse(
+				weeklyGithubSummary.getId(),
+				weeklyGithubSummary.getPeriodStart(),
+				weeklyGithubSummary.getPeriodEnd(),
+				weeklyGithubSummary.getSourcePrCount(),
+				weeklyGithubSummary.getSourceIssueCount(),
+				parseGeneratedWeeklySummary(weeklyGithubSummary.getSummaryJson(), targetMember.getId())
+			))
+			.toList();
+
+		return new GetWeeklyGithubSummaryListResponse(
+			summaries
 		);
 	}
 

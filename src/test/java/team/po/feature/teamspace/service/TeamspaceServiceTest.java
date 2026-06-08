@@ -55,6 +55,8 @@ import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
 import team.po.feature.teamspace.dto.GenerateWeeklyGithubSummaryResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
+import team.po.feature.teamspace.dto.GetWeeklyGithubSummaryListResponse;
+import team.po.feature.teamspace.dto.GetWeeklyGithubSummaryResponse;
 import team.po.feature.teamspace.dto.GithubPullRequestInfo;
 import team.po.feature.teamspace.dto.GithubPullRequestSummary;
 import team.po.feature.teamspace.dto.GithubPullRequestSyncContext;
@@ -918,6 +920,84 @@ class TeamspaceServiceTest {
 	}
 
 	@Test
+	void getWeeklyGithubSummaries_returnsTargetUserSavedSummaries() {
+		Users requester = user();
+		WeeklyGithubSummary savedSummary = weeklyGithubSummary(
+			1000L,
+			weeklySummaryJson(),
+			1,
+			1
+		);
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(projectGroupMember()));
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 2L))
+			.thenReturn(Optional.of(projectGroupMember(200L, 2L)));
+		when(weeklyGithubSummaryRepository.findAllByProjectGroupMember_IdOrderByPeriodEndDesc(200L))
+			.thenReturn(List.of(savedSummary));
+
+		GetWeeklyGithubSummaryListResponse response = teamspaceService.getWeeklyGithubSummaries(requester, 10L, 2L);
+
+		assertThat(response.summaries()).hasSize(1);
+		GetWeeklyGithubSummaryResponse summary = response.summaries().get(0);
+		assertThat(summary.weeklyGithubSummaryId()).isEqualTo(1000L);
+		assertThat(summary.periodStart()).isEqualTo(Instant.parse("2026-05-25T00:00:00Z"));
+		assertThat(summary.periodEnd()).isEqualTo(Instant.parse("2026-06-01T00:00:00Z"));
+		assertThat(summary.sourcePrCount()).isEqualTo(1);
+		assertThat(summary.sourceIssueCount()).isEqualTo(1);
+		assertThat(summary.summary().summary()).isEqualTo("이번 주에는 Github 주간 요약 API 기반 작업이 진행되었습니다.");
+		verify(weeklyGithubSummaryRepository).findAllByProjectGroupMember_IdOrderByPeriodEndDesc(200L);
+		verifyNoInteractions(githubAppClient, geminiClient);
+	}
+
+	@Test
+	void getWeeklyGithubSummaries_returnsEmptyList_whenSummaryDoesNotExist() {
+		Users requester = user();
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(projectGroupMember()));
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 2L))
+			.thenReturn(Optional.of(projectGroupMember(200L, 2L)));
+		when(weeklyGithubSummaryRepository.findAllByProjectGroupMember_IdOrderByPeriodEndDesc(200L))
+			.thenReturn(List.of());
+
+		GetWeeklyGithubSummaryListResponse response = teamspaceService.getWeeklyGithubSummaries(requester, 10L, 2L);
+
+		assertThat(response.summaries()).isEmpty();
+		verifyNoInteractions(githubAppClient, geminiClient);
+	}
+
+	@Test
+	void getWeeklyGithubSummaries_throwsForbidden_whenRequesterIsNotMember() {
+		Users requester = user();
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> teamspaceService.getWeeklyGithubSummaries(requester, 10L, 2L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
+
+		verify(weeklyGithubSummaryRepository, never()).findAllByProjectGroupMember_IdOrderByPeriodEndDesc(any());
+		verifyNoInteractions(githubAppClient, geminiClient);
+	}
+
+	@Test
+	void getWeeklyGithubSummaries_throwsNotFound_whenTargetUserIsNotMember() {
+		Users requester = user();
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(projectGroupMember()));
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 2L))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> teamspaceService.getWeeklyGithubSummaries(requester, 10L, 2L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_MEMBER_NOT_FOUND.getCode());
+
+		verify(weeklyGithubSummaryRepository, never()).findAllByProjectGroupMember_IdOrderByPeriodEndDesc(any());
+		verifyNoInteractions(githubAppClient, geminiClient);
+	}
+
+	@Test
 	void createGithubAppInstallationUrl_savesStateAndReturnsGithubInstallUrl() {
 		Users requester = user();
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
@@ -1196,13 +1276,17 @@ class TeamspaceServiceTest {
 	}
 
 	private ProjectGroupMember projectGroupMember() {
+		return projectGroupMember(100L, 1L);
+	}
+
+	private ProjectGroupMember projectGroupMember(Long projectGroupMemberId, Long userId) {
 		ProjectGroupMember projectGroupMember = ProjectGroupMember.builder()
 			.projectGroup(projectGroup())
-			.user(user())
+			.user(user(userId))
 			.memberRole(MemberRole.BACKEND)
 			.groupRole(GroupRole.MEMBER)
 			.build();
-		ReflectionTestUtils.setField(projectGroupMember, "id", 100L);
+		ReflectionTestUtils.setField(projectGroupMember, "id", projectGroupMemberId);
 		return projectGroupMember;
 	}
 
@@ -1339,13 +1423,17 @@ class TeamspaceServiceTest {
 	}
 
 	private Users user() {
+		return user(1L);
+	}
+
+	private Users user(Long userId) {
 		Users user = Users.builder()
 			.email("tester@example.com")
 			.nickname("tester")
 			.level(1)
 			.temperature(50)
 			.build();
-		ReflectionTestUtils.setField(user, "id", 1L);
+		ReflectionTestUtils.setField(user, "id", userId);
 		return user;
 	}
 
