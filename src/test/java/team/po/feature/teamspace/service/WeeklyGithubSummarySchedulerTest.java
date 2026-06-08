@@ -1,9 +1,11 @@
 package team.po.feature.teamspace.service;
 
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Duration;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -36,7 +38,13 @@ class WeeklyGithubSummarySchedulerTest {
 
 	@BeforeEach
 	void setUp() {
-		scheduler = new WeeklyGithubSummaryScheduler(projectGroupMemberRepository, teamspaceService);
+		scheduler = new WeeklyGithubSummaryScheduler(
+			projectGroupMemberRepository,
+			teamspaceService,
+			List.of(Duration.ZERO, Duration.ZERO),
+			duration -> {
+			}
+		);
 	}
 
 	@Test
@@ -53,18 +61,46 @@ class WeeklyGithubSummarySchedulerTest {
 	}
 
 	@Test
-	void generateWeeklyGithubSummaries_continuesWhenOneMemberFails() {
+	void generateWeeklyGithubSummaries_retriesRetryableFailure() {
 		ProjectGroupMember firstMember = projectGroupMember(100L, 10L, 1L);
-		ProjectGroupMember secondMember = projectGroupMember(200L, 10L, 2L);
 		when(projectGroupMemberRepository.findWeeklyGithubSummaryTargetMembers(ProjectGroupStatus.ACTIVE))
-			.thenReturn(List.of(firstMember, secondMember));
+			.thenReturn(List.of(firstMember));
+		when(teamspaceService.generateWeeklyGithubSummary(firstMember.getUser(), 10L))
+			.thenThrow(new ApplicationException(ErrorCode.GEMINI_API_ERROR))
+			.thenReturn(null);
+
+		scheduler.generateWeeklyGithubSummaries();
+
+		verify(teamspaceService, times(2)).generateWeeklyGithubSummary(firstMember.getUser(), 10L);
+	}
+
+	@Test
+	void generateWeeklyGithubSummaries_retriesRetryableFailureUpToMaxAttempts() {
+		ProjectGroupMember firstMember = projectGroupMember(100L, 10L, 1L);
+		when(projectGroupMemberRepository.findWeeklyGithubSummaryTargetMembers(ProjectGroupStatus.ACTIVE))
+			.thenReturn(List.of(firstMember));
 		doThrow(new ApplicationException(ErrorCode.GEMINI_API_ERROR))
 			.when(teamspaceService)
 			.generateWeeklyGithubSummary(firstMember.getUser(), 10L);
 
 		scheduler.generateWeeklyGithubSummaries();
 
-		verify(teamspaceService).generateWeeklyGithubSummary(firstMember.getUser(), 10L);
+		verify(teamspaceService, times(3)).generateWeeklyGithubSummary(firstMember.getUser(), 10L);
+	}
+
+	@Test
+	void generateWeeklyGithubSummaries_continuesWhenOneMemberFails() {
+		ProjectGroupMember firstMember = projectGroupMember(100L, 10L, 1L);
+		ProjectGroupMember secondMember = projectGroupMember(200L, 10L, 2L);
+		when(projectGroupMemberRepository.findWeeklyGithubSummaryTargetMembers(ProjectGroupStatus.ACTIVE))
+			.thenReturn(List.of(firstMember, secondMember));
+		doThrow(new ApplicationException(ErrorCode.GITHUB_ACCOUNT_NOT_LINKED))
+			.when(teamspaceService)
+			.generateWeeklyGithubSummary(firstMember.getUser(), 10L);
+
+		scheduler.generateWeeklyGithubSummaries();
+
+		verify(teamspaceService, times(1)).generateWeeklyGithubSummary(firstMember.getUser(), 10L);
 		verify(teamspaceService).generateWeeklyGithubSummary(secondMember.getUser(), 10L);
 	}
 

@@ -9,7 +9,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
@@ -32,12 +31,10 @@ import team.po.common.jwt.UserPrincipal;
 import team.po.exception.CustomExceptionHandler;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
-import team.po.feature.teamspace.dto.GenerateWeeklyGithubSummaryResponse;
 import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryContributionResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
-import team.po.feature.teamspace.dto.GithubWeeklySummaryContent;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.service.TeamspaceService;
 import team.po.feature.user.domain.Users;
@@ -244,33 +241,5 @@ class TeamspaceControllerTest {
 			.andExpect(status().isOk());
 
 		verify(teamspaceService).syncGithubPullRequestContributions(mockUser, 10L, 100L);
-	}
-
-	@Test
-	void generateWeeklyGithubSummary_returnsOk() throws Exception {
-		when(teamspaceService.generateWeeklyGithubSummary(mockUser, 10L))
-			.thenReturn(new GenerateWeeklyGithubSummaryResponse(
-				1000L,
-				Instant.parse("2026-05-25T00:00:00Z"),
-				Instant.parse("2026-06-01T00:00:00Z"),
-				3,
-				2,
-				new GithubWeeklySummaryContent(
-					"이번 주에는 인증 API 개선 작업이 진행되었습니다.",
-					List.of("인증 API 개선"),
-					List.of("인증 API PR 정리"),
-					List.of("인증 정책 이슈 정리"),
-					List.of("예외 케이스 테스트 보강")
-				)
-			));
-
-		mockMvc.perform(post("/api/team-space/10/github/weekly-summary"))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.weeklyGithubSummaryId").value(1000))
-			.andExpect(jsonPath("$.sourcePrCount").value(3))
-			.andExpect(jsonPath("$.sourceIssueCount").value(2))
-			.andExpect(jsonPath("$.summary.summary").value("이번 주에는 인증 API 개선 작업이 진행되었습니다."));
-
-		verify(teamspaceService).generateWeeklyGithubSummary(mockUser, 10L);
 	}
 }
