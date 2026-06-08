@@ -11,7 +11,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +37,7 @@ import team.po.feature.teamspace.dto.GetAvailableGithubRepositoryList;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryContributionResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
+import team.po.feature.teamspace.dto.GithubWeeklySummaryContent;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.service.TeamspaceService;
 import team.po.feature.user.domain.Users;
@@ -255,7 +255,13 @@ class TeamspaceControllerTest {
 				Instant.parse("2026-06-01T00:00:00Z"),
 				3,
 				2,
-				Map.of("summary", "이번 주에는 인증 API 개선 작업이 진행되었습니다.")
+				new GithubWeeklySummaryContent(
+					"이번 주에는 인증 API 개선 작업이 진행되었습니다.",
+					List.of("인증 API 개선"),
+					List.of("인증 API PR 정리"),
+					List.of("인증 정책 이슈 정리"),
+					List.of("예외 케이스 테스트 보강")
+				)
 			));
 
 		mockMvc.perform(post("/api/team-space/10/github/weekly-summary"))
