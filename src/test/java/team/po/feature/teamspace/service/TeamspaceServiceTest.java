@@ -13,7 +13,11 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.Duration;
+import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -28,20 +32,29 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import team.po.common.ai.client.GeminiClient;
 import team.po.common.redis.RedisService;
 import team.po.config.GithubAppProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.projectgroup.domain.GroupRole;
+import team.po.feature.projectgroup.domain.MemberRole;
 import team.po.feature.projectgroup.domain.ProjectGroup;
+import team.po.feature.projectgroup.domain.ProjectGroupMember;
 import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.projectgroup.repository.ProjectGroupRepository;
+import team.po.feature.teamspace.ai.GithubWeeklySummaryPromptBuilder;
+import team.po.feature.teamspace.ai.GithubWeeklySummarySchema;
 import team.po.feature.teamspace.domain.GithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubRepository;
+import team.po.feature.teamspace.domain.WeeklyGithubSummary;
 import team.po.feature.teamspace.dto.CompleteGithubAppInstallationRequest;
 import team.po.feature.teamspace.dto.CreateGithubAppInstallationUrlResponse;
+import team.po.feature.teamspace.dto.GenerateWeeklyGithubSummaryResponse;
 import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.GithubPullRequestInfo;
@@ -55,6 +68,7 @@ import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.GithubPullRequestContributionRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubInstallationRepository;
 import team.po.feature.teamspace.repository.ProjectGroupGithubRepositoryRepository;
+import team.po.feature.teamspace.repository.WeeklyGithubSummaryRepository;
 import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.repository.GithubAccountRepository;
@@ -103,6 +117,15 @@ class TeamspaceServiceTest {
 	@Mock
 	private GithubPullRequestContributionRepository githubPullRequestContributionRepository;
 
+	@Mock
+	private GeminiClient geminiClient;
+
+	@Mock
+	private GithubWeeklySummaryPromptBuilder githubWeeklySummaryPromptBuilder;
+
+	@Mock
+	private WeeklyGithubSummaryRepository weeklyGithubSummaryRepository;
+
 	private TeamspaceService teamspaceService;
 
 	@BeforeEach
@@ -127,7 +150,11 @@ class TeamspaceServiceTest {
 			githubAppClient,
 			githubTokenEncryptor,
 			teamspacePersistenceTxService,
-			githubPullRequestContributionRepository
+			githubPullRequestContributionRepository,
+			geminiClient,
+			githubWeeklySummaryPromptBuilder,
+			new ObjectMapper(),
+			weeklyGithubSummaryRepository
 		);
 	}
 
@@ -676,9 +703,124 @@ class TeamspaceServiceTest {
 	}
 
 	@Test
-	void generateWeeklyGithubSummary_callsGithubApiAfterPrerequisitesAreValid() {
+	void generateWeeklyGithubSummary_createsSummaryAndReturnsResponse() {
 		Users requester = user();
-		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		LocalDate currentWeekStartDate = LocalDate.now(ZoneId.of("Asia/Seoul"))
+			.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+		Instant expectedPeriodStart = currentWeekStartDate.minusDays(7)
+			.atStartOfDay(ZoneId.of("Asia/Seoul"))
+			.toInstant();
+		Instant expectedPeriodEnd = currentWeekStartDate
+			.atStartOfDay(ZoneId.of("Asia/Seoul"))
+			.toInstant();
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(projectGroupMember()));
+		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(Optional.of(projectGroupGithubInstallation()));
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L))
+			.thenReturn(Optional.of(githubAccount()));
+		when(projectGroupGithubRepositoryRepository.findAllByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(List.of(projectGroupGithubRepository()));
+		when(githubAppClient.getWeeklySummaryData(
+			eq(12345L),
+			any(),
+			eq(123L),
+			eq(expectedPeriodStart),
+			eq(expectedPeriodEnd)
+		))
+			.thenReturn(weeklySummaryData());
+		when(githubWeeklySummaryPromptBuilder.build(any())).thenReturn("weekly-summary-prompt");
+		when(geminiClient.generateStructuredJson("weekly-summary-prompt", GithubWeeklySummarySchema.RESPONSE_SCHEMA))
+			.thenReturn(weeklySummaryJson());
+		when(weeklyGithubSummaryRepository.findByProjectGroupMember_IdAndPeriodStartAndPeriodEnd(
+			100L,
+			expectedPeriodStart,
+			expectedPeriodEnd
+		))
+			.thenReturn(Optional.empty());
+		when(weeklyGithubSummaryRepository.save(any(WeeklyGithubSummary.class)))
+			.thenAnswer(invocation -> {
+				WeeklyGithubSummary summary = invocation.getArgument(0);
+				ReflectionTestUtils.setField(summary, "id", 1000L);
+				return summary;
+			});
+
+		GenerateWeeklyGithubSummaryResponse response = teamspaceService.generateWeeklyGithubSummary(requester, 10L);
+
+		assertThat(response.weeklyGithubSummaryId()).isEqualTo(1000L);
+		assertThat(response.periodStart()).isEqualTo(expectedPeriodStart);
+		assertThat(response.periodEnd()).isEqualTo(expectedPeriodEnd);
+		assertThat(response.sourcePrCount()).isEqualTo(1);
+		assertThat(response.sourceIssueCount()).isEqualTo(1);
+		assertThat(response.summary().summary()).isEqualTo("이번 주에는 Github 주간 요약 API 기반 작업이 진행되었습니다.");
+		verify(projectGroupMemberRepository).findByProjectGroup_IdAndUser_Id(10L, 1L);
+		verify(projectGroupGithubInstallationRepository).findByProjectGroup_IdAndDeletedAtIsNull(10L);
+		verify(githubAccountRepository).findByUserIdAndDeletedAtIsNull(1L);
+		verify(projectGroupGithubRepositoryRepository).findAllByProjectGroup_IdAndDeletedAtIsNull(10L);
+		verify(githubAppClient).getWeeklySummaryData(
+			eq(12345L),
+			any(),
+			eq(123L),
+			eq(expectedPeriodStart),
+			eq(expectedPeriodEnd)
+		);
+		verify(githubWeeklySummaryPromptBuilder).build(any());
+		verify(geminiClient).generateStructuredJson("weekly-summary-prompt", GithubWeeklySummarySchema.RESPONSE_SCHEMA);
+		ArgumentCaptor<WeeklyGithubSummary> summaryCaptor = ArgumentCaptor.forClass(WeeklyGithubSummary.class);
+		verify(weeklyGithubSummaryRepository).save(summaryCaptor.capture());
+		WeeklyGithubSummary savedSummary = summaryCaptor.getValue();
+		assertThat(savedSummary.getProjectGroupMember().getId()).isEqualTo(100L);
+		assertThat(savedSummary.getPeriodStart()).isEqualTo(expectedPeriodStart);
+		assertThat(savedSummary.getPeriodEnd()).isEqualTo(expectedPeriodEnd);
+		assertThat(savedSummary.getSummaryJson()).contains("Github 주간 요약 API 기반 작업");
+		assertThat(savedSummary.getSourcePrCount()).isEqualTo(1);
+		assertThat(savedSummary.getSourceIssueCount()).isEqualTo(1);
+		assertThat(savedSummary.getGeneratedBy().getId()).isEqualTo(1L);
+		verifyNoInteractions(teamspacePersistenceTxService);
+	}
+
+	@Test
+	void generateWeeklyGithubSummary_updatesExistingSummary_whenSameMemberAndPeriodExists() {
+		Users requester = user();
+		WeeklyGithubSummary existingSummary = weeklyGithubSummary(
+			1000L,
+			"{\"summary\":\"기존 요약\"}",
+			0,
+			0
+		);
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(projectGroupMember()));
+		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(Optional.of(projectGroupGithubInstallation()));
+		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L))
+			.thenReturn(Optional.of(githubAccount()));
+		when(projectGroupGithubRepositoryRepository.findAllByProjectGroup_IdAndDeletedAtIsNull(10L))
+			.thenReturn(List.of(projectGroupGithubRepository()));
+		when(githubAppClient.getWeeklySummaryData(eq(12345L), any(), eq(123L), any(), any()))
+			.thenReturn(weeklySummaryData());
+		when(githubWeeklySummaryPromptBuilder.build(any())).thenReturn("weekly-summary-prompt");
+		when(geminiClient.generateStructuredJson("weekly-summary-prompt", GithubWeeklySummarySchema.RESPONSE_SCHEMA))
+			.thenReturn(weeklySummaryJson());
+		when(weeklyGithubSummaryRepository.findByProjectGroupMember_IdAndPeriodStartAndPeriodEnd(eq(100L), any(), any()))
+			.thenReturn(Optional.of(existingSummary));
+		when(weeklyGithubSummaryRepository.save(existingSummary)).thenReturn(existingSummary);
+
+		GenerateWeeklyGithubSummaryResponse response = teamspaceService.generateWeeklyGithubSummary(requester, 10L);
+
+		assertThat(response.weeklyGithubSummaryId()).isEqualTo(1000L);
+		assertThat(response.sourcePrCount()).isEqualTo(1);
+		assertThat(response.sourceIssueCount()).isEqualTo(1);
+		assertThat(existingSummary.getSummaryJson()).contains("Github 주간 요약 API 기반 작업");
+		assertThat(existingSummary.getSourcePrCount()).isEqualTo(1);
+		assertThat(existingSummary.getSourceIssueCount()).isEqualTo(1);
+		verify(weeklyGithubSummaryRepository).save(existingSummary);
+	}
+
+	@Test
+	void generateWeeklyGithubSummary_throwsInvalidResponse_whenGeminiResponseIsNotJson() {
+		Users requester = user();
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(projectGroupMember()));
 		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
 			.thenReturn(Optional.of(projectGroupGithubInstallation()));
 		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L))
@@ -691,22 +833,24 @@ class TeamspaceServiceTest {
 				Instant.parse("2026-06-01T00:00:00Z"),
 				List.of()
 			));
+		when(githubWeeklySummaryPromptBuilder.build(any())).thenReturn("weekly-summary-prompt");
+		when(geminiClient.generateStructuredJson("weekly-summary-prompt", GithubWeeklySummarySchema.RESPONSE_SCHEMA))
+			.thenReturn("not-json");
 
 		assertThatThrownBy(() -> teamspaceService.generateWeeklyGithubSummary(requester, 10L))
-			.isInstanceOf(UnsupportedOperationException.class);
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GEMINI_INVALID_RESPONSE.getCode());
 
-		verify(projectGroupMemberRepository).existsByProjectGroup_IdAndUser_Id(10L, 1L);
-		verify(projectGroupGithubInstallationRepository).findByProjectGroup_IdAndDeletedAtIsNull(10L);
-		verify(githubAccountRepository).findByUserIdAndDeletedAtIsNull(1L);
-		verify(projectGroupGithubRepositoryRepository).findAllByProjectGroup_IdAndDeletedAtIsNull(10L);
-		verify(githubAppClient).getWeeklySummaryData(eq(12345L), any(), eq(123L), any(), any());
+		verifyNoInteractions(weeklyGithubSummaryRepository);
 		verifyNoInteractions(teamspacePersistenceTxService);
 	}
 
 	@Test
 	void generateWeeklyGithubSummary_throwsForbidden_whenRequesterIsNotMember() {
 		Users requester = user();
-		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(false);
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> teamspaceService.generateWeeklyGithubSummary(requester, 10L))
 			.isInstanceOf(ApplicationException.class)
@@ -722,7 +866,8 @@ class TeamspaceServiceTest {
 	@Test
 	void generateWeeklyGithubSummary_throwsNotFound_whenGithubAppIsNotConnected() {
 		Users requester = user();
-		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(projectGroupMember()));
 		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
 			.thenReturn(Optional.empty());
 
@@ -739,7 +884,8 @@ class TeamspaceServiceTest {
 	@Test
 	void generateWeeklyGithubSummary_throwsNotFound_whenRequesterGithubAccountIsNotLinked() {
 		Users requester = user();
-		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(projectGroupMember()));
 		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
 			.thenReturn(Optional.of(projectGroupGithubInstallation()));
 		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L))
@@ -757,7 +903,8 @@ class TeamspaceServiceTest {
 	@Test
 	void generateWeeklyGithubSummary_throwsBadRequest_whenGithubRepositoryIsNotConfigured() {
 		Users requester = user();
-		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(10L, 1L)).thenReturn(true);
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(projectGroupMember()));
 		when(projectGroupGithubInstallationRepository.findByProjectGroup_IdAndDeletedAtIsNull(10L))
 			.thenReturn(Optional.of(projectGroupGithubInstallation()));
 		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L))
@@ -1051,6 +1198,17 @@ class TeamspaceServiceTest {
 			.build();
 	}
 
+	private ProjectGroupMember projectGroupMember() {
+		ProjectGroupMember projectGroupMember = ProjectGroupMember.builder()
+			.projectGroup(projectGroup())
+			.user(user())
+			.memberRole(MemberRole.BACKEND)
+			.groupRole(GroupRole.MEMBER)
+			.build();
+		ReflectionTestUtils.setField(projectGroupMember, "id", 100L);
+		return projectGroupMember;
+	}
+
 	private GithubInstallation githubInstallation() {
 		GithubInstallation githubInstallation = GithubInstallation.builder()
 			.installationId(12345L)
@@ -1092,6 +1250,78 @@ class TeamspaceServiceTest {
 			.tokenType("Bearer")
 			.githubScopes("read:user,user:email,read:org")
 			.build();
+	}
+
+	private GithubWeeklySummaryData weeklySummaryData() {
+		return new GithubWeeklySummaryData(
+			Instant.parse("2026-05-25T00:00:00Z"),
+			Instant.parse("2026-06-01T00:00:00Z"),
+			List.of(new GithubWeeklySummaryData.RepositoryActivity(
+				100L,
+				"student-team-org",
+				"backend",
+				"student-team-org/backend",
+				List.of(new GithubWeeklySummaryData.PullRequest(
+					1001L,
+					10L,
+					"Add weekly summary",
+					"Github 주간 요약 조회를 추가했습니다.",
+					123L,
+					"octocat",
+					"open",
+					Instant.parse("2026-05-26T10:15:30Z"),
+					Instant.parse("2026-05-27T10:15:30Z"),
+					null,
+					null,
+					"https://github.com/student-team-org/backend/pull/10"
+				)),
+				List.of(new GithubWeeklySummaryData.Issue(
+					2001L,
+					20L,
+					"주간 요약 API",
+					"요청자 기준 Github 활동을 요약합니다.",
+					123L,
+					"octocat",
+					"open",
+					Instant.parse("2026-05-26T11:00:00Z"),
+					Instant.parse("2026-05-26T11:00:00Z"),
+					null,
+					"https://github.com/student-team-org/backend/issues/20"
+				))
+			))
+		);
+	}
+
+	private WeeklyGithubSummary weeklyGithubSummary(
+		Long id,
+		String summaryJson,
+		int sourcePrCount,
+		int sourceIssueCount
+	) {
+		WeeklyGithubSummary summary = WeeklyGithubSummary.builder()
+			.projectGroupMember(projectGroupMember())
+			.periodStart(Instant.parse("2026-05-25T00:00:00Z"))
+			.periodEnd(Instant.parse("2026-06-01T00:00:00Z"))
+			.summaryJson(summaryJson)
+			.sourcePrCount(sourcePrCount)
+			.sourceIssueCount(sourceIssueCount)
+			.generatedBy(user())
+			.generatedAt(Instant.parse("2026-06-01T00:00:00Z"))
+			.build();
+		ReflectionTestUtils.setField(summary, "id", id);
+		return summary;
+	}
+
+	private String weeklySummaryJson() {
+		return """
+			{
+			  "summary": "이번 주에는 Github 주간 요약 API 기반 작업이 진행되었습니다.",
+			  "mainActivities": ["Github 활동 데이터 수집"],
+			  "pullRequestHighlights": ["주간 요약 조회 PR을 작성했습니다."],
+			  "issueHighlights": ["요약 API 요구사항을 정리했습니다."],
+			  "followUpSuggestions": ["요약 저장 로직을 연결합니다."]
+			}
+			""";
 	}
 
 	private GithubAppClient.GithubAppInstallationInfo organizationInstallationInfo() {
