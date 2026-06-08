@@ -25,6 +25,16 @@ public class RedisService {
 		valueOperations.set(key, value, timeout);
 	}
 
+	public boolean setIfAbsentValue(String key, Object value, Duration timeout) {
+		Boolean result = valueOperations.setIfAbsent(key, value, timeout);
+		return Boolean.TRUE.equals(result);
+	}
+
+	public boolean setIfAbsentValue(String key, Object value) {
+		Boolean result = valueOperations.setIfAbsent(key, value);
+		return Boolean.TRUE.equals(result);
+	}
+
 	public Object getValue(String key) {
 		return valueOperations.get(key);
 	}

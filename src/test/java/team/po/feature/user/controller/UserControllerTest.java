@@ -35,6 +35,8 @@ import team.po.feature.user.dto.EditProfileRequest;
 import team.po.feature.user.dto.GetProfileResponse;
 import team.po.feature.user.dto.ProfileImageUploadUrlResponse;
 import team.po.feature.user.dto.RefreshTokenResponse;
+import team.po.feature.user.dto.RequestPasswordResetRequest;
+import team.po.feature.user.dto.ResetPasswordRequest;
 import team.po.feature.user.dto.SignInResponse;
 import team.po.feature.user.dto.ValidateDeleteUserEmailRequest;
 import team.po.feature.user.service.ImageService;
@@ -191,6 +193,70 @@ class UserControllerTest {
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_CREDENTIALS.getCode()))
 			.andExpect(jsonPath("$.message").value("이메일 또는 비밀번호가 올바르지 않습니다."));
+	}
+
+	@Test
+	void requestPasswordReset_returnsOk_whenRequestIsValid() throws Exception {
+		mockMvc.perform(post("/api/users/password-reset")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"email":"test@email.com"}
+					"""))
+			.andExpect(status().isOk());
+
+		verify(userService).requestPasswordReset(new RequestPasswordResetRequest("test@email.com"));
+	}
+
+	@Test
+	void requestPasswordReset_returnsBadRequest_whenRequestIsInvalid() throws Exception {
+		mockMvc.perform(post("/api/users/password-reset")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"email":"invalid-email"}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
+			.andExpect(jsonPath("$.fieldErrors.email").value("이메일 형식이 올바르지 않습니다."));
+	}
+
+	@Test
+	void resetPassword_returnsOk_whenRequestIsValid() throws Exception {
+		mockMvc.perform(post("/api/users/password-reset/confirm")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"token":"reset-token","newPassword":"newPassword123"}
+					"""))
+			.andExpect(status().isOk());
+
+		verify(userService).resetPassword(new ResetPasswordRequest("reset-token", "newPassword123"));
+	}
+
+	@Test
+	void resetPassword_returnsBadRequest_whenRequestIsInvalid() throws Exception {
+		mockMvc.perform(post("/api/users/password-reset/confirm")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"token":"","newPassword":"123"}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
+			.andExpect(jsonPath("$.fieldErrors.token").value("비밀번호 재설정 토큰은 필수입니다."))
+			.andExpect(jsonPath("$.fieldErrors.newPassword").value("비밀번호는 8글자 이상이어야 합니다."));
+	}
+
+	@Test
+	void resetPassword_returnsBadRequest_whenTokenIsInvalid() throws Exception {
+		doThrow(new ApplicationException(ErrorCode.INVALID_PASSWORD_RESET_TOKEN))
+			.when(userService).resetPassword(new ResetPasswordRequest("reset-token", "newPassword123"));
+
+		mockMvc.perform(post("/api/users/password-reset/confirm")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"token":"reset-token","newPassword":"newPassword123"}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_PASSWORD_RESET_TOKEN.getCode()))
+			.andExpect(jsonPath("$.message").value("비밀번호 재설정 링크가 만료되었거나 올바르지 않습니다."));
 	}
 
 	@Test

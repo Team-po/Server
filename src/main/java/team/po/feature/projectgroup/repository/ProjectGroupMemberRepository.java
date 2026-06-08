@@ -58,4 +58,6 @@ public interface ProjectGroupMemberRepository extends JpaRepository<ProjectGroup
 	List<ProjectGroupMember> findWeeklyGithubSummaryTargetMembers(
 		@Param("projectGroupStatus") ProjectGroupStatus projectGroupStatus
 	);
+
+	long countByProjectGroup_IdAndFinishAgreedTrue(Long projectGroupId);
 }

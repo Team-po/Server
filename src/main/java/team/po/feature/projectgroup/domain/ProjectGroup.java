@@ -57,4 +57,8 @@ public class ProjectGroup {
 		this.projectMvp = projectMvp;
 		this.status = status;
 	}
+
+	public void finish() {
+		this.status = ProjectGroupStatus.FINISHED;
+	}
 }

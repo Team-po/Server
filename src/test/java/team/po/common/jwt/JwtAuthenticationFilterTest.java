@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.io.IOException;
+import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -46,6 +47,25 @@ class JwtAuthenticationFilterTest {
 		verify(jwtTokenProvider, never()).validateAccessToken("expired-access-token");
 		verify(filterChain).doFilter(request, response);
 		assertThat(response.getStatus()).isEqualTo(200);
+		assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+	}
+
+	@Test
+	void doFilter_skipsAccessTokenValidationForPasswordResetPublicPaths() throws ServletException, IOException {
+		JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtTokenProvider);
+
+		for (String path : List.of("/api/users/password-reset", "/api/users/password-reset/confirm")) {
+			MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
+			MockHttpServletResponse response = new MockHttpServletResponse();
+			request.addHeader("Authorization", "Bearer expired-access-token");
+
+			filter.doFilter(request, response, filterChain);
+
+			verify(filterChain).doFilter(request, response);
+			assertThat(response.getStatus()).isEqualTo(200);
+		}
+
+		verify(jwtTokenProvider, never()).validateAccessToken(anyString());
 		assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
 	}
 

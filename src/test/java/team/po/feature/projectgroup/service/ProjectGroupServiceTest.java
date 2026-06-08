@@ -288,6 +288,79 @@ class ProjectGroupServiceTest {
 	}
 
 	@Test
+	void finishProjectGroup_finishesProjectGroup_whenAllMembersAgree() {
+		ProjectGroup projectGroup = ProjectGroup.builder()
+			.projectName("Teampo Alpha")
+			.projectTitle("주제 A")
+			.status(ProjectGroupStatus.ACTIVE)
+			.build();
+		ProjectGroupMember requester = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
+
+		when(projectGroupRepository.findByIdForUpdate(50L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(50L, 1L)).thenReturn(Optional.of(requester));
+		when(projectGroupMemberRepository.countByProjectGroup_IdAndFinishAgreedTrue(50L)).thenReturn(4L);
+
+		projectGroupService.finishProjectGroup(50L, 1L);
+
+		assertThat(projectGroup.getStatus()).isEqualTo(ProjectGroupStatus.FINISHED);
+		assertThat(requester.isFinishAgreed()).isTrue();
+	}
+
+	@Test
+	void finishProjectGroup_keepsActive_whenNotAllMembersAgreeYet() {
+		ProjectGroup projectGroup = ProjectGroup.builder()
+			.projectName("Teampo Alpha")
+			.projectTitle("주제 A")
+			.status(ProjectGroupStatus.ACTIVE)
+			.build();
+		ProjectGroupMember requester = new ProjectGroupMember(projectGroup, mockUser(2L), MemberRole.FRONTEND, GroupRole.MEMBER);
+
+		when(projectGroupRepository.findByIdForUpdate(60L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(60L, 2L)).thenReturn(Optional.of(requester));
+		when(projectGroupMemberRepository.countByProjectGroup_IdAndFinishAgreedTrue(60L)).thenReturn(2L);
+
+		projectGroupService.finishProjectGroup(60L, 2L);
+
+		assertThat(projectGroup.getStatus()).isEqualTo(ProjectGroupStatus.ACTIVE);
+		assertThat(requester.isFinishAgreed()).isTrue();
+	}
+
+	@Test
+	void finishProjectGroup_throwsForbidden_whenRequesterIsNotMember() {
+		ProjectGroup projectGroup = ProjectGroup.builder()
+			.projectName("Teampo Alpha")
+			.projectTitle("주제 A")
+			.status(ProjectGroupStatus.ACTIVE)
+			.build();
+
+		when(projectGroupRepository.findByIdForUpdate(61L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(61L, 99L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> projectGroupService.finishProjectGroup(61L, 99L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode());
+	}
+
+	@Test
+	void finishProjectGroup_throwsBadRequest_whenProjectGroupAlreadyFinished() {
+		ProjectGroup projectGroup = ProjectGroup.builder()
+			.projectName("Teampo Alpha")
+			.projectTitle("주제 A")
+			.status(ProjectGroupStatus.FINISHED)
+			.build();
+		ProjectGroupMember requester = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND, GroupRole.HOST);
+
+		when(projectGroupRepository.findByIdForUpdate(70L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(70L, 1L)).thenReturn(Optional.of(requester));
+
+		assertThatThrownBy(() -> projectGroupService.finishProjectGroup(70L, 1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_PROJECT_GROUP_REQUEST.getCode());
+	}
+
+	@Test
 	void getMyProjectGroup_throwsNotFound_whenUserHasNoActiveGroup() {
 		Users requester = mockUser(100L);
 		when(projectGroupMemberRepository.findByUser_IdAndProjectGroup_Status(100L, ProjectGroupStatus.ACTIVE))
