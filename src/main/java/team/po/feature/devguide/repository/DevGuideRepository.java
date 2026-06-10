@@ -13,9 +13,9 @@ import team.po.feature.devguide.domain.DevGuideGenerationType;
 public interface DevGuideRepository extends JpaRepository<DevGuide, Long> {
 	boolean existsByProjectGroup_IdAndDeletedAtIsNull(Long projectGroupId);
 
-	boolean existsByProjectGroup_IdAndIsConfirmedTrue(Long projectGroupId);
+	boolean existsByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(Long projectGroupId);
 
-	Optional<DevGuide> findByProjectGroup_IdAndIsConfirmedTrue(Long projectGroupId);
+	Optional<DevGuide> findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(Long projectGroupId);
 
 	Optional<DevGuide> findByIdAndProjectGroup_IdAndDeletedAtIsNull(Long id, Long projectGroupId);
 

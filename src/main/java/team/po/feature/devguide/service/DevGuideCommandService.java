@@ -89,7 +89,8 @@ public class DevGuideCommandService {
 
 		DevGuideGeneration generation = existing.orElseGet(() -> DevGuideGeneration.create(projectGroup));
 
-		boolean hasConfirmed = devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(projectGroupId);
+		boolean hasConfirmed = devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(
+			projectGroupId);
 		DevGuideGenerationType generationType;
 
 		if (hasConfirmed) {
@@ -115,7 +116,7 @@ public class DevGuideCommandService {
 		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
 
-		devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(projectGroupId)
+		devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(projectGroupId)
 			.ifPresent(DevGuide::unconfirm);
 
 		int nextVersionNo = devGuideRepository.findMaxVersionNoByProjectGroupId(projectGroupId) + 1;

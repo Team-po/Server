@@ -150,7 +150,7 @@ class DevGuideCommandServiceTest {
 
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.empty());
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(false);
 		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(false);
 
 		DevGuideGenerationType result = devGuideCommandService.startRegeneration(1L);
@@ -167,7 +167,7 @@ class DevGuideCommandServiceTest {
 
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(true);
+		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(true);
 		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
 			.thenReturn(0);
 
@@ -185,7 +185,7 @@ class DevGuideCommandServiceTest {
 
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(false);
 		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(true);
 
 		assertThatThrownBy(() -> devGuideCommandService.startRegeneration(1L))
@@ -205,7 +205,7 @@ class DevGuideCommandServiceTest {
 
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(true);
+		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(true);
 		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
 			.thenReturn(0);
 
@@ -222,7 +222,7 @@ class DevGuideCommandServiceTest {
 
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(true);
+		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(true);
 		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
 			.thenReturn(3); // default max is 3
 
@@ -242,7 +242,7 @@ class DevGuideCommandServiceTest {
 
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(true);
+		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(true);
 		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
 			.thenReturn(3); // default max is 3
 
@@ -266,7 +266,7 @@ class DevGuideCommandServiceTest {
 			DevGuideGenerationType.INITIAL, true);
 
 		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
-		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L))
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L))
 			.thenReturn(Optional.of(existingConfirmed));
 		when(devGuideRepository.findMaxVersionNoByProjectGroupId(1L)).thenReturn(1);
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));

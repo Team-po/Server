@@ -86,7 +86,7 @@ public class DevGuideService {
 				projectGroup.getProjectTitle(),
 				projectGroup.getProjectDescription(),
 				projectGroup.getProjectMvp(),
-				devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(projectGroupId)
+				devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(projectGroupId)
 					.map(DevGuide::toContent)
 					.orElse(null),
 				feedback
@@ -109,7 +109,8 @@ public class DevGuideService {
 	public DevGuideQueryResponse getDevGuide(Long projectGroupId, Long userId) {
 		validateProjectGroupMember(projectGroupId, userId);
 
-		Optional<DevGuide> devGuide = devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(projectGroupId);
+		Optional<DevGuide> devGuide = devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(
+			projectGroupId);
 		Optional<DevGuideGeneration> generation = devGuideGenerationRepository.findByProjectGroup_Id(projectGroupId);
 
 		if (devGuide.isEmpty() && generation.isEmpty()) {
