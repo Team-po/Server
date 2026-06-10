@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +27,9 @@ import team.po.feature.devguide.domain.DevGuideStatus;
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.dto.DevGuideQueryResponse;
 import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
+import team.po.feature.devguide.dto.DevGuideHistoryContentResponse;
+import team.po.feature.devguide.dto.DevGuideHistoryListResponse;
+import team.po.feature.devguide.dto.DevGuideHistoryResponse;
 import team.po.feature.devguide.service.DevGuideService;
 import team.po.feature.user.domain.Users;
 
@@ -113,6 +117,72 @@ class DevGuideControllerTest {
 			.andExpect(jsonPath("$.content").doesNotExist());
 	}
 
+	// ─── GET /dev-guide/history ─────────────────────────────────────────────
+
+	@Test
+	void getDevGuideHistories_returnsHistoryList() throws Exception {
+		DevGuideHistoryListResponse response = new DevGuideHistoryListResponse(List.of(
+			new DevGuideHistoryResponse(2L, 2, DevGuideGenerationType.MANUAL, true,
+				LocalDateTime.of(2026, 6, 7, 12, 30)),
+			new DevGuideHistoryResponse(1L, 1, DevGuideGenerationType.INITIAL, false,
+				LocalDateTime.of(2026, 6, 7, 12, 0))
+		));
+
+		when(devGuideService.getHistories(1L, 1L)).thenReturn(response);
+
+		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide/history", 1L))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.histories[0].devGuideId").value(2))
+			.andExpect(jsonPath("$.histories[0].versionNo").value(2))
+			.andExpect(jsonPath("$.histories[0].generationType").value("MANUAL"))
+			.andExpect(jsonPath("$.histories[0].confirmed").value(true))
+			.andExpect(jsonPath("$.histories[1].devGuideId").value(1))
+			.andExpect(jsonPath("$.histories[1].versionNo").value(1))
+			.andExpect(jsonPath("$.histories[1].generationType").value("INITIAL"))
+			.andExpect(jsonPath("$.histories[1].confirmed").value(false));
+	}
+
+	@Test
+	void getDevGuideHistories_returnsConflict_whenGuideIsGenerating() throws Exception {
+		when(devGuideService.getHistories(1L, 1L))
+			.thenThrow(new ApplicationException(ErrorCode.DEV_GUIDE_GENERATING));
+
+		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide/history", 1L))
+			.andExpect(status().isConflict());
+	}
+
+	@Test
+	void getDevGuideHistoryContent_returnsHistoryContent() throws Exception {
+		DevGuideHistoryContentResponse response = new DevGuideHistoryContentResponse(
+			2L,
+			2,
+			DevGuideGenerationType.MANUAL,
+			true,
+			LocalDateTime.of(2026, 6, 7, 12, 30),
+			sampleContent("히스토리 본문 개요입니다.")
+		);
+
+		when(devGuideService.getHistoryContent(1L, 1L, 2L)).thenReturn(response);
+
+		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide/history/{devGuideId}", 1L, 2L))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.devGuideId").value(2))
+			.andExpect(jsonPath("$.versionNo").value(2))
+			.andExpect(jsonPath("$.generationType").value("MANUAL"))
+			.andExpect(jsonPath("$.confirmed").value(true))
+			.andExpect(jsonPath("$.overview").value("히스토리 본문 개요입니다."))
+			.andExpect(jsonPath("$.techStack[0].category").value("Backend"));
+	}
+
+	@Test
+	void getDevGuideHistory_returnsNotFound_whenDevGuideDoesNotExist() throws Exception {
+		when(devGuideService.getHistoryContent(1L, 1L, 2L))
+			.thenThrow(new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND));
+
+		mockMvc.perform(get("/api/team-space/{projectGroupId}/dev-guide/history/{devGuideId}", 1L, 2L))
+			.andExpect(status().isNotFound());
+	}
+
 	// ─── POST /dev-guide/regenerate ───────────────────────────────────────────
 
 	@Test
@@ -131,16 +201,16 @@ class DevGuideControllerTest {
 	}
 
 	@Test
-	void regenerateDevGuide_returnsRecoveryType_whenRetryingAfterFailure() throws Exception {
-		DevGuideContent content = sampleContent("복구된 개요입니다.");
+	void regenerateDevGuide_returnsInitialType_whenRetryingInitialGenerationFailure() throws Exception {
+		DevGuideContent content = sampleContent("초기 생성 재시도 개요입니다.");
 		DevGuideRegenerateResponse response =
-			new DevGuideRegenerateResponse(content, DevGuideGenerationType.RECOVERY, 3);
+			new DevGuideRegenerateResponse(content, DevGuideGenerationType.INITIAL, 3);
 
 		when(devGuideService.regenerate(1L, 1L, null)).thenReturn(response);
 
 		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.generationType").value("RECOVERY"))
+			.andExpect(jsonPath("$.generationType").value("INITIAL"))
 			.andExpect(jsonPath("$.remainingRegenerationCount").value(3));
 	}
 
@@ -160,6 +230,44 @@ class DevGuideControllerTest {
 
 		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/regenerate", 1L))
 			.andExpect(status().isTooManyRequests());
+	}
+
+	// ─── POST /dev-guide/{devGuideId}/confirm ────────────────────────────────
+
+	@Test
+	void confirmDevGuide_returnsOk() throws Exception {
+		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/{devGuideId}/confirm", 1L, 2L))
+			.andExpect(status().isOk())
+			.andExpect(content().string(""));
+
+		verify(devGuideService).confirm(1L, 1L, 2L);
+	}
+
+	@Test
+	void confirmDevGuide_returnsConflict_whenGuideIsGenerating() throws Exception {
+		doThrow(new ApplicationException(ErrorCode.DEV_GUIDE_GENERATING))
+			.when(devGuideService).confirm(1L, 1L, 2L);
+
+		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/{devGuideId}/confirm", 1L, 2L))
+			.andExpect(status().isConflict());
+	}
+
+	@Test
+	void confirmDevGuide_returnsForbidden_whenProjectGroupIsFinished() throws Exception {
+		doThrow(new ApplicationException(ErrorCode.DEV_GUIDE_WRITE_NOT_ALLOWED))
+			.when(devGuideService).confirm(1L, 1L, 2L);
+
+		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/{devGuideId}/confirm", 1L, 2L))
+			.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void confirmDevGuide_returnsNotFound_whenDevGuideDoesNotExist() throws Exception {
+		doThrow(new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND))
+			.when(devGuideService).confirm(1L, 1L, 2L);
+
+		mockMvc.perform(post("/api/team-space/{projectGroupId}/dev-guide/{devGuideId}/confirm", 1L, 2L))
+			.andExpect(status().isNotFound());
 	}
 
 	// ─── fixtures ────────────────────────────────────────────────────────────
