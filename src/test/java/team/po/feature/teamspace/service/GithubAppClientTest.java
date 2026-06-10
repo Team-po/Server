@@ -375,6 +375,22 @@ class GithubAppClientTest {
 				      "id": 999,
 				      "login": "other"
 				    }
+				  },
+				  {
+				    "id": 1003,
+				    "number": 12,
+				    "title": "Updated by someone else",
+				    "body": "기간 전 생성된 PR",
+				    "state": "open",
+				    "created_at": "2026-05-20T10:15:30Z",
+				    "updated_at": "2026-05-27T10:15:30Z",
+				    "closed_at": null,
+				    "merged_at": null,
+				    "html_url": "https://github.com/student-team-org/backend/pull/12",
+				    "user": {
+				      "id": 123,
+				      "login": "octocat"
+				    }
 				  }
 				]
 				""");
@@ -416,6 +432,21 @@ class GithubAppClientTest {
 				      "id": 123,
 				      "login": "octocat"
 				    }
+				  },
+				  {
+				    "id": 2003,
+				    "number": 22,
+				    "title": "Updated by someone else",
+				    "body": "기간 전 생성된 이슈",
+				    "state": "open",
+				    "created_at": "2026-05-20T11:00:00Z",
+				    "updated_at": "2026-05-26T11:00:00Z",
+				    "closed_at": null,
+				    "html_url": "https://github.com/student-team-org/backend/issues/22",
+				    "user": {
+				      "id": 123,
+				      "login": "octocat"
+				    }
 				  }
 				]
 				""");
@@ -443,8 +474,12 @@ class GithubAppClientTest {
 			assertThat(data.pullRequestCount()).isEqualTo(1);
 			assertThat(data.issueCount()).isEqualTo(1);
 			assertThat(data.repositories()).hasSize(1);
-			assertThat(data.repositories().get(0).pullRequests().get(0).pullNumber()).isEqualTo(10L);
-			assertThat(data.repositories().get(0).issues().get(0).issueNumber()).isEqualTo(20L);
+			assertThat(data.repositories().get(0).pullRequests())
+				.extracting(pullRequest -> pullRequest.pullNumber())
+				.containsExactly(10L);
+			assertThat(data.repositories().get(0).issues())
+				.extracting(issue -> issue.issueNumber())
+				.containsExactly(20L);
 		} finally {
 			server.stop(0);
 		}

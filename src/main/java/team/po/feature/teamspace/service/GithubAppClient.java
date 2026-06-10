@@ -201,7 +201,7 @@ public class GithubAppClient {
 			response.stream()
 				.filter(this::hasGithubUser)
 				.filter(pullRequest -> authorGithubUserId.equals(pullRequest.user().id()))
-				.filter(pullRequest -> hasActivityInPeriod(pullRequest, periodStart, periodEnd))
+				.filter(pullRequest -> hasContributionEventInPeriod(pullRequest, periodStart, periodEnd))
 				.map(pullRequest -> new GithubWeeklySummaryData.PullRequest(
 					pullRequest.id(),
 					pullRequest.number(),
@@ -242,7 +242,7 @@ public class GithubAppClient {
 				.filter(issue -> issue.pullRequest() == null)
 				.filter(this::hasGithubUser)
 				.filter(issue -> authorGithubUserId.equals(issue.user().id()))
-				.filter(issue -> hasActivityInPeriod(issue, periodStart, periodEnd))
+				.filter(issue -> hasContributionEventInPeriod(issue, periodStart, periodEnd))
 				.map(issue -> new GithubWeeklySummaryData.Issue(
 					issue.id(),
 					issue.number(),
@@ -550,16 +550,14 @@ public class GithubAppClient {
 			&& !issue.user().login().isBlank();
 	}
 
-	private boolean hasActivityInPeriod(GithubPullRequestResponse pullRequest, Instant periodStart, Instant periodEnd) {
+	private boolean hasContributionEventInPeriod(GithubPullRequestResponse pullRequest, Instant periodStart, Instant periodEnd) {
 		return isInPeriod(pullRequest.createdAt(), periodStart, periodEnd)
-			|| isInPeriod(pullRequest.updatedAt(), periodStart, periodEnd)
 			|| isInPeriod(pullRequest.closedAt(), periodStart, periodEnd)
 			|| isInPeriod(pullRequest.mergedAt(), periodStart, periodEnd);
 	}
 
-	private boolean hasActivityInPeriod(GithubIssueResponse issue, Instant periodStart, Instant periodEnd) {
+	private boolean hasContributionEventInPeriod(GithubIssueResponse issue, Instant periodStart, Instant periodEnd) {
 		return isInPeriod(issue.createdAt(), periodStart, periodEnd)
-			|| isInPeriod(issue.updatedAt(), periodStart, periodEnd)
 			|| isInPeriod(issue.closedAt(), periodStart, periodEnd);
 	}
 
