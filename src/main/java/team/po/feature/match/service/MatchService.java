@@ -2,6 +2,7 @@ package team.po.feature.match.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -284,37 +285,74 @@ public class MatchService {
 	}
 
 	@Transactional
-	public void cancel(Users loginUser) {
-		// 1. 활성 매칭 요청 조회 (WAITING or MATCHING)
+	public void cancel(Users loginUser) { // 사용자가 직접 취소
+		// 활성 매칭 요청 조회 (WAITING or MATCHING)
 		ProjectRequest myPr = projectRequestRepository
 			.findByUserIdAndStatusIn(loginUser.getId(), List.of(Status.WAITING, Status.MATCHING))
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
 
-		// 2. WAITING: 단순 취소
+		// 활성 매칭 취소
+		cancelActiveRequest(myPr, loginUser.getId(), true);
+	}
+
+	@Transactional
+	public void cancelActiveMatchForWithdrawal(Long userId) { // 사용자가 탈퇴하면 활성 매칭 자동 취소
+		projectRequestRepository.findByUserIdAndStatusIn(userId, List.of(Status.WAITING, Status.MATCHING))
+			.ifPresent(myPr -> cancelActiveRequest(myPr, userId, false));
+	}
+
+	// 정상 취소: strict=true, 탈퇴 시 자동 취소: strict=false
+	private void cancelActiveRequest(ProjectRequest myPr, Long userId, boolean strict) {
+		// WAITING: 단순 요청 취소
 		if (myPr.getStatus() == Status.WAITING) {
 			myPr.cancel();
 			log.info("매칭 요청 취소 - WAITING: prId={}", myPr.getId());
 			return;
 		}
 
-		// 3. MATCHING - 세션 조회
-		MatchingMember me = matchingMemberRepository
-			.findCurrentActiveByUserId(loginUser.getId())
-			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_DATA_ERROR));
+		// MATCHING: 세션 조회하여 matching member에서 제거
 
-		// Session: PESSIMISTIC_LOCK
-		MatchingSession session = matchingSessionRepository
-			.findByIdWithLock(me.getMatchingSession().getId())
-			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
+		// 진행 중인 매칭 조회
+		Optional<MatchingMember> currentMember = matchingMemberRepository.findCurrentActiveByUserId(userId);
+		if (currentMember.isEmpty()) {
+			if (strict) {
+				throw new ApplicationException(ErrorCode.MATCH_DATA_ERROR);
+			}
+			// 탈퇴용은 활성 매칭이 존재하지 않아도 예외 없이 리턴
+			return;
+		}
 
+		// 세션 조회 시 pessimistic lock 적용
+		Optional<MatchingSession> lockedSession = matchingSessionRepository
+			.findByIdWithLock(currentMember.get().getMatchingSession().getId());
+		if (lockedSession.isEmpty()) {
+			if (strict) {
+				throw new ApplicationException(ErrorCode.MATCH_NOT_FOUND);
+			}
+			// 탈퇴용은 세션이 이미 정리된 경우에도 예외 없이 리턴
+			return;
+		}
+
+		// 해당 매칭 세션의 멤버 조회
 		List<MatchingMember> sessionMembers = matchingMemberRepository
-			.findAllActiveBySessionIdWithFetch(session.getId());
+			.findAllActiveBySessionIdWithFetch(lockedSession.get().getId());
 
-		// 4. host 여부 확인 후 매칭 취소
+		Optional<MatchingMember> me = sessionMembers.stream()
+			.filter(member -> member.getUser().getId().equals(userId))
+			.findFirst();
+		if (me.isEmpty()) {
+			if (strict) {
+				throw new ApplicationException(ErrorCode.MATCH_NOT_FOUND);
+			}
+			// 탈퇴용은 세션이 이미 정리된 경우에도 예외 없이 리턴
+			return;
+		}
+
+		// host 여부 확인 후 매칭 취소
 		if (myPr.isHostRequest()) {
-			cancelAsHost(me, sessionMembers);
+			cancelAsHost(me.get(), sessionMembers);
 		} else {
-			cancelAsMember(me, sessionMembers);
+			cancelAsMember(me.get(), sessionMembers);
 		}
 	}
 
