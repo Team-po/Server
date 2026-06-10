@@ -36,6 +36,7 @@ import team.po.common.jwt.UserPrincipal;
 import team.po.common.redis.RedisService;
 import team.po.config.PasswordResetProperties;
 import team.po.exception.ApplicationException;
+import team.po.feature.match.service.MatchService;
 import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.EditPasswordRequest;
@@ -83,6 +84,9 @@ class UserServiceTest {
 
 	@Mock
 	private PasswordResetProperties passwordResetProperties;
+
+	@Mock
+	private MatchService matchService;
 
 	@InjectMocks
 	private UserService userService;

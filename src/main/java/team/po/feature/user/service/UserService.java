@@ -30,6 +30,7 @@ import team.po.common.jwt.UserPrincipal;
 import team.po.config.PasswordResetProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
+import team.po.feature.match.service.MatchService;
 import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.EditPasswordRequest;
@@ -66,6 +67,7 @@ public class UserService {
 	private final EmailService emailService;
 	private final RedisService redisService;
 	private final PasswordResetProperties passwordResetProperties;
+	private final MatchService matchService;
 	private final SecureRandom secureRandom = new SecureRandom();
 	@Value("${cloud.aws.s3.endpoint:}")
 	private String s3Endpoint;
@@ -310,6 +312,7 @@ public class UserService {
 	public void deleteUser(Users loginUser) {
 		Users user = this.getActiveUser(loginUser.getId());
 		emailService.validateVerifiedDeleteUserEmail(user.getEmail());
+		matchService.cancelActiveMatchForWithdrawal(user.getId());
 
 		Instant deletedAt = Instant.now();
 		String email = user.getEmail();
