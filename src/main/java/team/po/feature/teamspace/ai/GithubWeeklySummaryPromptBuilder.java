@@ -171,12 +171,12 @@ public class GithubWeeklySummaryPromptBuilder {
 			return "";
 		}
 
-		String sanitized = input.trim();
+		String sanitized = maskSensitiveValues(input.trim());
 		if (sanitized.length() > maxLength) {
 			sanitized = sanitized.substring(0, maxLength);
 		}
 
-		return maskSensitiveValues(sanitized)
+		return sanitized
 			.replace("</github_activity_data>", "(/github_activity_data)")
 			.replace("<github_activity_data>", "(github_activity_data)")
 			.replace("```", "'''");

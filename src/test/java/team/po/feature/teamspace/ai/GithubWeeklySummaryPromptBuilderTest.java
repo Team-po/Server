@@ -82,6 +82,22 @@ class GithubWeeklySummaryPromptBuilderTest {
 	}
 
 	@Test
+	void build_masksSensitiveValuesBeforeLimitingLength() {
+		String token = "github_pat_" + "a".repeat(80);
+		String body = "a".repeat(569) + " " + token;
+		GithubWeeklySummaryData data = weeklySummaryData(
+			List.of(pullRequest("긴 민감정보 본문 PR", body)),
+			List.of()
+		);
+
+		String prompt = promptBuilder.build(data);
+
+		assertThat(prompt).contains("[REDACTED_TOKEN]");
+		assertThat(prompt).doesNotContain("github_pat_");
+		assertThat(prompt).doesNotContain(token);
+	}
+
+	@Test
 	void build_describesEmptyActivity() {
 		GithubWeeklySummaryData data = new GithubWeeklySummaryData(
 			Instant.parse("2026-05-25T00:00:00Z"),
