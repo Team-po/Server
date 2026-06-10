@@ -404,6 +404,114 @@ class MatchServiceTest {
 			.isInstanceOf(ApplicationException.class);
 	}
 
+	// ===== cancelActiveMatchForWithdrawal =====
+
+	@Test
+	void cancelActiveMatchForWithdrawal_success_whenWaiting() {
+		Users loginUser = createUser(1L);
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 1L);
+
+		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+			.thenReturn(Optional.of(myPr));
+
+		matchService.cancelActiveMatchForWithdrawal(1L);
+
+		assertThat(myPr.getStatus()).isEqualTo(Status.CANCELED);
+		verify(matchingMemberRepository, never()).findCurrentActiveByUserId(any());
+	}
+
+	@Test
+	void cancelActiveMatchForWithdrawal_success_whenMatchingMember() {
+		Users loginUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 2L);
+		myPr.startMatching();
+
+		MatchingMember myMember = createMemberMember(session, myPr);
+		ReflectionTestUtils.setField(myMember, "id", 2L);
+
+		when(projectRequestRepository.findByUserIdAndStatusIn(eq(2L), any()))
+			.thenReturn(Optional.of(myPr));
+		when(matchingMemberRepository.findCurrentActiveByUserId(2L))
+			.thenReturn(Optional.of(myMember));
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
+			.thenReturn(List.of(myMember));
+
+		matchService.cancelActiveMatchForWithdrawal(2L);
+
+		assertThat(myPr.getStatus()).isEqualTo(Status.CANCELED);
+		assertThat(myMember.isDeleted()).isTrue();
+	}
+
+	@Test
+	void cancelActiveMatchForWithdrawal_success_whenMatchingHost_disbandSession() {
+		Users loginUser = createUser(1L);
+		Users memberUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+
+		ProjectRequest hostPr = createHostRequest(loginUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+		hostPr.startMatching();
+
+		ProjectRequest memberPr = createMemberRequest(memberUser);
+		ReflectionTestUtils.setField(memberPr, "id", 2L);
+		memberPr.startMatching();
+
+		MatchingMember hostMember = createHostMember(session, hostPr);
+		MatchingMember memberMember = createMemberMember(session, memberPr);
+
+		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+			.thenReturn(Optional.of(hostPr));
+		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
+			.thenReturn(Optional.of(hostMember));
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
+			.thenReturn(List.of(hostMember, memberMember));
+
+		matchService.cancelActiveMatchForWithdrawal(1L);
+
+		assertThat(hostPr.getStatus()).isEqualTo(Status.CANCELED);
+		assertThat(memberPr.getStatus()).isEqualTo(Status.WAITING);
+		assertThat(hostMember.isDeleted()).isTrue();
+		assertThat(memberMember.isDeleted()).isTrue();
+		assertThat(session.isDeleted()).isTrue();
+	}
+
+	@Test
+	void cancelActiveMatchForWithdrawal_returnsWhenNoActiveRequest() {
+		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+			.thenReturn(Optional.empty());
+
+		matchService.cancelActiveMatchForWithdrawal(1L);
+
+		verify(matchingMemberRepository, never()).findCurrentActiveByUserId(any());
+		verify(matchingSessionRepository, never()).findByIdWithLock(any());
+	}
+
+	@Test
+	void cancelActiveMatchForWithdrawal_returnsWhenMatchingMemberAlreadyRemoved() {
+		Users loginUser = createUser(1L);
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 1L);
+		myPr.startMatching();
+
+		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+			.thenReturn(Optional.of(myPr));
+		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
+			.thenReturn(Optional.empty());
+
+		matchService.cancelActiveMatchForWithdrawal(1L);
+
+		assertThat(myPr.getStatus()).isEqualTo(Status.MATCHING);
+		verify(matchingSessionRepository, never()).findByIdWithLock(any());
+	}
+
 	// ===== abandonOrphanSession =====
 
 	@Test

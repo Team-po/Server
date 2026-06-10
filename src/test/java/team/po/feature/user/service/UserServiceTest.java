@@ -797,8 +797,9 @@ class UserServiceTest {
 		assertThat(githubAccount.getDeletedAt()).isEqualTo(managedUser.getDeletedAt());
 		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 		verify(githubAccountRepository).findByUserIdAndDeletedAtIsNull(1L);
-		InOrder inOrder = inOrder(emailService, userRepository, jwtTokenProvider);
+		InOrder inOrder = inOrder(emailService, matchService, userRepository, jwtTokenProvider);
 		inOrder.verify(emailService).validateVerifiedDeleteUserEmail("test@email.com");
+		inOrder.verify(matchService).cancelActiveMatchForWithdrawal(1L);
 		inOrder.verify(userRepository).flush();
 		inOrder.verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
 		inOrder.verify(jwtTokenProvider).revokeAccessTokens(1L);
@@ -837,6 +838,7 @@ class UserServiceTest {
 			.hasMessage("이메일 인증이 필요합니다.");
 
 		assertThat(managedUser.getDeletedAt()).isNull();
+		verify(matchService, never()).cancelActiveMatchForWithdrawal(any());
 		verify(userRepository, never()).flush();
 		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
 		verify(emailService, never()).consumeVerifiedDeleteUserEmail(any());
