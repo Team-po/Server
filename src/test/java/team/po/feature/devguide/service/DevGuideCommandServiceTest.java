@@ -88,6 +88,7 @@ class DevGuideCommandServiceTest {
 
 	@Test
 	void create_throwsAlreadyExists_whenDevGuideExists() {
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup()));
 		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(true);
 
 		assertThatThrownBy(() -> devGuideCommandService.create(1L, devGuideContent()))
@@ -104,7 +105,7 @@ class DevGuideCommandServiceTest {
 		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
 
 		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(false);
-		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
 
 		devGuideCommandService.create(1L, devGuideContent());

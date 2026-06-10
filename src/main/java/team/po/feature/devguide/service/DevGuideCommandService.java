@@ -54,12 +54,13 @@ public class DevGuideCommandService {
 
 	@Transactional
 	public void create(Long projectGroupId, DevGuideContent content) {
+		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
+
 		// 최초 생성 시 이미 가이드라인이 존재하는지 확인
 		if (devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(projectGroupId)) {
 			throw new ApplicationException(ErrorCode.DEV_GUIDE_ALREADY_EXISTS);
 		}
-		ProjectGroup projectGroup = projectGroupRepository.findById(projectGroupId)
-			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
 
 		// 최초 생성 성공 시 현재 기준 가이드라인으로 자동 확정한다.
 		devGuideRepository.save(
