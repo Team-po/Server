@@ -34,7 +34,26 @@ Redis: localhost:6380
 curl -i http://localhost:8080/swagger-ui/index.html
 ```
 
-### 3. 테스트와 빌드
+### 3. 클라이언트 실서버 모드 실행
+
+채팅은 HTTP 히스토리 API와 STOMP WebSocket을 함께 사용합니다. 서버를 먼저 띄운 뒤 클라이언트를 실서버 모드로 실행합니다.
+
+```bash
+cd ../Client
+VITE_API_MODE=real VITE_API_BASE_URL=http://localhost:8080/api pnpm dev --host 127.0.0.1
+```
+
+클라이언트는 `VITE_API_BASE_URL`이 `http://localhost:8080/api`일 때 WebSocket 엔드포인트를 `ws://localhost:8080/ws`로 계산합니다.
+
+채팅 관련 서버 경로:
+
+- REST 히스토리: `GET /api/project-groups/{projectGroupId}/chat/messages`
+- REST 읽음 처리: `PATCH /api/project-groups/{projectGroupId}/chat/read`
+- WebSocket 연결: `ws://localhost:8080/ws`
+- STOMP 전송: `/app/project-groups/{projectGroupId}/chat/messages`
+- STOMP 구독: `/topic/project-groups/{projectGroupId}/chat/messages`
+
+### 4. 테스트와 빌드
 
 전체 테스트:
 

@@ -64,6 +64,7 @@ public class SecurityConfig {
 					.requestMatchers("/oauth2/authorization/github", "/api/auth/github/callback").permitAll()
 					.requestMatchers(HttpMethod.GET, "/api/users/check-email").permitAll()
 					.requestMatchers(HttpMethod.POST, "/api/users/profile-image/upload-url").permitAll()
+					.requestMatchers("/ws/**").permitAll()
 					.requestMatchers("/error").permitAll()
 					.anyRequest().authenticated()
 				)
@@ -83,7 +84,9 @@ public class SecurityConfig {
 		CorsConfiguration configuration = new CorsConfiguration();
 		configuration.setAllowedOrigins(List.of(
 			"http://localhost:5173",
+			"http://127.0.0.1:5173",
 			"http://localhost:3000",
+			"http://127.0.0.1:3000",
 			"https://team-po.cloud",
 			"https://www.team-po.cloud"
 		));
