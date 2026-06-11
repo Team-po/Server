@@ -52,17 +52,17 @@ public class DevGuideCommandService {
 		return true;
 	}
 
-	/**
-	 * 초기 가이드라인 생성 완료 시 호출. DevGuide 저장 후 상태를 COMPLETED로 전환한다.
-	 */
 	@Transactional
 	public void create(Long projectGroupId, DevGuideContent content) {
-		if (devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(projectGroupId)) {
-			throw new ApplicationException(ErrorCode.DEV_GUIDE_ALREADY_EXISTS);
-		}
-		ProjectGroup projectGroup = projectGroupRepository.findById(projectGroupId)
+		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
 
+		// 최초 생성 시 이미 가이드라인이 존재하는지 확인
+		if (devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(projectGroupId)) {
+			throw new ApplicationException(ErrorCode.DEV_GUIDE_ALREADY_EXISTS);
+		}
+
+		// 최초 생성 성공 시 현재 기준 가이드라인으로 자동 확정한다.
 		devGuideRepository.save(
 			DevGuide.create(projectGroup, content, 1, DevGuideGenerationType.INITIAL, true)
 		);
@@ -71,15 +71,7 @@ public class DevGuideCommandService {
 			.ifPresent(DevGuideGeneration::complete);
 	}
 
-	/**
-	 * 재생성 요청 시 Gemini 호출 전에 호출. lock 획득 후 조건을 검증하고 상태를 GENERATING으로 전환한다.
-	 *
-	 * 타입 결정 기준:
-	 *   - FAILED 상태 또는 confirmed 가이드 없음 → RECOVERY (횟수 미차감, 실패 재시도)
-	 *   - COMPLETED 이고 confirmed 가이드 있음    → MANUAL   (횟수 차감)
-	 *
-	 * @return 결정된 생성 타입 (Gemini 호출 후 completeRegeneration에 전달)
-	 */
+	// 재생성 시 Gemini 호출 전에 lock 획득 후 generation 상태를 GENERATING으로 전환한다.
 	@Transactional
 	public DevGuideGenerationType startRegeneration(Long projectGroupId) {
 		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
@@ -97,40 +89,38 @@ public class DevGuideCommandService {
 
 		DevGuideGeneration generation = existing.orElseGet(() -> DevGuideGeneration.create(projectGroup));
 
-		boolean hasConfirmed = devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(projectGroupId);
+		boolean hasConfirmed = devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(
+			projectGroupId);
 		DevGuideGenerationType generationType;
 
-		if (generation.getStatus() == DevGuideStatus.FAILED || !hasConfirmed) {
-			generationType = DevGuideGenerationType.RECOVERY;
-		} else {
-			int manualCount = devGuideRepository.countByProjectGroup_IdAndGenerationType(
-				projectGroupId, DevGuideGenerationType.MANUAL);
-			if (manualCount >= generation.getMaxRegenerationCount()) {
+		if (hasConfirmed) {
+			if (countRegenerationUsage(projectGroupId) >= generation.getMaxRegenerationCount()) {
 				throw new ApplicationException(ErrorCode.DEV_GUIDE_REGENERATION_LIMIT_EXCEEDED);
 			}
 			generationType = DevGuideGenerationType.MANUAL;
+		} else if (devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(projectGroupId)) {
+			throw new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND);
+		} else {
+			generationType = DevGuideGenerationType.INITIAL;
 		}
 
 		generation.startGenerating();
 		devGuideGenerationRepository.save(generation);
+		// 생성 타입 리턴
 		return generationType;
 	}
 
-	/**
-	 * 재생성 Gemini 호출 성공 후 호출. 기존 confirmed 가이드를 해제하고 새 버전을 저장한 뒤 COMPLETED로 전환한다.
-	 *
-	 * @return 남은 재생성 횟수 (MANUAL 횟수 기준)
-	 */
 	@Transactional
 	public int completeRegeneration(Long projectGroupId, DevGuideContent content,
 		DevGuideGenerationType generationType) {
 		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
 
-		devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(projectGroupId)
+		devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(projectGroupId)
 			.ifPresent(DevGuide::unconfirm);
 
 		int nextVersionNo = devGuideRepository.findMaxVersionNoByProjectGroupId(projectGroupId) + 1;
+		// 재생성 성공 시 새 버전을 현재 기준 가이드라인으로 자동 확정한다.
 		devGuideRepository.save(DevGuide.create(projectGroup, content, nextVersionNo, generationType, true));
 
 		DevGuideGeneration generation = devGuideGenerationRepository
@@ -138,9 +128,39 @@ public class DevGuideCommandService {
 			.orElseThrow(() -> new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND));
 		generation.complete();
 
-		int manualCount = devGuideRepository.countByProjectGroup_IdAndGenerationType(
-			projectGroupId, DevGuideGenerationType.MANUAL);
-		return generation.getMaxRegenerationCount() - manualCount;
+		return generation.getMaxRegenerationCount() - countRegenerationUsage(projectGroupId);
+	}
+
+	private int countRegenerationUsage(Long projectGroupId) {
+		return devGuideRepository.countByProjectGroup_IdAndGenerationType(projectGroupId, DevGuideGenerationType.MANUAL);
+	}
+
+	@Transactional
+	public void confirm(Long projectGroupId, Long devGuideId) {
+		// 프로젝트 그룹 조회
+		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
+
+		// 종료된 프로젝트에서는 가이드라인 확정 불가
+		if (projectGroup.getStatus() == ProjectGroupStatus.FINISHED) {
+			throw new ApplicationException(ErrorCode.DEV_GUIDE_WRITE_NOT_ALLOWED);
+		}
+
+		// 생성 중인 가이드라인이 존재하면 확정 불가
+		devGuideGenerationRepository.findByProjectGroup_Id(projectGroupId)
+			.filter(DevGuideGeneration::isGenerating)
+			.ifPresent(generation -> {
+				throw new ApplicationException(ErrorCode.DEV_GUIDE_GENERATING);
+			});
+
+		// 확정할 가이드라인 조회
+		DevGuide target = devGuideRepository.findByIdAndProjectGroup_IdAndDeletedAtIsNull(devGuideId, projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.DEV_GUIDE_NOT_FOUND));
+
+		// 이미 확정된 가이드라인이 있다면 해제하고 target 가이드라인 확정
+		devGuideRepository.findAllByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(projectGroupId)
+			.forEach(DevGuide::unconfirm);
+		target.confirm();
 	}
 
 	/**

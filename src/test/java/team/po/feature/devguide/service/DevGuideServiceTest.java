@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
@@ -23,6 +25,8 @@ import team.po.feature.devguide.domain.DevGuideStatus;
 import team.po.feature.devguide.dto.DevGuideContent;
 import team.po.feature.devguide.dto.DevGuideQueryResponse;
 import team.po.feature.devguide.dto.DevGuideRegenerateResponse;
+import team.po.feature.devguide.dto.DevGuideHistoryContentResponse;
+import team.po.feature.devguide.dto.DevGuideHistoryListResponse;
 import team.po.feature.devguide.prompt.DevGuidePromptBuilder;
 import team.po.feature.devguide.repository.DevGuideGenerationRepository;
 import team.po.feature.devguide.repository.DevGuideRepository;
@@ -61,8 +65,8 @@ class DevGuideServiceTest {
 	// ─── generate ────────────────────────────────────────────────────────────
 
 	@Test
-	void generate_skips_whenConfirmedGuideAlreadyExists() {
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(true);
+	void generate_skips_whenDevGuideAlreadyExists() {
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(true);
 
 		devGuideService.generate(1L);
 
@@ -72,7 +76,7 @@ class DevGuideServiceTest {
 
 	@Test
 	void generate_skips_whenAlreadyGenerating() {
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(false);
 		when(devGuideCommandService.startInitialGeneration(1L)).thenReturn(false);
 
 		devGuideService.generate(1L);
@@ -85,7 +89,7 @@ class DevGuideServiceTest {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideContent content = devGuideContent();
 
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(false);
 		when(devGuideCommandService.startInitialGeneration(1L)).thenReturn(true);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup));
 		when(promptBuilder.build("주제 A", "설명", "MVP")).thenReturn("prompt");
@@ -99,7 +103,7 @@ class DevGuideServiceTest {
 
 	@Test
 	void generate_callsFailGeneration_andRethrows_whenGeminiFails() {
-		when(devGuideRepository.existsByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(false);
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(false);
 		when(devGuideCommandService.startInitialGeneration(1L)).thenReturn(true);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup()));
 		when(promptBuilder.build(any(), any(), any())).thenReturn("prompt");
@@ -107,6 +111,23 @@ class DevGuideServiceTest {
 
 		assertThatThrownBy(() -> devGuideService.generate(1L))
 			.isInstanceOf(RuntimeException.class);
+
+		verify(devGuideCommandService).failGeneration(1L);
+	}
+
+	@Test
+	void generate_callsFailGeneration_andRethrows_whenGeminiThrowsApplicationException() {
+		when(devGuideRepository.existsByProjectGroup_IdAndDeletedAtIsNull(1L)).thenReturn(false);
+		when(devGuideCommandService.startInitialGeneration(1L)).thenReturn(true);
+		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup()));
+		when(promptBuilder.build(any(), any(), any())).thenReturn("prompt");
+		when(geminiClient.generateDevGuide(any(), any()))
+			.thenThrow(new ApplicationException(ErrorCode.GEMINI_API_ERROR));
+
+		assertThatThrownBy(() -> devGuideService.generate(1L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GEMINI_API_ERROR.getCode());
 
 		verify(devGuideCommandService).failGeneration(1L);
 	}
@@ -143,7 +164,8 @@ class DevGuideServiceTest {
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup()));
 		when(devGuideCommandService.startRegeneration(1L)).thenReturn(DevGuideGenerationType.MANUAL);
-		when(promptBuilder.build(any(), any(), any())).thenReturn("prompt");
+		when(promptBuilder.build(any(), any(), any(), nullable(DevGuideContent.class), nullable(String.class)))
+			.thenReturn("prompt");
 		when(geminiClient.generateDevGuide(any(), any())).thenThrow(new RuntimeException("Gemini error"));
 
 		assertThatThrownBy(() -> devGuideService.regenerate(1L, 10L, null))
@@ -153,14 +175,41 @@ class DevGuideServiceTest {
 	}
 
 	@Test
+	void regenerate_callsFailGeneration_andRethrows_whenGeminiThrowsApplicationException() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup()));
+		when(devGuideCommandService.startRegeneration(1L)).thenReturn(DevGuideGenerationType.MANUAL);
+		when(promptBuilder.build(any(), any(), any(), nullable(DevGuideContent.class), nullable(String.class)))
+			.thenReturn("prompt");
+		when(geminiClient.generateDevGuide(any(), any()))
+			.thenThrow(new ApplicationException(ErrorCode.GEMINI_API_ERROR));
+
+		assertThatThrownBy(() -> devGuideService.regenerate(1L, 10L, null))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GEMINI_API_ERROR.getCode());
+
+		verify(devGuideCommandService).failGeneration(1L);
+	}
+
+	@Test
 	void regenerate_returnsResponse_withManualType() {
 		ProjectGroup projectGroup = projectGroup();
+		DevGuideContent currentContent = devGuideContent();
 		DevGuideContent content = devGuideContent();
+		DevGuide currentGuide = DevGuide.create(projectGroup, currentContent, 1, DevGuideGenerationType.INITIAL, true);
 
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup));
 		when(devGuideCommandService.startRegeneration(1L)).thenReturn(DevGuideGenerationType.MANUAL);
-		when(promptBuilder.build(eq("주제 A"), eq("설명"), eq("MVP"), any())).thenReturn("prompt");
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(Optional.of(currentGuide));
+		when(promptBuilder.build(
+			eq("주제 A"),
+			eq("설명"),
+			eq("MVP"),
+			eq(currentContent),
+			nullable(String.class)
+		)).thenReturn("prompt");
 		when(geminiClient.generateDevGuide(eq("prompt"), any())).thenReturn(content);
 		when(devGuideCommandService.completeRegeneration(1L, content, DevGuideGenerationType.MANUAL)).thenReturn(2);
 
@@ -173,20 +222,27 @@ class DevGuideServiceTest {
 	}
 
 	@Test
-	void regenerate_returnsResponse_withRecoveryType() {
+	void regenerate_returnsResponse_withInitialType_whenRetryingInitialGenerationWithoutConfirmedGuide() {
 		ProjectGroup projectGroup = projectGroup();
 		DevGuideContent content = devGuideContent();
 
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
 		when(projectGroupRepository.findById(1L)).thenReturn(Optional.of(projectGroup));
-		when(devGuideCommandService.startRegeneration(1L)).thenReturn(DevGuideGenerationType.RECOVERY);
-		when(promptBuilder.build(eq("주제 A"), eq("설명"), eq("MVP"), any())).thenReturn("prompt");
+		when(devGuideCommandService.startRegeneration(1L)).thenReturn(DevGuideGenerationType.INITIAL);
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+		when(promptBuilder.build(
+			eq("주제 A"),
+			eq("설명"),
+			eq("MVP"),
+			nullable(DevGuideContent.class),
+			nullable(String.class)
+		)).thenReturn("prompt");
 		when(geminiClient.generateDevGuide(eq("prompt"), any())).thenReturn(content);
-		when(devGuideCommandService.completeRegeneration(1L, content, DevGuideGenerationType.RECOVERY)).thenReturn(3);
+		when(devGuideCommandService.completeRegeneration(1L, content, DevGuideGenerationType.INITIAL)).thenReturn(3);
 
 		DevGuideRegenerateResponse result = devGuideService.regenerate(1L, 10L, null);
 
-		assertThat(result.generationType()).isEqualTo(DevGuideGenerationType.RECOVERY);
+		assertThat(result.generationType()).isEqualTo(DevGuideGenerationType.INITIAL);
 		assertThat(result.remainingRegenerationCount()).isEqualTo(3);
 	}
 
@@ -201,7 +257,7 @@ class DevGuideServiceTest {
 		generation.complete();
 
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
-		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.of(devGuide));
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(Optional.of(devGuide));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
 		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
 			.thenReturn(1);
@@ -222,7 +278,7 @@ class DevGuideServiceTest {
 		// status stays GENERATING (startRegeneration set it)
 
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
-		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.of(devGuide));
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(Optional.of(devGuide));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
 		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
 			.thenReturn(0);
@@ -245,7 +301,7 @@ class DevGuideServiceTest {
 		generation.fail();
 
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
-		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.of(devGuide));
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(Optional.of(devGuide));
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
 		when(devGuideRepository.countByProjectGroup_IdAndGenerationType(1L, DevGuideGenerationType.MANUAL))
 			.thenReturn(0);
@@ -263,7 +319,7 @@ class DevGuideServiceTest {
 		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
 
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
-		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.empty());
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
 
 		DevGuideQueryResponse result = devGuideService.getDevGuide(1L, 10L);
@@ -279,7 +335,7 @@ class DevGuideServiceTest {
 		generation.fail();
 
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
-		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.empty());
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
 
 		DevGuideQueryResponse result = devGuideService.getDevGuide(1L, 10L);
@@ -291,7 +347,7 @@ class DevGuideServiceTest {
 	@Test
 	void getDevGuide_throwsNotFound_whenNeitherGuideNorGenerationRecordExists() {
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
-		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrue(1L)).thenReturn(Optional.empty());
+		when(devGuideRepository.findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
 		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> devGuideService.getDevGuide(1L, 10L))
@@ -309,7 +365,143 @@ class DevGuideServiceTest {
 			.extracting("code")
 			.isEqualTo(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode());
 
-		verify(devGuideRepository, never()).findByProjectGroup_IdAndIsConfirmedTrue(any());
+		verify(devGuideRepository, never()).findByProjectGroup_IdAndIsConfirmedTrueAndDeletedAtIsNull(any());
+	}
+
+	// ─── getHistories ─────────────────────────────────────────────────────────
+
+	@Test
+	void getHistories_returnsHistoryList_whenGenerationIsNotInProgress() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
+		generation.complete();
+		DevGuide version2 = devGuide(projectGroup, 2L, 2, DevGuideGenerationType.MANUAL, true,
+			LocalDateTime.of(2026, 6, 7, 12, 30));
+		DevGuide version1 = devGuide(projectGroup, 1L, 1, DevGuideGenerationType.INITIAL, false,
+			LocalDateTime.of(2026, 6, 7, 12, 0));
+
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+		when(devGuideRepository.findAllByProjectGroup_IdAndDeletedAtIsNullOrderByVersionNoDesc(1L))
+			.thenReturn(List.of(version2, version1));
+
+		DevGuideHistoryListResponse result = devGuideService.getHistories(1L, 10L);
+
+		assertThat(result.histories()).hasSize(2);
+		assertThat(result.histories().get(0).devGuideId()).isEqualTo(2L);
+		assertThat(result.histories().get(0).versionNo()).isEqualTo(2);
+		assertThat(result.histories().get(0).generationType()).isEqualTo(DevGuideGenerationType.MANUAL);
+		assertThat(result.histories().get(0).confirmed()).isTrue();
+		assertThat(result.histories().get(1).devGuideId()).isEqualTo(1L);
+		assertThat(result.histories().get(1).versionNo()).isEqualTo(1);
+		assertThat(result.histories().get(1).confirmed()).isFalse();
+	}
+
+	@Test
+	void getHistories_returnsEmptyList_whenNoDevGuideExists() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.empty());
+		when(devGuideRepository.findAllByProjectGroup_IdAndDeletedAtIsNullOrderByVersionNoDesc(1L))
+			.thenReturn(List.of());
+
+		DevGuideHistoryListResponse result = devGuideService.getHistories(1L, 10L);
+
+		assertThat(result.histories()).isEmpty();
+	}
+
+	@Test
+	void getHistories_throwsGenerating_whenDevGuideGenerationIsInProgress() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuideGeneration generation = DevGuideGeneration.create(projectGroup);
+
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(devGuideGenerationRepository.findByProjectGroup_Id(1L)).thenReturn(Optional.of(generation));
+
+		assertThatThrownBy(() -> devGuideService.getHistories(1L, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.DEV_GUIDE_GENERATING.getCode());
+
+		verify(devGuideRepository, never()).findAllByProjectGroup_IdAndDeletedAtIsNullOrderByVersionNoDesc(any());
+	}
+
+	@Test
+	void getHistories_throwsAccessDenied_whenUserIsNotMember() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(false);
+
+		assertThatThrownBy(() -> devGuideService.getHistories(1L, 10L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode());
+
+		verify(devGuideGenerationRepository, never()).findByProjectGroup_Id(any());
+	}
+
+	@Test
+	void getHistoryContent_returnsHistoryContent_whenDevGuideExistsInProjectGroup() {
+		ProjectGroup projectGroup = projectGroup();
+		DevGuide devGuide = devGuide(projectGroup, 2L, 2, DevGuideGenerationType.MANUAL, true,
+			LocalDateTime.of(2026, 6, 7, 12, 30));
+
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(devGuideRepository.findByIdAndProjectGroup_IdAndDeletedAtIsNull(2L, 1L))
+			.thenReturn(Optional.of(devGuide));
+
+		DevGuideHistoryContentResponse result = devGuideService.getHistoryContent(1L, 10L, 2L);
+
+		assertThat(result.devGuideId()).isEqualTo(2L);
+		assertThat(result.versionNo()).isEqualTo(2);
+		assertThat(result.generationType()).isEqualTo(DevGuideGenerationType.MANUAL);
+		assertThat(result.confirmed()).isTrue();
+		assertThat(result.content()).isNotNull();
+		assertThat(result.content().overview()).isEqualTo("프로젝트 개요입니다.");
+	}
+
+	@Test
+	void getHistoryContent_throwsNotFound_whenDevGuideDoesNotExistInProjectGroup() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+		when(devGuideRepository.findByIdAndProjectGroup_IdAndDeletedAtIsNull(2L, 1L))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> devGuideService.getHistoryContent(1L, 10L, 2L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.DEV_GUIDE_NOT_FOUND.getCode());
+	}
+
+	@Test
+	void getHistoryContent_throwsAccessDenied_whenUserIsNotMember() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(false);
+
+		assertThatThrownBy(() -> devGuideService.getHistoryContent(1L, 10L, 2L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode());
+
+		verify(devGuideRepository, never()).findByIdAndProjectGroup_IdAndDeletedAtIsNull(any(), any());
+	}
+
+	// ─── confirm ─────────────────────────────────────────────────────────────
+
+	@Test
+	void confirm_delegatesToCommandService_whenUserIsMember() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(true);
+
+		devGuideService.confirm(1L, 10L, 2L);
+
+		verify(devGuideCommandService).confirm(1L, 2L);
+	}
+
+	@Test
+	void confirm_throwsAccessDenied_whenUserIsNotMember() {
+		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_Id(1L, 10L)).thenReturn(false);
+
+		assertThatThrownBy(() -> devGuideService.confirm(1L, 10L, 2L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_ACCESS_DENIED.getCode());
+
+		verify(devGuideCommandService, never()).confirm(any(), any());
 	}
 
 	// ─── fixtures ────────────────────────────────────────────────────────────
@@ -322,6 +514,14 @@ class DevGuideServiceTest {
 			.projectMvp("MVP")
 			.status(ProjectGroupStatus.ACTIVE)
 			.build();
+	}
+
+	private DevGuide devGuide(ProjectGroup projectGroup, Long id, int versionNo,
+		DevGuideGenerationType generationType, boolean confirmed, LocalDateTime createdAt) {
+		DevGuide devGuide = DevGuide.create(projectGroup, devGuideContent(), versionNo, generationType, confirmed);
+		ReflectionTestUtils.setField(devGuide, "id", id);
+		ReflectionTestUtils.setField(devGuide, "createdAt", createdAt);
+		return devGuide;
 	}
 
 	private DevGuideContent devGuideContent() {
