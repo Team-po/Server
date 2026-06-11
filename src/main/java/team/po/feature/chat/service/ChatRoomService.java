@@ -21,21 +21,33 @@ public class ChatRoomService {
 	@Transactional
 	public ChatRoom getOrCreateRoom(Long projectGroupId) {
 		return chatRoomRepository.findByProjectGroup_Id(projectGroupId)
-			.orElseGet(() -> createRoom(projectGroupId));
+			.orElseGet(() -> createRoomWithProjectGroupLock(projectGroupId));
+	}
+
+	@Transactional
+	public ChatRoom getOrCreateRoomForUpdate(Long projectGroupId) {
+		ProjectGroup projectGroup = getProjectGroupForUpdate(projectGroupId);
+		return chatRoomRepository.findByProjectGroup_Id(projectGroupId)
+			.orElseGet(() -> chatRoomRepository.save(ChatRoom.builder()
+				.projectGroup(projectGroup)
+				.build()));
 	}
 
 	@Transactional
 	public void createRoomIfAbsent(Long projectGroupId) {
-		if (chatRoomRepository.existsByProjectGroup_Id(projectGroupId)) {
-			return;
-		}
-
-		createRoom(projectGroupId);
+		getOrCreateRoom(projectGroupId);
 	}
 
-	private ChatRoom createRoom(Long projectGroupId) {
-		ProjectGroup projectGroup = projectGroupRepository.findById(projectGroupId)
+	private ChatRoom createRoomWithProjectGroupLock(Long projectGroupId) {
+		ProjectGroup projectGroup = getProjectGroupForUpdate(projectGroupId);
+		return chatRoomRepository.findByProjectGroup_Id(projectGroupId)
+			.orElseGet(() -> chatRoomRepository.save(ChatRoom.builder()
+				.projectGroup(projectGroup)
+				.build()));
+	}
+
+	private ProjectGroup getProjectGroupForUpdate(Long projectGroupId) {
+		return projectGroupRepository.findByIdForUpdate(projectGroupId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
-		return chatRoomRepository.save(new ChatRoom(projectGroup));
 	}
 }

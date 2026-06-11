@@ -14,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import team.po.feature.projectgroup.domain.ProjectGroup;
@@ -39,6 +40,7 @@ public class ChatRoom {
 	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
+	@Builder
 	public ChatRoom(ProjectGroup projectGroup) {
 		this.projectGroup = projectGroup;
 	}

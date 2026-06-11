@@ -15,6 +15,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import team.po.feature.user.domain.Users;
@@ -51,6 +52,7 @@ public class ChatMessage {
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
+	@Builder
 	public ChatMessage(ChatRoom chatRoom, Users sender, ChatMessageType type, String content) {
 		this.chatRoom = chatRoom;
 		this.sender = sender;

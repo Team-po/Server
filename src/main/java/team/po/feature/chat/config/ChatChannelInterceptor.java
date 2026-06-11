@@ -26,6 +26,7 @@ public class ChatChannelInterceptor implements ChannelInterceptor {
 
 	private static final String AUTHORIZATION_HEADER = "Authorization";
 	private static final String BEARER_PREFIX = "Bearer ";
+	private static final String APPLICATION_DESTINATION_PREFIX = "/app/";
 	private static final Pattern CHAT_TOPIC_DESTINATION_PATTERN =
 		Pattern.compile("^/topic/project-groups/(\\d+)/chat/messages$");
 
@@ -36,6 +37,11 @@ public class ChatChannelInterceptor implements ChannelInterceptor {
 	public Message<?> preSend(Message<?> message, MessageChannel channel) {
 		StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
 		if (accessor == null) {
+			return message;
+		}
+
+		if (accessor.getCommand() == StompCommand.SEND) {
+			validateSendDestination(accessor);
 			return message;
 		}
 
@@ -56,6 +62,13 @@ public class ChatChannelInterceptor implements ChannelInterceptor {
 		Authentication authentication = jwtTokenProvider.getAuthentication(accessToken);
 		accessor.setUser(authentication);
 		return message;
+	}
+
+	private void validateSendDestination(StompHeaderAccessor accessor) {
+		String destination = accessor.getDestination();
+		if (!StringUtils.hasText(destination) || !destination.startsWith(APPLICATION_DESTINATION_PREFIX)) {
+			throw new AccessDeniedException("채팅 메시지는 애플리케이션 목적지로만 전송할 수 있습니다.");
+		}
 	}
 
 	private void validateChatSubscription(StompHeaderAccessor accessor) {

@@ -8,6 +8,4 @@ import team.po.feature.chat.domain.ChatRoom;
 
 public interface ChatRoomRepository extends JpaRepository<ChatRoom, Long> {
 	Optional<ChatRoom> findByProjectGroup_Id(Long projectGroupId);
-
-	boolean existsByProjectGroup_Id(Long projectGroupId);
 }

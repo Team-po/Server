@@ -28,6 +28,7 @@ import team.po.feature.projectgroup.domain.ProjectGroup;
 import team.po.feature.projectgroup.domain.ProjectGroupMember;
 import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
+import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 
 @Service
 @RequiredArgsConstructor
@@ -41,16 +42,23 @@ public class ChatMessageService {
 	private final ChatMessageRepository chatMessageRepository;
 	private final ChatReadStateRepository chatReadStateRepository;
 	private final ProjectGroupMemberRepository projectGroupMemberRepository;
+	private final ProjectGroupRepository projectGroupRepository;
 
 	@Transactional
 	public ChatMessageResponse sendMessage(Long projectGroupId, Long requesterUserId, SendChatMessageRequest request) {
 		ProjectGroupMember membership = getRequesterMembership(projectGroupId, requesterUserId);
-		assertWritable(membership.getProjectGroup());
 		String content = normalizeContent(request.content());
+		ProjectGroup projectGroup = getProjectGroupForUpdate(projectGroupId);
+		assertWritable(projectGroup);
 
 		ChatRoom chatRoom = chatRoomService.getOrCreateRoom(projectGroupId);
 		ChatMessage savedMessage = chatMessageRepository.save(
-			new ChatMessage(chatRoom, membership.getUser(), ChatMessageType.TEXT, content)
+			ChatMessage.builder()
+				.chatRoom(chatRoom)
+				.sender(membership.getUser())
+				.type(ChatMessageType.TEXT)
+				.content(content)
+				.build()
 		);
 
 		return ChatMessageResponse.from(savedMessage, requesterUserId);
@@ -91,7 +99,7 @@ public class ChatMessageService {
 	@Transactional
 	public ChatReadStateResponse markRead(Long projectGroupId, Long requesterUserId, MarkChatReadRequest request) {
 		ProjectGroupMember membership = getRequesterMembership(projectGroupId, requesterUserId);
-		ChatRoom chatRoom = chatRoomService.getOrCreateRoom(projectGroupId);
+		ChatRoom chatRoom = chatRoomService.getOrCreateRoomForUpdate(projectGroupId);
 		ChatMessage message = chatMessageRepository
 			.findByIdAndChatRoom_Id(request.lastReadMessageId(), chatRoom.getId())
 			.orElseThrow(() -> new ApplicationException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
@@ -99,7 +107,10 @@ public class ChatMessageService {
 		Optional<ChatReadState> existingReadState = chatReadStateRepository
 			.findByChatRoom_IdAndUser_Id(chatRoom.getId(), requesterUserId);
 		ChatReadState readState = existingReadState
-			.orElseGet(() -> new ChatReadState(chatRoom, membership.getUser()));
+			.orElseGet(() -> ChatReadState.builder()
+				.chatRoom(chatRoom)
+				.user(membership.getUser())
+				.build());
 		readState.markRead(message);
 
 		if (existingReadState.isEmpty()) {
@@ -112,6 +123,11 @@ public class ChatMessageService {
 	private ProjectGroupMember getRequesterMembership(Long projectGroupId, Long requesterUserId) {
 		return projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(projectGroupId, requesterUserId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_ACCESS_DENIED));
+	}
+
+	private ProjectGroup getProjectGroupForUpdate(Long projectGroupId) {
+		return projectGroupRepository.findByIdForUpdate(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
 	}
 
 	private void assertWritable(ProjectGroup projectGroup) {

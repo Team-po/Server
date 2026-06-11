@@ -39,6 +39,7 @@ import team.po.feature.projectgroup.domain.ProjectGroup;
 import team.po.feature.projectgroup.domain.ProjectGroupMember;
 import team.po.feature.projectgroup.domain.ProjectGroupStatus;
 import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
+import team.po.feature.projectgroup.repository.ProjectGroupRepository;
 import team.po.feature.user.domain.Users;
 
 @ExtendWith(MockitoExtension.class)
@@ -56,6 +57,9 @@ class ChatMessageServiceTest {
 	@Mock
 	private ProjectGroupMemberRepository projectGroupMemberRepository;
 
+	@Mock
+	private ProjectGroupRepository projectGroupRepository;
+
 	private ChatMessageService chatMessageService;
 
 	@BeforeEach
@@ -64,7 +68,8 @@ class ChatMessageServiceTest {
 			chatRoomService,
 			chatMessageRepository,
 			chatReadStateRepository,
-			projectGroupMemberRepository
+			projectGroupMemberRepository,
+			projectGroupRepository
 		);
 	}
 
@@ -77,6 +82,7 @@ class ChatMessageServiceTest {
 
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
 			.thenReturn(Optional.of(membership));
+		when(projectGroupRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(projectGroup));
 		when(chatRoomService.getOrCreateRoom(10L)).thenReturn(chatRoom);
 		when(chatMessageRepository.save(any(ChatMessage.class))).thenAnswer(invocation -> {
 			ChatMessage saved = invocation.getArgument(0);
@@ -99,6 +105,7 @@ class ChatMessageServiceTest {
 		assertThat(response.type()).isEqualTo(ChatMessageType.TEXT);
 		assertThat(response.mine()).isTrue();
 		assertThat(response.createdAt()).isEqualTo(Instant.parse("2026-06-11T12:00:00Z"));
+		verify(projectGroupRepository).findByIdForUpdate(10L);
 	}
 
 	@Test
@@ -162,6 +169,7 @@ class ChatMessageServiceTest {
 		ProjectGroup projectGroup = mockProjectGroup(10L, ProjectGroupStatus.FINISHED);
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
 			.thenReturn(Optional.of(mockMember(projectGroup, requester)));
+		when(projectGroupRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(projectGroup));
 
 		assertThatThrownBy(() -> chatMessageService.sendMessage(
 			10L,
@@ -208,11 +216,14 @@ class ChatMessageServiceTest {
 		ProjectGroupMember membership = mockMember(projectGroup, requester);
 		ChatRoom chatRoom = mockChatRoom(100L, projectGroup);
 		ChatMessage message = mockMessage(1000L, chatRoom, requester, "읽은 메시지");
-		ChatReadState state = new ChatReadState(chatRoom, requester);
+		ChatReadState state = ChatReadState.builder()
+			.chatRoom(chatRoom)
+			.user(requester)
+			.build();
 
 		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
 			.thenReturn(Optional.of(membership));
-		when(chatRoomService.getOrCreateRoom(10L)).thenReturn(chatRoom);
+		when(chatRoomService.getOrCreateRoomForUpdate(10L)).thenReturn(chatRoom);
 		when(chatMessageRepository.findByIdAndChatRoom_Id(1000L, 100L)).thenReturn(Optional.of(message));
 		when(chatReadStateRepository.findByChatRoom_IdAndUser_Id(100L, 1L)).thenReturn(Optional.of(state));
 
@@ -223,6 +234,37 @@ class ChatMessageServiceTest {
 		);
 
 		assertThat(state.getLastReadMessage()).isEqualTo(message);
+		assertThat(response.lastReadMessageId()).isEqualTo(1000L);
+		verify(chatReadStateRepository, never()).save(any());
+	}
+
+	@Test
+	void markRead_keepsLastReadMessage_whenOlderReadRequestArrivesLate() {
+		Users requester = mockUser(1L, "나");
+		ProjectGroup projectGroup = mockProjectGroup(10L, ProjectGroupStatus.ACTIVE);
+		ProjectGroupMember membership = mockMember(projectGroup, requester);
+		ChatRoom chatRoom = mockChatRoom(100L, projectGroup);
+		ChatMessage olderMessage = mockMessage(900L, chatRoom, requester, "오래된 메시지");
+		ChatMessage newerMessage = mockMessage(1000L, chatRoom, requester, "이미 읽은 최신 메시지");
+		ChatReadState state = ChatReadState.builder()
+			.chatRoom(chatRoom)
+			.user(requester)
+			.build();
+		state.markRead(newerMessage);
+
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(membership));
+		when(chatRoomService.getOrCreateRoomForUpdate(10L)).thenReturn(chatRoom);
+		when(chatMessageRepository.findByIdAndChatRoom_Id(900L, 100L)).thenReturn(Optional.of(olderMessage));
+		when(chatReadStateRepository.findByChatRoom_IdAndUser_Id(100L, 1L)).thenReturn(Optional.of(state));
+
+		ChatReadStateResponse response = chatMessageService.markRead(
+			10L,
+			1L,
+			new MarkChatReadRequest(900L)
+		);
+
+		assertThat(state.getLastReadMessage()).isEqualTo(newerMessage);
 		assertThat(response.lastReadMessageId()).isEqualTo(1000L);
 		verify(chatReadStateRepository, never()).save(any());
 	}
@@ -256,14 +298,21 @@ class ChatMessageServiceTest {
 	}
 
 	private ChatRoom mockChatRoom(Long chatRoomId, ProjectGroup projectGroup) {
-		ChatRoom chatRoom = new ChatRoom(projectGroup);
+		ChatRoom chatRoom = ChatRoom.builder()
+			.projectGroup(projectGroup)
+			.build();
 		ReflectionTestUtils.setField(chatRoom, "id", chatRoomId);
 		ReflectionTestUtils.setField(chatRoom, "createdAt", Instant.parse("2026-06-11T10:00:00Z"));
 		return chatRoom;
 	}
 
 	private ChatMessage mockMessage(Long messageId, ChatRoom chatRoom, Users sender, String content) {
-		ChatMessage message = new ChatMessage(chatRoom, sender, ChatMessageType.TEXT, content);
+		ChatMessage message = ChatMessage.builder()
+			.chatRoom(chatRoom)
+			.sender(sender)
+			.type(ChatMessageType.TEXT)
+			.content(content)
+			.build();
 		ReflectionTestUtils.setField(message, "id", messageId);
 		ReflectionTestUtils.setField(message, "createdAt", Instant.parse("2026-06-11T12:00:00Z"));
 		return message;

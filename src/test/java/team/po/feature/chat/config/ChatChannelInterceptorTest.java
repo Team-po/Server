@@ -96,6 +96,24 @@ class ChatChannelInterceptorTest {
 		)).isInstanceOf(AccessDeniedException.class);
 	}
 
+	@Test
+	void preSend_allowsSend_whenDestinationUsesApplicationPrefix() {
+		Message<?> result = chatChannelInterceptor.preSend(
+			createSendMessage("/app/project-groups/10/chat/messages"),
+			mock(MessageChannel.class)
+		);
+
+		assertThat(result).isNotNull();
+	}
+
+	@Test
+	void preSend_throwsAccessDenied_whenClientSendsDirectlyToBrokerTopic() {
+		assertThatThrownBy(() -> chatChannelInterceptor.preSend(
+			createSendMessage("/topic/project-groups/10/chat/messages"),
+			mock(MessageChannel.class)
+		)).isInstanceOf(AccessDeniedException.class);
+	}
+
 	private Message<byte[]> createMessage(StompCommand command, String authorizationHeader) {
 		StompHeaderAccessor accessor = StompHeaderAccessor.create(command);
 		accessor.setNativeHeader("Authorization", authorizationHeader);
@@ -107,6 +125,13 @@ class ChatChannelInterceptorTest {
 		StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
 		accessor.setDestination(destination);
 		accessor.setUser(authentication);
+		accessor.setLeaveMutable(true);
+		return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+	}
+
+	private Message<byte[]> createSendMessage(String destination) {
+		StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SEND);
+		accessor.setDestination(destination);
 		accessor.setLeaveMutable(true);
 		return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
 	}

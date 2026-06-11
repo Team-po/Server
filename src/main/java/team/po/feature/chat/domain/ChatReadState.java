@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import team.po.feature.user.domain.Users;
@@ -44,6 +45,7 @@ public class ChatReadState {
 	@Column(name = "updated_at", nullable = false)
 	private Instant updatedAt;
 
+	@Builder
 	public ChatReadState(ChatRoom chatRoom, Users user) {
 		this.chatRoom = chatRoom;
 		this.user = user;
@@ -51,6 +53,13 @@ public class ChatReadState {
 	}
 
 	public void markRead(ChatMessage message) {
+		if (lastReadMessage != null
+			&& lastReadMessage.getId() != null
+			&& message.getId() != null
+			&& lastReadMessage.getId() >= message.getId()) {
+			return;
+		}
+
 		this.lastReadMessage = message;
 		this.updatedAt = Instant.now();
 	}
