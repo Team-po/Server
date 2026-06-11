@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 import java.lang.reflect.Type;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -36,7 +37,6 @@ import jakarta.persistence.EntityManager;
 import team.po.common.jwt.JwtTokenProvider;
 import team.po.common.jwt.UserPrincipal;
 import team.po.feature.chat.domain.ChatMessage;
-import team.po.feature.chat.dto.ChatMessageResponse;
 import team.po.feature.chat.dto.SendChatMessageRequest;
 import team.po.feature.chat.repository.ChatMessageRepository;
 
@@ -85,7 +85,7 @@ class ChatWebSocketIntegrationTest {
 
 	@Test
 	void websocketSendMessage_persistsAndBroadcastsMessageToProjectGroupTopic() throws Exception {
-		BlockingQueue<ChatMessageResponse> receivedMessages = new LinkedBlockingQueue<>();
+		BlockingQueue<Map<String, Object>> receivedMessages = new LinkedBlockingQueue<>();
 		BlockingQueue<Throwable> connectionErrors = new LinkedBlockingQueue<>();
 		WebSocketStompClient stompClient = new WebSocketStompClient(new StandardWebSocketClient());
 		stompClient.setMessageConverter(new JacksonJsonMessageConverter());
@@ -97,12 +97,13 @@ class ChatWebSocketIntegrationTest {
 			session.subscribe(chatTopicDestination, new StompFrameHandler() {
 				@Override
 				public Type getPayloadType(StompHeaders headers) {
-					return ChatMessageResponse.class;
+					return Map.class;
 				}
 
+				@SuppressWarnings("unchecked")
 				@Override
 				public void handleFrame(StompHeaders headers, Object payload) {
-					receivedMessages.add((ChatMessageResponse)payload);
+					receivedMessages.add((Map<String, Object>)payload);
 				}
 			});
 			awaitSubscription(chatTopicDestination);
@@ -113,15 +114,15 @@ class ChatWebSocketIntegrationTest {
 				new SendChatMessageRequest("통합 테스트 채팅 메시지")
 			);
 
-			ChatMessageResponse response = receivedMessages.poll(5, TimeUnit.SECONDS);
+			Map<String, Object> response = receivedMessages.poll(5, TimeUnit.SECONDS);
 
 			assertThat(connectionErrors).isEmpty();
 			assertThat(response).isNotNull();
-			assertThat(response.projectGroupId()).isEqualTo(10L);
-			assertThat(response.senderUserId()).isEqualTo(1L);
-			assertThat(response.senderNickname()).isEqualTo("sender");
-			assertThat(response.content()).isEqualTo("통합 테스트 채팅 메시지");
-			assertThat(response.mine()).isTrue();
+			assertThat(response.get("projectGroupId")).isEqualTo(10);
+			assertThat(response.get("senderUserId")).isEqualTo(1);
+			assertThat(response.get("senderNickname")).isEqualTo("sender");
+			assertThat(response.get("content")).isEqualTo("통합 테스트 채팅 메시지");
+			assertThat(response).doesNotContainKey("mine");
 
 			List<ChatMessage> savedMessages = chatMessageRepository.findAll();
 			assertThat(savedMessages).hasSize(1);

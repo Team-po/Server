@@ -13,6 +13,7 @@ import org.springframework.stereotype.Controller;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import team.po.common.jwt.UserPrincipal;
+import team.po.feature.chat.dto.ChatMessageBroadcastResponse;
 import team.po.feature.chat.dto.ChatMessageResponse;
 import team.po.feature.chat.dto.SendChatMessageRequest;
 import team.po.feature.chat.service.ChatMessageService;
@@ -32,7 +33,10 @@ public class ChatMessageSocketController {
 	) {
 		Long requesterUserId = getRequesterUserId(principal);
 		ChatMessageResponse response = chatMessageService.sendMessage(projectGroupId, requesterUserId, request);
-		messagingTemplate.convertAndSend("/topic/project-groups/" + projectGroupId + "/chat/messages", response);
+		messagingTemplate.convertAndSend(
+			"/topic/project-groups/" + projectGroupId + "/chat/messages",
+			ChatMessageBroadcastResponse.from(response)
+		);
 	}
 
 	private Long getRequesterUserId(Principal principal) {
