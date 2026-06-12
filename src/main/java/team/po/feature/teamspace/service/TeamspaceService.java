@@ -382,36 +382,35 @@ public class TeamspaceService {
 		Long projectGroupId,
 		Long targetUserId
 	) {
-		projectGroupMemberRepository
-			.findByProjectGroup_IdAndUser_Id(projectGroupId, user.getId())
-			.orElseThrow(() -> new ApplicationException(
-				ErrorCode.PROJECT_GROUP_PERMISSION_DENIED,
-				"팀 스페이스 멤버만 Github 주간 요약을 조회할 수 있습니다."
-			));
-
-		ProjectGroupMember targetMember = projectGroupMemberRepository
-			.findByProjectGroup_IdAndUser_Id(projectGroupId, targetUserId)
-			.orElseThrow(() -> new ApplicationException(
-				ErrorCode.PROJECT_GROUP_MEMBER_NOT_FOUND,
-				"Github 주간 요약 조회 대상 팀 스페이스 멤버를 찾을 수 없습니다."
-			));
+		ProjectGroupMember targetMember = validateWeeklyGithubSummaryReadable(user, projectGroupId, targetUserId);
 
 		List<GetWeeklyGithubSummaryResponse> summaries = weeklyGithubSummaryRepository
 			.findAllByProjectGroupMember_IdOrderByPeriodEndDesc(targetMember.getId())
 			.stream()
-			.map(weeklyGithubSummary -> new GetWeeklyGithubSummaryResponse(
-				weeklyGithubSummary.getId(),
-				weeklyGithubSummary.getPeriodStart(),
-				weeklyGithubSummary.getPeriodEnd(),
-				weeklyGithubSummary.getSourcePrCount(),
-				weeklyGithubSummary.getSourceIssueCount(),
-				parseGeneratedWeeklySummary(weeklyGithubSummary.getSummaryJson(), targetMember.getId())
-			))
+			.map(weeklyGithubSummary -> toGetWeeklyGithubSummaryResponse(weeklyGithubSummary, targetMember.getId()))
 			.toList();
 
 		return new GetWeeklyGithubSummaryListResponse(
 			summaries
 		);
+	}
+
+	@Transactional(readOnly = true)
+	public GetWeeklyGithubSummaryResponse getWeeklyGithubSummary(
+		Users user,
+		Long projectGroupId,
+		Long targetUserId,
+		Long weeklyGithubSummaryId
+	) {
+		ProjectGroupMember targetMember = validateWeeklyGithubSummaryReadable(user, projectGroupId, targetUserId);
+		WeeklyGithubSummary weeklyGithubSummary = weeklyGithubSummaryRepository
+			.findByIdAndProjectGroupMember_Id(weeklyGithubSummaryId, targetMember.getId())
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.GITHUB_WEEKLY_SUMMARY_NOT_FOUND,
+				"요청한 Github 주간 요약을 찾을 수 없습니다."
+			));
+
+		return toGetWeeklyGithubSummaryResponse(weeklyGithubSummary, targetMember.getId());
 	}
 
 	private Optional<GithubPullRequestInfo> getPullRequestDetail(
@@ -451,6 +450,40 @@ public class TeamspaceService {
 
 	private long calculateContributionScore(long mergedPrCount, long linkedIssueCount) {
 		return mergedPrCount * 10 + linkedIssueCount * 5;
+	}
+
+	private ProjectGroupMember validateWeeklyGithubSummaryReadable(
+		Users user,
+		Long projectGroupId,
+		Long targetUserId
+	) {
+		projectGroupMemberRepository
+			.findByProjectGroup_IdAndUser_Id(projectGroupId, user.getId())
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.PROJECT_GROUP_PERMISSION_DENIED,
+				"팀 스페이스 멤버만 Github 주간 요약을 조회할 수 있습니다."
+			));
+
+		return projectGroupMemberRepository
+			.findByProjectGroup_IdAndUser_Id(projectGroupId, targetUserId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.PROJECT_GROUP_MEMBER_NOT_FOUND,
+				"Github 주간 요약 조회 대상 팀 스페이스 멤버를 찾을 수 없습니다."
+			));
+	}
+
+	private GetWeeklyGithubSummaryResponse toGetWeeklyGithubSummaryResponse(
+		WeeklyGithubSummary weeklyGithubSummary,
+		Long projectGroupMemberId
+	) {
+		return new GetWeeklyGithubSummaryResponse(
+			weeklyGithubSummary.getId(),
+			weeklyGithubSummary.getPeriodStart(),
+			weeklyGithubSummary.getPeriodEnd(),
+			weeklyGithubSummary.getSourcePrCount(),
+			weeklyGithubSummary.getSourceIssueCount(),
+			parseGeneratedWeeklySummary(weeklyGithubSummary.getSummaryJson(), projectGroupMemberId)
+		);
 	}
 
 	private GithubWeeklySummaryContent parseGeneratedWeeklySummary(String summaryJson, Long projectGroupMemberId) {

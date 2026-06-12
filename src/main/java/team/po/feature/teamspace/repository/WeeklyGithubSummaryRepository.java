@@ -15,5 +15,7 @@ public interface WeeklyGithubSummaryRepository extends JpaRepository<WeeklyGithu
 		Instant periodEnd
 	);
 
+	Optional<WeeklyGithubSummary> findByIdAndProjectGroupMember_Id(Long id, Long projectGroupMemberId);
+
 	List<WeeklyGithubSummary> findAllByProjectGroupMember_IdOrderByPeriodEndDesc(Long projectGroupMemberId);
 }

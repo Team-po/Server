@@ -21,6 +21,7 @@ import team.po.feature.teamspace.dto.GetGithubInstallationStatusResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryContributionResponse;
 import team.po.feature.teamspace.dto.GetGithubRepositoryListResponse;
 import team.po.feature.teamspace.dto.GetWeeklyGithubSummaryListResponse;
+import team.po.feature.teamspace.dto.GetWeeklyGithubSummaryResponse;
 import team.po.feature.teamspace.dto.SetGithubRepositoryListRequest;
 import team.po.feature.teamspace.service.TeamspaceService;
 import team.po.feature.user.domain.Users;
@@ -139,6 +140,24 @@ public class TeamspaceController {
 			user,
 			projectGroupId,
 			targetUserId
+		);
+
+		return ResponseEntity.ok(response);
+	}
+
+	@Operation(summary = "유저 Github 주간 요약 단건 조회 API")
+	@GetMapping("/{projectGroupId}/github/users/{targetUserId}/weekly-summaries/{weeklyGithubSummaryId}")
+	public ResponseEntity<GetWeeklyGithubSummaryResponse> getWeeklyGithubSummary(
+		@Parameter(hidden = true) @LoginUser Users user,
+		@PathVariable Long projectGroupId,
+		@PathVariable Long targetUserId,
+		@PathVariable Long weeklyGithubSummaryId
+	) {
+		GetWeeklyGithubSummaryResponse response = teamspaceService.getWeeklyGithubSummary(
+			user,
+			projectGroupId,
+			targetUserId,
+			weeklyGithubSummaryId
 		);
 
 		return ResponseEntity.ok(response);

@@ -998,6 +998,90 @@ class TeamspaceServiceTest {
 	}
 
 	@Test
+	void getWeeklyGithubSummary_returnsTargetUserSavedSummary() {
+		Users requester = user();
+		WeeklyGithubSummary savedSummary = weeklyGithubSummary(
+			1000L,
+			weeklySummaryJson(),
+			1,
+			1
+		);
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(projectGroupMember()));
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 2L))
+			.thenReturn(Optional.of(projectGroupMember(200L, 2L)));
+		when(weeklyGithubSummaryRepository.findByIdAndProjectGroupMember_Id(1000L, 200L))
+			.thenReturn(Optional.of(savedSummary));
+
+		GetWeeklyGithubSummaryResponse response = teamspaceService.getWeeklyGithubSummary(
+			requester,
+			10L,
+			2L,
+			1000L
+		);
+
+		assertThat(response.weeklyGithubSummaryId()).isEqualTo(1000L);
+		assertThat(response.periodStart()).isEqualTo(Instant.parse("2026-05-25T00:00:00Z"));
+		assertThat(response.periodEnd()).isEqualTo(Instant.parse("2026-06-01T00:00:00Z"));
+		assertThat(response.sourcePrCount()).isEqualTo(1);
+		assertThat(response.sourceIssueCount()).isEqualTo(1);
+		assertThat(response.summary().summary()).isEqualTo("이번 주에는 Github 주간 요약 API 기반 작업이 진행되었습니다.");
+		verify(weeklyGithubSummaryRepository).findByIdAndProjectGroupMember_Id(1000L, 200L);
+		verifyNoInteractions(githubAppClient, geminiClient);
+	}
+
+	@Test
+	void getWeeklyGithubSummary_throwsForbidden_whenRequesterIsNotMember() {
+		Users requester = user();
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> teamspaceService.getWeeklyGithubSummary(requester, 10L, 2L, 1000L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
+
+		verify(weeklyGithubSummaryRepository, never()).findByIdAndProjectGroupMember_Id(any(), any());
+		verifyNoInteractions(githubAppClient, geminiClient);
+	}
+
+	@Test
+	void getWeeklyGithubSummary_throwsNotFound_whenTargetUserIsNotMember() {
+		Users requester = user();
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(projectGroupMember()));
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 2L))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> teamspaceService.getWeeklyGithubSummary(requester, 10L, 2L, 1000L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_MEMBER_NOT_FOUND.getCode());
+
+		verify(weeklyGithubSummaryRepository, never()).findByIdAndProjectGroupMember_Id(any(), any());
+		verifyNoInteractions(githubAppClient, geminiClient);
+	}
+
+	@Test
+	void getWeeklyGithubSummary_throwsNotFound_whenSummaryDoesNotExistForTargetUser() {
+		Users requester = user();
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(projectGroupMember()));
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 2L))
+			.thenReturn(Optional.of(projectGroupMember(200L, 2L)));
+		when(weeklyGithubSummaryRepository.findByIdAndProjectGroupMember_Id(1000L, 200L))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> teamspaceService.getWeeklyGithubSummary(requester, 10L, 2L, 1000L))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.GITHUB_WEEKLY_SUMMARY_NOT_FOUND.getCode());
+
+		verify(weeklyGithubSummaryRepository).findByIdAndProjectGroupMember_Id(1000L, 200L);
+		verifyNoInteractions(githubAppClient, geminiClient);
+	}
+
+	@Test
 	void createGithubAppInstallationUrl_savesStateAndReturnsGithubInstallUrl() {
 		Users requester = user();
 		when(projectGroupMemberRepository.existsByProjectGroup_IdAndUser_IdAndGroupRole(10L, 1L, GroupRole.HOST))
