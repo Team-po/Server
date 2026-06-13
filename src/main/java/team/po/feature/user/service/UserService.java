@@ -31,6 +31,8 @@ import team.po.config.PasswordResetProperties;
 import team.po.exception.ApplicationException;
 import team.po.exception.ErrorCode;
 import team.po.feature.match.service.MatchService;
+import team.po.feature.projectgroup.domain.ProjectGroupStatus;
+import team.po.feature.projectgroup.repository.ProjectGroupMemberRepository;
 import team.po.feature.user.domain.GithubAccount;
 import team.po.feature.user.domain.Users;
 import team.po.feature.user.dto.EditPasswordRequest;
@@ -68,6 +70,7 @@ public class UserService {
 	private final RedisService redisService;
 	private final PasswordResetProperties passwordResetProperties;
 	private final MatchService matchService;
+	private final ProjectGroupMemberRepository projectGroupMemberRepository;
 	private final SecureRandom secureRandom = new SecureRandom();
 	@Value("${cloud.aws.s3.endpoint:}")
 	private String s3Endpoint;
@@ -310,7 +313,9 @@ public class UserService {
 
 	@Transactional
 	public void deleteUser(Users loginUser) {
-		Users user = this.getActiveUser(loginUser.getId());
+		Users user = userRepository.findByIdAndDeletedAtIsNullForUpdate(loginUser.getId()).orElseThrow(
+			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
+		validateUserHasNoActiveProjectGroup(user.getId());
 		emailService.validateVerifiedDeleteUserEmail(user.getEmail());
 		matchService.cancelActiveMatchForWithdrawal(user.getId());
 
@@ -325,6 +330,16 @@ public class UserService {
 		jwtTokenProvider.deleteRefreshToken(email);
 		jwtTokenProvider.revokeAccessTokens(user.getId());
 		emailService.consumeVerifiedDeleteUserEmail(email);
+	}
+
+	private void validateUserHasNoActiveProjectGroup(Long userId) {
+		boolean hasActiveProjectGroup = projectGroupMemberRepository.existsByUser_IdAndProjectGroup_Status(
+			userId,
+			ProjectGroupStatus.ACTIVE
+		);
+		if (hasActiveProjectGroup) {
+			throw new ApplicationException(ErrorCode.USER_HAS_ACTIVE_PROJECT_GROUP);
+		}
 	}
 
 	private String normalizeEmail(String email) {
