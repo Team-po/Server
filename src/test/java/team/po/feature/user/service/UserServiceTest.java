@@ -791,6 +791,7 @@ class UserServiceTest {
 			.githubUserId(123L)
 			.githubUsername("octocat")
 			.build();
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(managedUser));
 		when(githubAccountRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(githubAccount));
 
@@ -801,13 +802,16 @@ class UserServiceTest {
 		assertThat(managedUser.getEmail()).doesNotContain("test@email.com");
 		assertThat(managedUser.getEmail().length()).isLessThanOrEqualTo(255);
 		assertThat(githubAccount.getDeletedAt()).isEqualTo(managedUser.getDeletedAt());
+		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 		verify(userRepository).findByIdAndDeletedAtIsNullForUpdate(1L);
 		verify(githubAccountRepository).findByUserIdAndDeletedAtIsNull(1L);
 		InOrder inOrder = inOrder(emailService, projectGroupMemberRepository, matchService, userRepository, jwtTokenProvider);
-		inOrder.verify(userRepository).findByIdAndDeletedAtIsNullForUpdate(1L);
+		inOrder.verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 		inOrder.verify(projectGroupMemberRepository).existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE);
 		inOrder.verify(emailService).validateVerifiedDeleteUserEmail("test@email.com");
 		inOrder.verify(matchService).cancelActiveMatchForWithdrawal(1L);
+		inOrder.verify(userRepository).findByIdAndDeletedAtIsNullForUpdate(1L);
+		inOrder.verify(projectGroupMemberRepository).existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE);
 		inOrder.verify(userRepository).flush();
 		inOrder.verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
 		inOrder.verify(jwtTokenProvider).revokeAccessTokens(1L);
@@ -822,6 +826,7 @@ class UserServiceTest {
 		String longDomainPart = "b".repeat(120);
 		String originalEmail = longLocalPart + "@" + longDomainPart + ".com";
 		ReflectionTestUtils.setField(managedUser, "email", originalEmail);
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(managedUser));
 
 		userService.deleteUser(loginUser);
@@ -837,7 +842,7 @@ class UserServiceTest {
 	void deleteUser_throwsWhenEmailWasNotVerified() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		Users managedUser = authenticatedUser(1L, "test@email.com");
-		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(managedUser));
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		doThrow(new ApplicationException(team.po.exception.ErrorCode.EMAIL_NOT_VERIFIED))
 			.when(emailService).validateVerifiedDeleteUserEmail("test@email.com");
 
@@ -848,6 +853,7 @@ class UserServiceTest {
 		assertThat(managedUser.getDeletedAt()).isNull();
 		verify(projectGroupMemberRepository).existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE);
 		verify(matchService, never()).cancelActiveMatchForWithdrawal(any());
+		verify(userRepository, never()).findByIdAndDeletedAtIsNullForUpdate(any());
 		verify(userRepository, never()).flush();
 		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
 		verify(emailService, never()).consumeVerifiedDeleteUserEmail(any());
@@ -857,7 +863,7 @@ class UserServiceTest {
 	void deleteUser_throwsWhenUserHasActiveProjectGroup() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		Users managedUser = authenticatedUser(1L, "test@email.com");
-		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(managedUser));
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(projectGroupMemberRepository.existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
 			.thenReturn(true);
 
@@ -871,6 +877,7 @@ class UserServiceTest {
 		verify(projectGroupMemberRepository).existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE);
 		verify(emailService, never()).validateVerifiedDeleteUserEmail(any());
 		verify(matchService, never()).cancelActiveMatchForWithdrawal(any());
+		verify(userRepository, never()).findByIdAndDeletedAtIsNullForUpdate(any());
 		verify(githubAccountRepository, never()).findByUserIdAndDeletedAtIsNull(any());
 		verify(userRepository, never()).flush();
 		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
@@ -882,6 +889,7 @@ class UserServiceTest {
 	void deleteUser_doesNotConsumeVerifiedEmailWhenSoftDeleteFlushFails() {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		Users managedUser = authenticatedUser(1L, "test@email.com");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
 		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(managedUser));
 		doThrow(new DataIntegrityViolationException("failed"))
 			.when(userRepository).flush();
