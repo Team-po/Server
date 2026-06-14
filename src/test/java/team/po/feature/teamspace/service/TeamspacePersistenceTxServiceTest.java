@@ -31,6 +31,7 @@ import team.po.feature.teamspace.domain.GithubPullRequestContribution;
 import team.po.feature.teamspace.domain.ProjectGroupGithubInstallation;
 import team.po.feature.teamspace.domain.ProjectGroupGithubRepository;
 import team.po.feature.teamspace.dto.GithubPullRequestInfo;
+import team.po.feature.teamspace.dto.GithubRepositoryInfo;
 import team.po.feature.teamspace.dto.GithubRepositorySettingContext;
 import team.po.feature.teamspace.repository.GithubInstallationRepository;
 import team.po.feature.teamspace.repository.GithubPullRequestContributionRepository;
@@ -141,10 +142,10 @@ class TeamspacePersistenceTxServiceTest {
 			.defaultBranch("main")
 			.privateRepository(true)
 			.build();
-		List<GithubAppClient.GithubRepositoryInfo> repositories = List.of(
-			new GithubAppClient.GithubRepositoryInfo(100L, "student-team-org", "backend",
+		List<GithubRepositoryInfo> repositories = List.of(
+			new GithubRepositoryInfo(100L, "student-team-org", "backend",
 				"student-team-org/backend", "main", true),
-			new GithubAppClient.GithubRepositoryInfo(200L, "student-team-org", "frontend",
+			new GithubRepositoryInfo(200L, "student-team-org", "frontend",
 				"student-team-org/frontend", "develop", false)
 		);
 		when(projectGroupRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(projectGroup));
@@ -181,8 +182,8 @@ class TeamspacePersistenceTxServiceTest {
 
 	@Test
 	void persistGithubRepositorySetting_throwsBadRequestBeforeLock_whenRepositoryIsNotAccessible() {
-		List<GithubAppClient.GithubRepositoryInfo> repositories = List.of(
-			new GithubAppClient.GithubRepositoryInfo(100L, "student-team-org", "backend",
+		List<GithubRepositoryInfo> repositories = List.of(
+			new GithubRepositoryInfo(100L, "student-team-org", "backend",
 				"student-team-org/backend", "main", true)
 		);
 
@@ -214,8 +215,8 @@ class TeamspacePersistenceTxServiceTest {
 			.defaultBranch("develop")
 			.privateRepository(false)
 			.build();
-		List<GithubAppClient.GithubRepositoryInfo> repositories = List.of(
-			new GithubAppClient.GithubRepositoryInfo(100L, "student-team-org", "backend",
+		List<GithubRepositoryInfo> repositories = List.of(
+			new GithubRepositoryInfo(100L, "student-team-org", "backend",
 				"student-team-org/backend", "main", true)
 		);
 		when(projectGroupRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(projectGroup));
