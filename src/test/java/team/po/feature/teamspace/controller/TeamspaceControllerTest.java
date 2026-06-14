@@ -294,4 +294,35 @@ class TeamspaceControllerTest {
 
 		verify(teamspaceService).getWeeklyGithubSummaries(mockUser, 10L, 2L);
 	}
+
+	@Test
+	void getWeeklyGithubSummary_returnsOk() throws Exception {
+		when(teamspaceService.getWeeklyGithubSummary(mockUser, 10L, 2L, 1000L))
+			.thenReturn(new GetWeeklyGithubSummaryResponse(
+				1000L,
+				Instant.parse("2026-05-25T15:00:00Z"),
+				Instant.parse("2026-06-01T15:00:00Z"),
+				3,
+				2,
+				new GithubWeeklySummaryContent(
+					"지난 주 Github 활동 요약",
+					List.of("주간 요약 조회 API 구현"),
+					List.of("PR #10 요약 조회 API 추가"),
+					List.of("Issue #82 주간 요약 기능 정리"),
+					List.of("프론트엔드 조회 화면 연동")
+				)
+			));
+
+		mockMvc.perform(get("/api/team-space/10/github/users/2/weekly-summaries/1000"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.weeklyGithubSummaryId").value(1000))
+			.andExpect(jsonPath("$.periodStart").value("2026-05-25T15:00:00Z"))
+			.andExpect(jsonPath("$.periodEnd").value("2026-06-01T15:00:00Z"))
+			.andExpect(jsonPath("$.sourcePrCount").value(3))
+			.andExpect(jsonPath("$.sourceIssueCount").value(2))
+			.andExpect(jsonPath("$.summary.summary").value("지난 주 Github 활동 요약"))
+			.andExpect(jsonPath("$.summary.mainActivities[0]").value("주간 요약 조회 API 구현"));
+
+		verify(teamspaceService).getWeeklyGithubSummary(mockUser, 10L, 2L, 1000L);
+	}
 }
