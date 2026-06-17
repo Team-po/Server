@@ -98,6 +98,16 @@ class ProjectGroupControllerTest {
 	}
 
 	@Test
+	void updateProjectGroupName_returnsBadRequest_whenRequestBodyIsNull() throws Exception {
+		mockMvc.perform(patch("/api/project-groups/{projectGroupId}/name", 10L)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("null"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
+			.andExpect(jsonPath("$.message").value("요청 본문은 필수입니다."));
+	}
+
+	@Test
 	void finishProjectGroup_returnsOk_whenMemberAgrees() throws Exception {
 		mockMvc.perform(patch("/api/project-groups/{projectGroupId}/finish", 10L))
 			.andExpect(status().isOk());

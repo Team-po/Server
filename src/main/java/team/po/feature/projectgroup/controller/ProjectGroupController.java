@@ -14,6 +14,8 @@ import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import team.po.common.auth.LoginUser;
+import team.po.exception.ApplicationException;
+import team.po.exception.ErrorCode;
 import team.po.feature.projectgroup.dto.GetMyProjectGroupResponse;
 import team.po.feature.projectgroup.dto.UpdateProjectGroupNameRequest;
 import team.po.feature.projectgroup.service.ProjectGroupService;
@@ -64,6 +66,10 @@ public class ProjectGroupController {
 		@PathVariable Long projectGroupId,
 		@Valid @RequestBody UpdateProjectGroupNameRequest request
 	) {
+		if (request == null) {
+			throw new ApplicationException(ErrorCode.INVALID_INPUT_FIELD, "요청 본문은 필수입니다.");
+		}
+
 		projectGroupService.updateProjectGroupName(projectGroupId, requester.getId(), request.projectName());
 		return ResponseEntity.ok().build();
 	}
