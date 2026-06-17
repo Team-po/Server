@@ -1,8 +1,12 @@
 package team.po.feature.match.service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -51,15 +55,35 @@ public class MatchService {
 	// 신규 매칭 세션 생성
 	@Transactional
 	public void createMatchingSession(Long hostRequestId, List<Long> memberRequestIds) {
-		// 1-1. ProjectRequest 재조회 (managed 상태)
-		ProjectRequest host = projectRequestRepository.findById(hostRequestId)
-			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
-		List<ProjectRequest> members = projectRequestRepository.findAllById(memberRequestIds);
+		// 1-1. ProjectRequest 재조회 및 잠금 (managed 상태)
+		List<Long> requestIds = new ArrayList<>(new LinkedHashSet<>(memberRequestIds));
+		requestIds.add(hostRequestId);
+		requestIds = requestIds.stream()
+			.distinct()
+			.sorted()
+			.toList();
 
-		if (members.size() != memberRequestIds.size()) {
-			log.error("매칭 멤버 ProjectRequest 조회 누락");
+		if (requestIds.size() != memberRequestIds.size() + 1) {
+			log.error("중복된 ProjectRequest로 매칭 세션 생성 요청: hostRequestId={}, memberRequestCount={}",
+				hostRequestId, memberRequestIds.size());
+			throw new ApplicationException(ErrorCode.MATCH_DATA_ERROR);
+		}
+
+		List<ProjectRequest> lockedRequests = projectRequestRepository.findAllByIdInWithLock(requestIds);
+		if (lockedRequests.size() != requestIds.size()) {
+			log.error("매칭 멤버 ProjectRequest 조회 누락: expected={}, actual={}", requestIds.size(), lockedRequests.size());
 			throw new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND);
 		}
+
+		Map<Long, ProjectRequest> requestsById = lockedRequests.stream()
+			.collect(Collectors.toMap(ProjectRequest::getId, Function.identity()));
+		ProjectRequest host = requestsById.get(hostRequestId);
+		List<ProjectRequest> members = memberRequestIds.stream()
+			.map(requestsById::get)
+			.toList();
+
+		validateWaitingRequest(host);
+		members.forEach(this::validateWaitingRequest);
 
 		// 1-2. 매칭 세션 생성 및 저장
 		MatchingSession session = matchingSessionRepository.save(MatchingSession.create());
@@ -99,7 +123,7 @@ public class MatchService {
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
 
 		// ProjectRequest 재조회 (managed 상태)
-		ProjectRequest candidate = projectRequestRepository.findById(candidateRequestId)
+		ProjectRequest candidate = projectRequestRepository.findByIdWithLock(candidateRequestId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
 
 		if (candidate.getStatus() != Status.WAITING) {
@@ -425,6 +449,14 @@ public class MatchService {
 	private void validateNotHost(MatchingMember member) {
 		if (member.getProjectRequest().isHostRequest()) {
 			throw new ApplicationException(ErrorCode.MATCH_ACCESS_DENIED);
+		}
+	}
+
+	private void validateWaitingRequest(ProjectRequest projectRequest) {
+		if (projectRequest.getStatus() != Status.WAITING) {
+			log.debug("매칭 세션 생성 스킵 - 요청 상태 변경됨: projectRequestId={}, status={}",
+				projectRequest.getId(), projectRequest.getStatus());
+			throw new ApplicationException(ErrorCode.INVALID_MATCH_STATUS);
 		}
 	}
 

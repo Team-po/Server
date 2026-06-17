@@ -67,6 +67,40 @@ class WeeklyGithubSummaryRepositoryTest {
 	}
 
 	@Test
+	void findByIdAndProjectGroupMemberId_returnsWeeklyGithubSummary() {
+		Instant periodStart = Instant.parse("2026-05-25T00:00:00Z");
+		Instant periodEnd = Instant.parse("2026-06-01T00:00:00Z");
+		insertUser(1L, "member@example.com", "member");
+		insertProjectGroup(10L);
+		insertProjectGroupMember(100L, 1L, 10L);
+		insertWeeklyGithubSummary(1000L, 100L, 1L, periodStart, periodEnd);
+		entityManager.flush();
+		entityManager.clear();
+
+		WeeklyGithubSummary summary = repository.findByIdAndProjectGroupMember_Id(1000L, 100L)
+			.orElseThrow();
+
+		assertThat(summary.getId()).isEqualTo(1000L);
+		assertThat(summary.getProjectGroupMember().getId()).isEqualTo(100L);
+	}
+
+	@Test
+	void findByIdAndProjectGroupMemberId_returnsEmpty_whenProjectGroupMemberIsDifferent() {
+		Instant periodStart = Instant.parse("2026-05-25T00:00:00Z");
+		Instant periodEnd = Instant.parse("2026-06-01T00:00:00Z");
+		insertUser(1L, "member@example.com", "member");
+		insertUser(2L, "other@example.com", "other");
+		insertProjectGroup(10L);
+		insertProjectGroupMember(100L, 1L, 10L);
+		insertProjectGroupMember(200L, 2L, 10L);
+		insertWeeklyGithubSummary(1000L, 100L, 1L, periodStart, periodEnd);
+		entityManager.flush();
+		entityManager.clear();
+
+		assertThat(repository.findByIdAndProjectGroupMember_Id(1000L, 200L)).isEmpty();
+	}
+
+	@Test
 	void save_persistsUpdatedWeeklyGithubSummary() {
 		Instant periodStart = Instant.parse("2026-05-25T00:00:00Z");
 		Instant periodEnd = Instant.parse("2026-06-01T00:00:00Z");

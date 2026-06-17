@@ -39,8 +39,13 @@ public interface MatchingMemberRepository extends JpaRepository<MatchingMember, 
 
 	@Query("""
 		SELECT mm FROM MatchingMember mm
-		WHERE mm.projectRequest.user.id = :userId
+		JOIN FETCH mm.matchingSession ms
+		JOIN FETCH mm.projectRequest pr
+		JOIN FETCH pr.user u
+		WHERE u.id = :userId
 		  AND mm.deletedAt IS NULL
+		  AND ms.deletedAt IS NULL
+		  AND pr.status = team.po.feature.match.enums.Status.MATCHING
 		""")
 	Optional<MatchingMember> findCurrentActiveByUserId(@Param("userId") Long userId);
 }
