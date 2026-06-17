@@ -3,6 +3,7 @@ package team.po.feature.match.service;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -40,6 +41,7 @@ import team.po.feature.projectgroup.dto.CreateProjectGroupRequest;
 import team.po.feature.projectgroup.dto.CreateProjectGroupResponse;
 import team.po.feature.projectgroup.service.ProjectGroupService;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.repository.UserRepository;
 
 @Slf4j
 @Service
@@ -50,6 +52,7 @@ public class MatchService {
 	private final ProjectRequestRepository projectRequestRepository;
 	private final ApplicationEventPublisher eventPublisher;
 	private final ProjectGroupService projectGroupService;
+	private final UserRepository userRepository;
 
 	// 신규 매칭 세션 생성
 	@Transactional
@@ -218,6 +221,9 @@ public class MatchService {
 		MatchingMember preMe = matchingMemberRepository
 			.findCurrentActiveByUserId(loginUser.getId())
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
+		validateNotHost(preMe);
+
+		lockActiveSessionUsers(preMe.getMatchingSession().getId());
 
 		// Session: PESSIMISTIC_LOCK
 		MatchingSession session = matchingSessionRepository
@@ -233,9 +239,6 @@ public class MatchService {
 			.filter(m -> m.getUser().getId().equals(loginUser.getId()))
 			.findFirst()
 			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
-
-		// 2. 호스트 여부 확인 - 호스트는 수락할 수 없음
-		validateNotHost(me);
 
 		// 3. 멱등성 - 이미 수락한 경우 200 반환
 		if (Boolean.TRUE.equals(me.getIsAccepted())) {
@@ -308,38 +311,134 @@ public class MatchService {
 	}
 
 	@Transactional
-	public void cancel(Users loginUser) {
-		// 1. 활성 매칭 요청 조회 (WAITING or MATCHING)
-		ProjectRequest myPr = projectRequestRepository
-			.findByUserIdAndStatusIn(loginUser.getId(), List.of(Status.WAITING, Status.MATCHING))
-			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
+	public void cancel(Users loginUser) { // 사용자가 직접 취소
+		cancelActiveRequest(loginUser.getId(), true);
+	}
 
-		// 2. WAITING: 단순 취소
-		if (myPr.getStatus() == Status.WAITING) {
-			myPr.cancel();
-			log.info("매칭 요청 취소 - WAITING: prId={}", myPr.getId());
+	@Transactional
+	public void cancelActiveMatchForWithdrawal(Long userId) { // 사용자가 탈퇴하면 활성 매칭 자동 취소
+		cancelActiveRequest(userId, false);
+	}
+
+	// 정상 취소: strict=true, 탈퇴 시 자동 취소: strict=false
+	private void cancelActiveRequest(Long userId, boolean strict) {
+		Optional<MatchingMember> currentMember = matchingMemberRepository.findCurrentActiveByUserId(userId);
+		if (currentMember.isPresent()) {
+			cancelMatchingRequest(currentMember.get(), userId, strict);
 			return;
 		}
 
-		// 3. MATCHING - 세션 조회
-		MatchingMember me = matchingMemberRepository
-			.findCurrentActiveByUserId(loginUser.getId())
-			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_DATA_ERROR));
-
-		// Session: PESSIMISTIC_LOCK
-		MatchingSession session = matchingSessionRepository
-			.findByIdWithLock(me.getMatchingSession().getId())
-			.orElseThrow(() -> new ApplicationException(ErrorCode.MATCH_NOT_FOUND));
-
-		List<MatchingMember> sessionMembers = matchingMemberRepository
-			.findAllActiveBySessionIdWithFetch(session.getId());
-
-		// 4. host 여부 확인 후 매칭 취소
-		if (myPr.isHostRequest()) {
-			cancelAsHost(me, sessionMembers);
-		} else {
-			cancelAsMember(me, sessionMembers);
+		Optional<ProjectRequest> activeOrStaleRequest = projectRequestRepository
+			.findByUserIdAndStatusInWithLock(userId, List.of(Status.WAITING, Status.MATCHING));
+		if (activeOrStaleRequest.isPresent()) {
+			cancelActiveOrStaleRequest(activeOrStaleRequest.get(), userId, strict);
+			return;
 		}
+
+		currentMember = matchingMemberRepository.findCurrentActiveByUserId(userId);
+		if (currentMember.isPresent()) {
+			cancelMatchingRequest(currentMember.get(), userId, strict);
+			return;
+		}
+
+		if (strict) {
+			throw new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND);
+		}
+	}
+
+	private void cancelWaitingRequest(ProjectRequest myPr) {
+		myPr.cancel();
+		log.info("매칭 요청 취소: prId={}", myPr.getId());
+	}
+
+	private void cancelActiveOrStaleRequest(ProjectRequest projectRequest, Long userId, boolean strict) {
+		if (projectRequest.getStatus() == Status.MATCHING) {
+			Optional<MatchingMember> refreshedMember = matchingMemberRepository.findCurrentActiveByUserId(userId);
+			if (refreshedMember.isPresent()) {
+				cancelMatchingRequest(refreshedMember.get(), userId, strict);
+				return;
+			}
+		}
+		cancelWaitingRequest(projectRequest);
+	}
+
+	private void lockActiveSessionUsers(Long sessionId) {
+		List<Long> userIds = matchingMemberRepository.findAllActiveBySessionIdWithFetch(sessionId)
+			.stream()
+			.map(member -> member.getUser().getId())
+			.distinct()
+			.sorted()
+			.toList();
+		if (userIds.isEmpty()) {
+			throw new ApplicationException(ErrorCode.MATCH_NOT_FOUND);
+		}
+		List<Users> lockedUsers = userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(userIds);
+		if (lockedUsers.size() != userIds.size()) {
+			throw new ApplicationException(ErrorCode.MATCH_NOT_FOUND);
+		}
+	}
+
+	private void cancelMatchingRequest(MatchingMember currentMember, Long userId, boolean strict) {
+		// 세션 조회 시 pessimistic lock 적용
+		Optional<MatchingSession> lockedSession = matchingSessionRepository
+			.findByIdWithLock(currentMember.getMatchingSession().getId());
+		if (lockedSession.isEmpty()) {
+			if (strict) {
+				throw new ApplicationException(ErrorCode.MATCH_NOT_FOUND);
+			}
+			cancelStaleMatchingRequest(currentMember.getProjectRequest().getId(), userId, strict);
+			return;
+		}
+
+		// 해당 매칭 세션의 멤버 조회
+		List<MatchingMember> sessionMembers = matchingMemberRepository
+			.findAllActiveBySessionIdWithFetch(lockedSession.get().getId());
+		lockProjectRequests(sessionMembers);
+
+		Optional<MatchingMember> me = sessionMembers.stream()
+			.filter(member -> member.getUser().getId().equals(userId))
+			.findFirst();
+		if (me.isEmpty()) {
+			if (strict) {
+				throw new ApplicationException(ErrorCode.MATCH_NOT_FOUND);
+			}
+			cancelStaleMatchingRequest(currentMember.getProjectRequest().getId(), userId, strict);
+			return;
+		}
+
+		// host 여부 확인 후 매칭 취소
+		if (me.get().getProjectRequest().isHostRequest()) {
+			cancelAsHost(me.get(), sessionMembers);
+		} else {
+			cancelAsMember(me.get(), sessionMembers);
+		}
+	}
+
+	private void lockProjectRequests(List<MatchingMember> sessionMembers) {
+		List<Long> requestIds = sessionMembers.stream()
+			.map(member -> member.getProjectRequest().getId())
+			.distinct()
+			.sorted()
+			.toList();
+		if (requestIds.isEmpty()) {
+			return;
+		}
+		projectRequestRepository.findAllByIdInWithLock(requestIds);
+	}
+
+	private void cancelStaleMatchingRequest(Long projectRequestId, Long userId, boolean strict) {
+		Optional<ProjectRequest> lockedRequest = projectRequestRepository.findByIdWithLock(projectRequestId);
+		if (lockedRequest.isEmpty()) {
+			return;
+		}
+
+		Optional<MatchingMember> refreshedMember = matchingMemberRepository.findCurrentActiveByUserId(userId);
+		if (refreshedMember.isPresent()) {
+			cancelMatchingRequest(refreshedMember.get(), userId, strict);
+			return;
+		}
+
+		lockedRequest.get().cancel();
 	}
 
 	private void cancelAsMember(MatchingMember me, List<MatchingMember> sessionMembers) {

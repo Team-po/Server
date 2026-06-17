@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
@@ -33,6 +34,7 @@ import team.po.feature.match.repository.ProjectRequestRepository;
 import team.po.feature.match.strategy.MatchConstants;
 import team.po.feature.projectgroup.service.ProjectGroupService;
 import team.po.feature.user.domain.Users;
+import team.po.feature.user.repository.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
 class MatchServiceTest {
@@ -47,6 +49,8 @@ class MatchServiceTest {
 	private ApplicationEventPublisher eventPublisher;
 	@Mock
 	private ProjectGroupService projectGroupService;
+	@Mock
+	private UserRepository userRepository;
 
 	@InjectMocks
 	private MatchService matchService;
@@ -92,6 +96,28 @@ class MatchServiceTest {
 
 	private MatchingMember createMemberMember(MatchingSession session, ProjectRequest pr) {
 		return MatchingMember.createForMember(session, pr);
+	}
+
+	// ===== createMatchingSession =====
+
+	@Test
+	void createMatchingSession_throwsWhenLockedRequestAlreadyCanceled() {
+		Users hostUser = createUser(1L);
+		Users memberUser = createUser(2L);
+		ProjectRequest hostPr = createHostRequest(hostUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+		ProjectRequest memberPr = createMemberRequest(memberUser);
+		ReflectionTestUtils.setField(memberPr, "id", 2L);
+		memberPr.cancel();
+
+		when(projectRequestRepository.findAllByIdInWithLock(List.of(1L, 2L)))
+			.thenReturn(List.of(hostPr, memberPr));
+
+		assertThatThrownBy(() -> matchService.createMatchingSession(1L, List.of(2L)))
+			.isInstanceOf(ApplicationException.class);
+
+		verify(matchingSessionRepository, never()).save(any());
+		verify(matchingMemberRepository, never()).save(any());
 	}
 
 	// ===== getMatchMembers =====
@@ -196,14 +222,19 @@ class MatchServiceTest {
 		MatchingMember myMember = createMemberMember(session, myPr);
 
 		when(matchingMemberRepository.findCurrentActiveByUserId(2L)).thenReturn(Optional.of(myMember));
-		when(matchingSessionRepository.findByIdWithLock(42L)).thenReturn(Optional.of(session));
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
 			.thenReturn(List.of(hostMember, myMember));
+		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(List.of(1L, 2L)))
+			.thenReturn(List.of(hostUser, loginUser));
+		when(matchingSessionRepository.findByIdWithLock(42L)).thenReturn(Optional.of(session));
 		when(matchingMemberRepository.isAllAccepted(42L, MatchConstants.TEAM_SIZE)).thenReturn(false);
 
 		matchService.accept(loginUser);
 
 		assertThat(myMember.getIsAccepted()).isTrue();
+		InOrder inOrder = inOrder(userRepository, matchingSessionRepository);
+		inOrder.verify(userRepository).findAllByIdInAndDeletedAtIsNullForUpdate(List.of(1L, 2L));
+		inOrder.verify(matchingSessionRepository).findByIdWithLock(42L);
 		verify(matchingMemberRepository).isAllAccepted(42L, MatchConstants.TEAM_SIZE);
 		verify(eventPublisher).publishEvent(any(MatchAcceptedEvent.class));
 	}
@@ -224,9 +255,11 @@ class MatchServiceTest {
 		myMember.accept();
 
 		when(matchingMemberRepository.findCurrentActiveByUserId(2L)).thenReturn(Optional.of(myMember));
-		when(matchingSessionRepository.findByIdWithLock(42L)).thenReturn(Optional.of(session));
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
 			.thenReturn(List.of(hostMember, myMember));
+		when(userRepository.findAllByIdInAndDeletedAtIsNullForUpdate(List.of(1L, 2L)))
+			.thenReturn(List.of(hostUser, loginUser));
+		when(matchingSessionRepository.findByIdWithLock(42L)).thenReturn(Optional.of(session));
 
 		matchService.accept(loginUser);
 
@@ -241,7 +274,6 @@ class MatchServiceTest {
 		MatchingMember hostMember = createHostMember(session, hostPr);
 
 		when(matchingMemberRepository.findCurrentActiveByUserId(1L)).thenReturn(Optional.of(hostMember));
-		when(matchingSessionRepository.findByIdWithLock(42L)).thenReturn(Optional.of(session));
 
 		assertThatThrownBy(() -> matchService.accept(loginUser))
 			.isInstanceOf(ApplicationException.class);
@@ -323,7 +355,7 @@ class MatchServiceTest {
 		ProjectRequest myPr = createMemberRequest(loginUser);
 		ReflectionTestUtils.setField(myPr, "id", 1L);
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
 			.thenReturn(Optional.of(myPr));
 
 		matchService.cancel(loginUser);
@@ -343,19 +375,24 @@ class MatchServiceTest {
 		MatchingMember myMember = createMemberMember(session, myPr);
 		ReflectionTestUtils.setField(myMember, "id", 2L);
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(2L), any()))
-			.thenReturn(Optional.of(myPr));
 		when(matchingMemberRepository.findCurrentActiveByUserId(2L))
 			.thenReturn(Optional.of(myMember));
 		when(matchingSessionRepository.findByIdWithLock(42L))
 			.thenReturn(Optional.of(session));
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
 			.thenReturn(List.of(myMember));
+		when(projectRequestRepository.findAllByIdInWithLock(List.of(2L)))
+			.thenReturn(List.of(myPr));
 
 		matchService.cancel(loginUser);
 
 		assertThat(myPr.getStatus()).isEqualTo(Status.CANCELED);
 		assertThat(myMember.isDeleted()).isTrue();
+		InOrder inOrder = inOrder(matchingSessionRepository, projectRequestRepository);
+		inOrder.verify(matchingSessionRepository).findByIdWithLock(42L);
+		inOrder.verify(projectRequestRepository).findAllByIdInWithLock(List.of(2L));
+		verify(projectRequestRepository, never()).findByUserIdAndStatusInWithLock(2L,
+			List.of(Status.WAITING, Status.MATCHING));
 	}
 
 	@Test
@@ -375,16 +412,114 @@ class MatchServiceTest {
 		MatchingMember hostMember = createHostMember(session, hostPr);
 		MatchingMember memberMember = createMemberMember(session, memberPr);
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
-			.thenReturn(Optional.of(hostPr));
 		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
 			.thenReturn(Optional.of(hostMember));
 		when(matchingSessionRepository.findByIdWithLock(42L))
 			.thenReturn(Optional.of(session));
 		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
 			.thenReturn(List.of(hostMember, memberMember));
+		when(projectRequestRepository.findAllByIdInWithLock(List.of(1L, 2L)))
+			.thenReturn(List.of(hostPr, memberPr));
 
 		matchService.cancel(loginUser);
+
+		assertThat(hostPr.getStatus()).isEqualTo(Status.CANCELED);
+		assertThat(memberPr.getStatus()).isEqualTo(Status.WAITING);
+		assertThat(hostMember.isDeleted()).isTrue();
+		assertThat(memberMember.isDeleted()).isTrue();
+		assertThat(session.isDeleted()).isTrue();
+		InOrder inOrder = inOrder(matchingSessionRepository, projectRequestRepository);
+		inOrder.verify(matchingSessionRepository).findByIdWithLock(42L);
+		inOrder.verify(projectRequestRepository).findAllByIdInWithLock(List.of(1L, 2L));
+		verify(projectRequestRepository, never()).findByUserIdAndStatusInWithLock(1L,
+			List.of(Status.WAITING, Status.MATCHING));
+	}
+
+	@Test
+	void cancel_throwsNotFound_whenNoActiveRequest() {
+		Users loginUser = createUser(1L);
+
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
+			.thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> matchService.cancel(loginUser))
+			.isInstanceOf(ApplicationException.class);
+	}
+
+	// ===== cancelActiveMatchForWithdrawal =====
+
+	@Test
+	void cancelActiveMatchForWithdrawal_success_whenWaiting() {
+		Users loginUser = createUser(1L);
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 1L);
+
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
+			.thenReturn(Optional.of(myPr));
+
+		matchService.cancelActiveMatchForWithdrawal(1L);
+
+		assertThat(myPr.getStatus()).isEqualTo(Status.CANCELED);
+		ArgumentCaptor<List<Status>> statusesCaptor = ArgumentCaptor.forClass(List.class);
+		verify(projectRequestRepository).findByUserIdAndStatusInWithLock(eq(1L), statusesCaptor.capture());
+		assertThat(statusesCaptor.getValue()).containsExactly(Status.WAITING, Status.MATCHING);
+		verify(matchingSessionRepository, never()).findByIdWithLock(any());
+	}
+
+	@Test
+	void cancelActiveMatchForWithdrawal_success_whenMatchingMember() {
+		Users loginUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 2L);
+		myPr.startMatching();
+
+		MatchingMember myMember = createMemberMember(session, myPr);
+		ReflectionTestUtils.setField(myMember, "id", 2L);
+
+		when(matchingMemberRepository.findCurrentActiveByUserId(2L))
+			.thenReturn(Optional.of(myMember));
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
+			.thenReturn(List.of(myMember));
+		when(projectRequestRepository.findAllByIdInWithLock(List.of(2L)))
+			.thenReturn(List.of(myPr));
+
+		matchService.cancelActiveMatchForWithdrawal(2L);
+
+		assertThat(myPr.getStatus()).isEqualTo(Status.CANCELED);
+		assertThat(myMember.isDeleted()).isTrue();
+	}
+
+	@Test
+	void cancelActiveMatchForWithdrawal_success_whenMatchingHost_disbandSession() {
+		Users loginUser = createUser(1L);
+		Users memberUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+
+		ProjectRequest hostPr = createHostRequest(loginUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+		hostPr.startMatching();
+
+		ProjectRequest memberPr = createMemberRequest(memberUser);
+		ReflectionTestUtils.setField(memberPr, "id", 2L);
+		memberPr.startMatching();
+
+		MatchingMember hostMember = createHostMember(session, hostPr);
+		MatchingMember memberMember = createMemberMember(session, memberPr);
+
+		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
+			.thenReturn(Optional.of(hostMember));
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
+			.thenReturn(List.of(hostMember, memberMember));
+		when(projectRequestRepository.findAllByIdInWithLock(List.of(1L, 2L)))
+			.thenReturn(List.of(hostPr, memberPr));
+
+		matchService.cancelActiveMatchForWithdrawal(1L);
 
 		assertThat(hostPr.getStatus()).isEqualTo(Status.CANCELED);
 		assertThat(memberPr.getStatus()).isEqualTo(Status.WAITING);
@@ -394,14 +529,154 @@ class MatchServiceTest {
 	}
 
 	@Test
-	void cancel_throwsNotFound_whenNoActiveRequest() {
-		Users loginUser = createUser(1L);
-
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+	void cancelActiveMatchForWithdrawal_returnsWhenNoActiveRequest() {
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
 			.thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> matchService.cancel(loginUser))
-			.isInstanceOf(ApplicationException.class);
+		matchService.cancelActiveMatchForWithdrawal(1L);
+
+		verify(matchingSessionRepository, never()).findByIdWithLock(any());
+	}
+
+	@Test
+	void cancelActiveMatchForWithdrawal_returnsWhenMatchingMemberAlreadyRemoved() {
+		Users loginUser = createUser(1L);
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 1L);
+		myPr.startMatching();
+
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
+			.thenReturn(Optional.of(myPr));
+		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
+			.thenReturn(Optional.empty());
+
+		matchService.cancelActiveMatchForWithdrawal(1L);
+
+		assertThat(myPr.getStatus()).isEqualTo(Status.CANCELED);
+		verify(matchingSessionRepository, never()).findByIdWithLock(any());
+	}
+
+	@Test
+	void cancelActiveMatchForWithdrawal_cancelsSessionWhenMatchingRequestGetsMemberAfterLockWait() {
+		Users loginUser = createUser(1L);
+		Users otherUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 1L);
+		myPr.startMatching();
+		ProjectRequest otherPr = createMemberRequest(otherUser);
+		ReflectionTestUtils.setField(otherPr, "id", 2L);
+		otherPr.startMatching();
+		MatchingMember myMember = createMemberMember(session, myPr);
+		MatchingMember otherMember = createMemberMember(session, otherPr);
+
+		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
+			.thenReturn(Optional.empty(), Optional.of(myMember));
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
+			.thenReturn(Optional.of(myPr));
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
+			.thenReturn(List.of(myMember, otherMember));
+		when(projectRequestRepository.findAllByIdInWithLock(List.of(1L, 2L)))
+			.thenReturn(List.of(myPr, otherPr));
+
+		matchService.cancelActiveMatchForWithdrawal(1L);
+
+		assertThat(myPr.getStatus()).isEqualTo(Status.CANCELED);
+		assertThat(myMember.isDeleted()).isTrue();
+		assertThat(otherMember.isDeleted()).isFalse();
+		verify(matchingSessionRepository).findByIdWithLock(42L);
+	}
+
+	@Test
+	void cancelActiveMatchForWithdrawal_cancelsRequestWhenSessionAlreadyRemoved() {
+		Users loginUser = createUser(1L);
+		MatchingSession session = createSession(42L);
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 1L);
+		myPr.startMatching();
+		MatchingMember myMember = createMemberMember(session, myPr);
+
+		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
+			.thenReturn(Optional.of(myMember), Optional.empty());
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.empty());
+		when(projectRequestRepository.findByIdWithLock(1L))
+			.thenReturn(Optional.of(myPr));
+
+		matchService.cancelActiveMatchForWithdrawal(1L);
+
+		assertThat(myPr.getStatus()).isEqualTo(Status.CANCELED);
+		verify(matchingMemberRepository, never()).findAllActiveBySessionIdWithFetch(any());
+	}
+
+	@Test
+	void cancelActiveMatchForWithdrawal_cancelsRequestWhenMemberAlreadyRemovedFromSession() {
+		Users loginUser = createUser(1L);
+		Users otherUser = createUser(2L);
+		MatchingSession session = createSession(42L);
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 1L);
+		myPr.startMatching();
+		ProjectRequest otherPr = createMemberRequest(otherUser);
+		ReflectionTestUtils.setField(otherPr, "id", 2L);
+		MatchingMember myMember = createMemberMember(session, myPr);
+		MatchingMember otherMember = createMemberMember(session, otherPr);
+
+		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
+			.thenReturn(Optional.of(myMember), Optional.empty());
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.of(session));
+		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(42L))
+			.thenReturn(List.of(otherMember));
+		when(projectRequestRepository.findAllByIdInWithLock(List.of(otherPr.getId())))
+			.thenReturn(List.of(otherPr));
+		when(projectRequestRepository.findByIdWithLock(1L))
+			.thenReturn(Optional.of(myPr));
+
+		matchService.cancelActiveMatchForWithdrawal(1L);
+
+		assertThat(myPr.getStatus()).isEqualTo(Status.CANCELED);
+		assertThat(otherPr.getStatus()).isEqualTo(Status.WAITING);
+		assertThat(otherMember.isDeleted()).isFalse();
+	}
+
+	@Test
+	void cancelActiveMatchForWithdrawal_cancelsRematchedSessionWhenStaleSessionAlreadyRemoved() {
+		Users loginUser = createUser(1L);
+		Users otherUser = createUser(2L);
+		MatchingSession staleSession = createSession(42L);
+		MatchingSession newSession = createSession(43L);
+		ProjectRequest myPr = createMemberRequest(loginUser);
+		ReflectionTestUtils.setField(myPr, "id", 1L);
+		myPr.startMatching();
+		ProjectRequest otherPr = createMemberRequest(otherUser);
+		ReflectionTestUtils.setField(otherPr, "id", 2L);
+		otherPr.startMatching();
+		MatchingMember staleMember = createMemberMember(staleSession, myPr);
+		MatchingMember rematchedMember = createMemberMember(newSession, myPr);
+		MatchingMember otherMember = createMemberMember(newSession, otherPr);
+
+		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
+			.thenReturn(Optional.of(staleMember), Optional.of(rematchedMember));
+		when(matchingSessionRepository.findByIdWithLock(42L))
+			.thenReturn(Optional.empty());
+		when(projectRequestRepository.findByIdWithLock(1L))
+			.thenReturn(Optional.of(myPr));
+		when(matchingSessionRepository.findByIdWithLock(43L))
+			.thenReturn(Optional.of(newSession));
+		when(matchingMemberRepository.findAllActiveBySessionIdWithFetch(43L))
+			.thenReturn(List.of(rematchedMember, otherMember));
+		when(projectRequestRepository.findAllByIdInWithLock(List.of(myPr.getId(), otherPr.getId())))
+			.thenReturn(List.of(myPr, otherPr));
+
+		matchService.cancelActiveMatchForWithdrawal(1L);
+
+		assertThat(myPr.getStatus()).isEqualTo(Status.CANCELED);
+		assertThat(rematchedMember.isDeleted()).isTrue();
+		assertThat(otherMember.isDeleted()).isFalse();
+		verify(matchingMemberRepository).findAllActiveBySessionIdWithFetch(43L);
 	}
 
 	// ===== abandonOrphanSession =====

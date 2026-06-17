@@ -32,7 +32,7 @@ public class ProjectRequestService {
 
 	@Transactional
 	public void createProjectRequest(Users loginUser, ProjectRequestDto request) {
-		Users user = userRepository.findByIdAndDeletedAtIsNull(loginUser.getId())
+		Users user = userRepository.findByIdAndDeletedAtIsNullForUpdate(loginUser.getId())
 			.orElseThrow(() -> new ApplicationException(ErrorCode.UNEXISTED_USER, "존재하지 않는 유저입니다."));
 		boolean matchingExists = projectRequestRepository.existsByUserIdAndStatusIn(
 			user.getId(),

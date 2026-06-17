@@ -23,6 +23,18 @@ public interface ProjectRequestRepository extends JpaRepository<ProjectRequest, 
 	@Query("""
 		SELECT pr FROM ProjectRequest pr
 		JOIN FETCH pr.user
+		WHERE pr.user.id = :userId
+		  AND pr.status IN :statuses
+		""")
+	Optional<ProjectRequest> findByUserIdAndStatusInWithLock(
+		@Param("userId") Long userId,
+		@Param("statuses") List<Status> statuses
+	);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+		SELECT pr FROM ProjectRequest pr
+		JOIN FETCH pr.user
 		WHERE pr.id = :id
 		""")
 	Optional<ProjectRequest> findByIdWithLock(@Param("id") Long id);
