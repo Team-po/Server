@@ -319,6 +319,7 @@ public class MatchService {
 				throw new ApplicationException(ErrorCode.MATCH_DATA_ERROR);
 			}
 			// 탈퇴용은 활성 매칭이 존재하지 않아도 예외 없이 리턴
+			myPr.cancel();
 			return;
 		}
 
@@ -330,6 +331,7 @@ public class MatchService {
 				throw new ApplicationException(ErrorCode.MATCH_NOT_FOUND);
 			}
 			// 탈퇴용은 세션이 이미 정리된 경우에도 예외 없이 리턴
+			myPr.cancel();
 			return;
 		}
 
@@ -345,6 +347,7 @@ public class MatchService {
 				throw new ApplicationException(ErrorCode.MATCH_NOT_FOUND);
 			}
 			// 탈퇴용은 세션이 이미 정리된 경우에도 예외 없이 리턴
+			myPr.cancel();
 			return;
 		}
 
