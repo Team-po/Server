@@ -18,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -70,6 +71,40 @@ class ProjectGroupControllerTest {
 	@AfterEach
 	void tearDown() {
 		SecurityContextHolder.clearContext();
+	}
+
+	@Test
+	void updateProjectGroupName_returnsOk_whenRequestIsValid() throws Exception {
+		mockMvc.perform(patch("/api/project-groups/{projectGroupId}/name", 10L)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"projectName":"New Team"}
+					"""))
+			.andExpect(status().isOk());
+
+		verify(projectGroupService).updateProjectGroupName(10L, 1L, "New Team");
+	}
+
+	@Test
+	void updateProjectGroupName_returnsBadRequest_whenNameIsBlank() throws Exception {
+		mockMvc.perform(patch("/api/project-groups/{projectGroupId}/name", 10L)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"projectName":" "}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
+			.andExpect(jsonPath("$.fieldErrors.projectName").value("팀 이름은 필수입니다."));
+	}
+
+	@Test
+	void updateProjectGroupName_returnsBadRequest_whenRequestBodyIsNull() throws Exception {
+		mockMvc.perform(patch("/api/project-groups/{projectGroupId}/name", 10L)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("null"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT_FIELD.getCode()))
+			.andExpect(jsonPath("$.message").value("요청 본문은 필수입니다."));
 	}
 
 	@Test
