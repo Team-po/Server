@@ -357,8 +357,7 @@ public class MatchService {
 			if (strict) {
 				throw new ApplicationException(ErrorCode.MATCH_NOT_FOUND);
 			}
-			// 탈퇴용은 세션이 이미 정리된 경우에도 예외 없이 리턴
-			lockAndCancelRequest(currentMember.getProjectRequest().getId());
+			cancelStaleMatchingRequest(currentMember.getProjectRequest().getId(), userId, strict);
 			return;
 		}
 
@@ -374,8 +373,7 @@ public class MatchService {
 			if (strict) {
 				throw new ApplicationException(ErrorCode.MATCH_NOT_FOUND);
 			}
-			// 탈퇴용은 세션이 이미 정리된 경우에도 예외 없이 리턴
-			lockAndCancelRequest(currentMember.getProjectRequest().getId());
+			cancelStaleMatchingRequest(currentMember.getProjectRequest().getId(), userId, strict);
 			return;
 		}
 
@@ -399,9 +397,19 @@ public class MatchService {
 		projectRequestRepository.findAllByIdInWithLock(requestIds);
 	}
 
-	private void lockAndCancelRequest(Long projectRequestId) {
-		projectRequestRepository.findByIdWithLock(projectRequestId)
-			.ifPresent(ProjectRequest::cancel);
+	private void cancelStaleMatchingRequest(Long projectRequestId, Long userId, boolean strict) {
+		Optional<ProjectRequest> lockedRequest = projectRequestRepository.findByIdWithLock(projectRequestId);
+		if (lockedRequest.isEmpty()) {
+			return;
+		}
+
+		Optional<MatchingMember> refreshedMember = matchingMemberRepository.findCurrentActiveByUserId(userId);
+		if (refreshedMember.isPresent()) {
+			cancelMatchingRequest(refreshedMember.get(), userId, strict);
+			return;
+		}
+
+		lockedRequest.get().cancel();
 	}
 
 	private void cancelAsMember(MatchingMember me, List<MatchingMember> sessionMembers) {
