@@ -60,7 +60,7 @@ class ProjectRequestServiceTest {
 		Users user = createUser(1L);
 		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
 
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(anyLong(), anyList())).thenReturn(false);
 		when(projectGroupMemberRepository.existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
 			.thenReturn(false);
@@ -75,7 +75,7 @@ class ProjectRequestServiceTest {
 		Users user = createUser(1L);
 		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, null, null, null);
 
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(anyLong(), anyList())).thenReturn(false);
 		when(projectGroupMemberRepository.existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
 			.thenReturn(false);
@@ -90,7 +90,7 @@ class ProjectRequestServiceTest {
 		Users user = createUser(1L);
 		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
 
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(1L,
 			List.of(Status.WAITING, Status.MATCHING))).thenReturn(true);
 
@@ -105,7 +105,7 @@ class ProjectRequestServiceTest {
 		Users user = createUser(1L);
 		ProjectRequestDto dto = new ProjectRequestDto(Role.BACKEND, "title", "desc", "mvp");
 
-		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(user));
+		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(user));
 		when(projectRequestRepository.existsByUserIdAndStatusIn(anyLong(), anyList())).thenReturn(false);
 		when(projectGroupMemberRepository.existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
 			.thenReturn(true);

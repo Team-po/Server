@@ -314,13 +314,12 @@ public class UserService {
 	@Transactional
 	public void deleteUser(Users loginUser) {
 		Users activeUser = this.getActiveUser(loginUser.getId());
-		validateUserHasNoActiveProjectGroup(activeUser.getId());
 		emailService.validateVerifiedDeleteUserEmail(activeUser.getEmail());
-		matchService.cancelActiveMatchForWithdrawal(activeUser.getId());
 
 		Users user = userRepository.findByIdAndDeletedAtIsNullForUpdate(activeUser.getId()).orElseThrow(
 			() -> new ApplicationException(ErrorCode.UNEXISTED_USER));
 		validateUserHasNoActiveProjectGroup(user.getId());
+		matchService.cancelActiveMatchForWithdrawal(user.getId());
 
 		Instant deletedAt = Instant.now();
 		String email = user.getEmail();
