@@ -5,9 +5,11 @@ import java.util.Optional;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import jakarta.persistence.LockModeType;
 import team.po.feature.match.domain.ProjectRequest;
 import team.po.feature.match.enums.Role;
 import team.po.feature.match.enums.Status;
@@ -16,6 +18,23 @@ public interface ProjectRequestRepository extends JpaRepository<ProjectRequest, 
 	public boolean existsByUserIdAndStatusIn(Long userId, List<Status> statuses);
 
 	public Optional<ProjectRequest> findByUserIdAndStatusIn(Long userId, List<Status> statuses);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+		SELECT pr FROM ProjectRequest pr
+		JOIN FETCH pr.user
+		WHERE pr.id = :id
+		""")
+	Optional<ProjectRequest> findByIdWithLock(@Param("id") Long id);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("""
+		SELECT pr FROM ProjectRequest pr
+		JOIN FETCH pr.user
+		WHERE pr.id IN :ids
+		ORDER BY pr.id ASC
+		""")
+	List<ProjectRequest> findAllByIdInWithLock(@Param("ids") List<Long> ids);
 
 	// MATCHING
 	// Host 대기자 조회: WAITING && isHost

@@ -483,7 +483,7 @@ class MatchServiceTest {
 
 		when(matchingSessionRepository.findByIdWithLock(42L))
 			.thenReturn(Optional.of(session));
-		when(projectRequestRepository.findById(2L))  // ← 추가
+		when(projectRequestRepository.findByIdWithLock(2L))
 			.thenReturn(Optional.of(candidatePr));
 
 		// When
@@ -511,7 +511,7 @@ class MatchServiceTest {
 
 		when(matchingSessionRepository.findByIdWithLock(42L))
 			.thenReturn(Optional.of(session));
-		when(projectRequestRepository.findById(2L))  // ← 추가
+		when(projectRequestRepository.findByIdWithLock(2L))
 			.thenReturn(Optional.of(candidatePr));
 
 		// When
