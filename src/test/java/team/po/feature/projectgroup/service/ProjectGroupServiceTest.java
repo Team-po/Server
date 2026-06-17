@@ -288,6 +288,55 @@ class ProjectGroupServiceTest {
 	}
 
 	@Test
+	void updateProjectGroupName_updatesName_whenRequesterIsHost() {
+		ProjectGroup projectGroup = ProjectGroup.builder()
+			.projectName("Teampo Alpha")
+			.projectTitle("주제 A")
+			.status(ProjectGroupStatus.ACTIVE)
+			.build();
+		ProjectGroupMember hostMember = new ProjectGroupMember(projectGroup, mockUser(1L), MemberRole.BACKEND,
+			GroupRole.HOST);
+
+		when(projectGroupRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 1L))
+			.thenReturn(Optional.of(hostMember));
+
+		projectGroupService.updateProjectGroupName(10L, 1L, "  New Team  ");
+
+		assertThat(projectGroup.getProjectName()).isEqualTo("New Team");
+	}
+
+	@Test
+	void updateProjectGroupName_throwsForbidden_whenRequesterIsNotHost() {
+		ProjectGroup projectGroup = ProjectGroup.builder()
+			.projectName("Teampo Alpha")
+			.projectTitle("주제 A")
+			.status(ProjectGroupStatus.ACTIVE)
+			.build();
+		ProjectGroupMember member = new ProjectGroupMember(projectGroup, mockUser(2L), MemberRole.FRONTEND,
+			GroupRole.MEMBER);
+
+		when(projectGroupRepository.findByIdForUpdate(10L)).thenReturn(Optional.of(projectGroup));
+		when(projectGroupMemberRepository.findByProjectGroup_IdAndUser_Id(10L, 2L))
+			.thenReturn(Optional.of(member));
+
+		assertThatThrownBy(() -> projectGroupService.updateProjectGroupName(10L, 2L, "New Team"))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.PROJECT_GROUP_PERMISSION_DENIED.getCode());
+	}
+
+	@Test
+	void updateProjectGroupName_throwsBadRequest_whenNameIsBlank() {
+		assertThatThrownBy(() -> projectGroupService.updateProjectGroupName(10L, 1L, " "))
+			.isInstanceOf(ApplicationException.class)
+			.extracting("code")
+			.isEqualTo(ErrorCode.INVALID_PROJECT_GROUP_REQUEST.getCode());
+
+		verify(projectGroupRepository, never()).findByIdForUpdate(anyLong());
+	}
+
+	@Test
 	void finishProjectGroup_finishesProjectGroup_whenAllMembersAgree() {
 		ProjectGroup projectGroup = ProjectGroup.builder()
 			.projectName("Teampo Alpha")

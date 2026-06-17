@@ -61,4 +61,8 @@ public class ProjectGroup {
 	public void finish() {
 		this.status = ProjectGroupStatus.FINISHED;
 	}
+
+	public void updateProjectName(String projectName) {
+		this.projectName = projectName;
+	}
 }

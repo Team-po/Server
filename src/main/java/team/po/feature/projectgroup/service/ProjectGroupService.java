@@ -34,6 +34,7 @@ import team.po.feature.user.repository.UserRepository;
 @RequiredArgsConstructor
 public class ProjectGroupService {
 	private static final long REQUIRED_TEAM_MEMBER_COUNT = 4L;
+	private static final int PROJECT_NAME_MAX_LENGTH = 255;
 
 	private final ProjectGroupRepository projectGroupRepository;
 	private final ProjectGroupMemberRepository projectGroupMemberRepository;
@@ -150,6 +151,36 @@ public class ProjectGroupService {
 	}
 
 	@Transactional
+	public void updateProjectGroupName(Long projectGroupId, Long requesterUserId, String projectName) {
+		String trimmedProjectName = this.validateProjectName(projectName);
+		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
+			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
+
+		ProjectGroupMember requesterMember = projectGroupMemberRepository
+			.findByProjectGroup_IdAndUser_Id(projectGroupId, requesterUserId)
+			.orElseThrow(() -> new ApplicationException(
+				ErrorCode.PROJECT_GROUP_ACCESS_DENIED,
+				"팀원만 팀 이름을 수정할 수 있습니다."
+			));
+
+		if (projectGroup.getStatus() == ProjectGroupStatus.FINISHED) {
+			throw new ApplicationException(
+				ErrorCode.PROJECT_GROUP_PERMISSION_DENIED,
+				"종료된 팀 스페이스에서는 팀 이름을 수정할 수 없습니다."
+			);
+		}
+
+		if (requesterMember.getGroupRole() != GroupRole.HOST) {
+			throw new ApplicationException(
+				ErrorCode.PROJECT_GROUP_PERMISSION_DENIED,
+				"방장만 팀 이름을 수정할 수 있습니다."
+			);
+		}
+
+		projectGroup.updateProjectName(trimmedProjectName);
+	}
+
+	@Transactional
 	public void finishProjectGroup(Long projectGroupId, Long requesterUserId) {
 		ProjectGroup projectGroup = projectGroupRepository.findByIdForUpdate(projectGroupId)
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_GROUP_NOT_FOUND));
@@ -196,6 +227,25 @@ public class ProjectGroupService {
 				"프로젝트 제목은 비어 있을 수 없습니다."
 			);
 		}
+	}
+
+	private String validateProjectName(String projectName) {
+		if (projectName == null || projectName.isBlank()) {
+			throw new ApplicationException(
+				ErrorCode.INVALID_PROJECT_GROUP_REQUEST,
+				"팀 이름은 비어 있을 수 없습니다."
+			);
+		}
+
+		String trimmedProjectName = projectName.trim();
+		if (trimmedProjectName.length() > PROJECT_NAME_MAX_LENGTH) {
+			throw new ApplicationException(
+				ErrorCode.INVALID_PROJECT_GROUP_REQUEST,
+				"팀 이름은 255자 이하여야 합니다."
+			);
+		}
+
+		return trimmedProjectName;
 	}
 
 	private void validateMembers(
