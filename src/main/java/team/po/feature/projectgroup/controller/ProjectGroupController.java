@@ -64,7 +64,7 @@ public class ProjectGroupController {
 	public ResponseEntity<Void> updateProjectGroupName(
 		@Parameter(hidden = true) @LoginUser Users requester,
 		@PathVariable Long projectGroupId,
-		@Valid @RequestBody UpdateProjectGroupNameRequest request
+		@Valid @RequestBody(required = false) UpdateProjectGroupNameRequest request
 	) {
 		if (request == null) {
 			throw new ApplicationException(ErrorCode.INVALID_INPUT_FIELD, "요청 본문은 필수입니다.");
