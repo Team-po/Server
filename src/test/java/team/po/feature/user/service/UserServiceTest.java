@@ -804,13 +804,18 @@ class UserServiceTest {
 		assertThat(githubAccount.getDeletedAt()).isEqualTo(managedUser.getDeletedAt());
 		verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 		verify(userRepository).findByIdAndDeletedAtIsNullForUpdate(1L);
+		verify(projectGroupMemberRepository, times(2)).existsByUser_IdAndProjectGroup_Status(
+			1L,
+			ProjectGroupStatus.ACTIVE
+		);
 		verify(githubAccountRepository).findByUserIdAndDeletedAtIsNull(1L);
 		InOrder inOrder = inOrder(emailService, projectGroupMemberRepository, matchService, userRepository, jwtTokenProvider);
 		inOrder.verify(userRepository).findByIdAndDeletedAtIsNull(1L);
 		inOrder.verify(emailService).validateVerifiedDeleteUserEmail("test@email.com");
-		inOrder.verify(userRepository).findByIdAndDeletedAtIsNullForUpdate(1L);
 		inOrder.verify(projectGroupMemberRepository).existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE);
 		inOrder.verify(matchService).cancelActiveMatchForWithdrawal(1L);
+		inOrder.verify(userRepository).findByIdAndDeletedAtIsNullForUpdate(1L);
+		inOrder.verify(projectGroupMemberRepository).existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE);
 		inOrder.verify(userRepository).flush();
 		inOrder.verify(jwtTokenProvider).deleteRefreshToken("test@email.com");
 		inOrder.verify(jwtTokenProvider).revokeAccessTokens(1L);
@@ -863,7 +868,6 @@ class UserServiceTest {
 		Users loginUser = authenticatedUser(1L, "test@email.com");
 		Users managedUser = authenticatedUser(1L, "test@email.com");
 		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
-		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(managedUser));
 		when(projectGroupMemberRepository.existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
 			.thenReturn(true);
 
@@ -875,9 +879,37 @@ class UserServiceTest {
 
 		assertThat(managedUser.getDeletedAt()).isNull();
 		verify(emailService).validateVerifiedDeleteUserEmail("test@email.com");
-		verify(userRepository).findByIdAndDeletedAtIsNullForUpdate(1L);
 		verify(projectGroupMemberRepository).existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE);
+		verify(userRepository, never()).findByIdAndDeletedAtIsNullForUpdate(any());
 		verify(matchService, never()).cancelActiveMatchForWithdrawal(any());
+		verify(githubAccountRepository, never()).findByUserIdAndDeletedAtIsNull(any());
+		verify(userRepository, never()).flush();
+		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
+		verify(jwtTokenProvider, never()).revokeAccessTokens(any());
+		verify(emailService, never()).consumeVerifiedDeleteUserEmail(any());
+	}
+
+	@Test
+	void deleteUser_throwsWhenActiveProjectGroupAppearsAfterMatchCancel() {
+		Users loginUser = authenticatedUser(1L, "test@email.com");
+		Users managedUser = authenticatedUser(1L, "test@email.com");
+		when(userRepository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(managedUser));
+		when(projectGroupMemberRepository.existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE))
+			.thenReturn(false, true);
+		when(userRepository.findByIdAndDeletedAtIsNullForUpdate(1L)).thenReturn(Optional.of(managedUser));
+
+		assertThatThrownBy(() -> userService.deleteUser(loginUser))
+			.isInstanceOf(ApplicationException.class)
+			.hasMessage("진행 중인 팀 스페이스가 있어 회원 탈퇴할 수 없습니다.")
+			.extracting("code")
+			.isEqualTo(ErrorCode.USER_HAS_ACTIVE_PROJECT_GROUP.getCode());
+
+		assertThat(managedUser.getDeletedAt()).isNull();
+		InOrder inOrder = inOrder(projectGroupMemberRepository, matchService, userRepository);
+		inOrder.verify(projectGroupMemberRepository).existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE);
+		inOrder.verify(matchService).cancelActiveMatchForWithdrawal(1L);
+		inOrder.verify(userRepository).findByIdAndDeletedAtIsNullForUpdate(1L);
+		inOrder.verify(projectGroupMemberRepository).existsByUser_IdAndProjectGroup_Status(1L, ProjectGroupStatus.ACTIVE);
 		verify(githubAccountRepository, never()).findByUserIdAndDeletedAtIsNull(any());
 		verify(userRepository, never()).flush();
 		verify(jwtTokenProvider, never()).deleteRefreshToken(any());
