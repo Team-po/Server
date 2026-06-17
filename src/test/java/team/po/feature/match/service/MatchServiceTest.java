@@ -94,6 +94,28 @@ class MatchServiceTest {
 		return MatchingMember.createForMember(session, pr);
 	}
 
+	// ===== createMatchingSession =====
+
+	@Test
+	void createMatchingSession_throwsWhenLockedRequestAlreadyCanceled() {
+		Users hostUser = createUser(1L);
+		Users memberUser = createUser(2L);
+		ProjectRequest hostPr = createHostRequest(hostUser);
+		ReflectionTestUtils.setField(hostPr, "id", 1L);
+		ProjectRequest memberPr = createMemberRequest(memberUser);
+		ReflectionTestUtils.setField(memberPr, "id", 2L);
+		memberPr.cancel();
+
+		when(projectRequestRepository.findAllByIdInWithLock(List.of(1L, 2L)))
+			.thenReturn(List.of(hostPr, memberPr));
+
+		assertThatThrownBy(() -> matchService.createMatchingSession(1L, List.of(2L)))
+			.isInstanceOf(ApplicationException.class);
+
+		verify(matchingSessionRepository, never()).save(any());
+		verify(matchingMemberRepository, never()).save(any());
+	}
+
 	// ===== getMatchMembers =====
 
 	@Test
@@ -323,7 +345,7 @@ class MatchServiceTest {
 		ProjectRequest myPr = createMemberRequest(loginUser);
 		ReflectionTestUtils.setField(myPr, "id", 1L);
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
 			.thenReturn(Optional.of(myPr));
 
 		matchService.cancel(loginUser);
@@ -343,7 +365,7 @@ class MatchServiceTest {
 		MatchingMember myMember = createMemberMember(session, myPr);
 		ReflectionTestUtils.setField(myMember, "id", 2L);
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(2L), any()))
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(2L), any()))
 			.thenReturn(Optional.of(myPr));
 		when(matchingMemberRepository.findCurrentActiveByUserId(2L))
 			.thenReturn(Optional.of(myMember));
@@ -375,7 +397,7 @@ class MatchServiceTest {
 		MatchingMember hostMember = createHostMember(session, hostPr);
 		MatchingMember memberMember = createMemberMember(session, memberPr);
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
 			.thenReturn(Optional.of(hostPr));
 		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
 			.thenReturn(Optional.of(hostMember));
@@ -397,7 +419,7 @@ class MatchServiceTest {
 	void cancel_throwsNotFound_whenNoActiveRequest() {
 		Users loginUser = createUser(1L);
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
 			.thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> matchService.cancel(loginUser))
@@ -412,7 +434,7 @@ class MatchServiceTest {
 		ProjectRequest myPr = createMemberRequest(loginUser);
 		ReflectionTestUtils.setField(myPr, "id", 1L);
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
 			.thenReturn(Optional.of(myPr));
 
 		matchService.cancelActiveMatchForWithdrawal(1L);
@@ -433,7 +455,7 @@ class MatchServiceTest {
 		MatchingMember myMember = createMemberMember(session, myPr);
 		ReflectionTestUtils.setField(myMember, "id", 2L);
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(2L), any()))
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(2L), any()))
 			.thenReturn(Optional.of(myPr));
 		when(matchingMemberRepository.findCurrentActiveByUserId(2L))
 			.thenReturn(Optional.of(myMember));
@@ -465,7 +487,7 @@ class MatchServiceTest {
 		MatchingMember hostMember = createHostMember(session, hostPr);
 		MatchingMember memberMember = createMemberMember(session, memberPr);
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
 			.thenReturn(Optional.of(hostPr));
 		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
 			.thenReturn(Optional.of(hostMember));
@@ -485,7 +507,7 @@ class MatchServiceTest {
 
 	@Test
 	void cancelActiveMatchForWithdrawal_returnsWhenNoActiveRequest() {
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
 			.thenReturn(Optional.empty());
 
 		matchService.cancelActiveMatchForWithdrawal(1L);
@@ -501,7 +523,7 @@ class MatchServiceTest {
 		ReflectionTestUtils.setField(myPr, "id", 1L);
 		myPr.startMatching();
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
 			.thenReturn(Optional.of(myPr));
 		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
 			.thenReturn(Optional.empty());
@@ -521,7 +543,7 @@ class MatchServiceTest {
 		myPr.startMatching();
 		MatchingMember myMember = createMemberMember(session, myPr);
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
 			.thenReturn(Optional.of(myPr));
 		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
 			.thenReturn(Optional.of(myMember));
@@ -546,7 +568,7 @@ class MatchServiceTest {
 		MatchingMember myMember = createMemberMember(session, myPr);
 		MatchingMember otherMember = createMemberMember(session, otherPr);
 
-		when(projectRequestRepository.findByUserIdAndStatusIn(eq(1L), any()))
+		when(projectRequestRepository.findByUserIdAndStatusInWithLock(eq(1L), any()))
 			.thenReturn(Optional.of(myPr));
 		when(matchingMemberRepository.findCurrentActiveByUserId(1L))
 			.thenReturn(Optional.of(myMember));

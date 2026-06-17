@@ -312,7 +312,7 @@ public class MatchService {
 	public void cancel(Users loginUser) { // 사용자가 직접 취소
 		// 활성 매칭 요청 조회 (WAITING or MATCHING)
 		ProjectRequest myPr = projectRequestRepository
-			.findByUserIdAndStatusIn(loginUser.getId(), List.of(Status.WAITING, Status.MATCHING))
+			.findByUserIdAndStatusInWithLock(loginUser.getId(), List.of(Status.WAITING, Status.MATCHING))
 			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
 
 		// 활성 매칭 취소
@@ -321,7 +321,7 @@ public class MatchService {
 
 	@Transactional
 	public void cancelActiveMatchForWithdrawal(Long userId) { // 사용자가 탈퇴하면 활성 매칭 자동 취소
-		projectRequestRepository.findByUserIdAndStatusIn(userId, List.of(Status.WAITING, Status.MATCHING))
+		projectRequestRepository.findByUserIdAndStatusInWithLock(userId, List.of(Status.WAITING, Status.MATCHING))
 			.ifPresent(myPr -> cancelActiveRequest(myPr, userId, false));
 	}
 
