@@ -310,58 +310,62 @@ public class MatchService {
 
 	@Transactional
 	public void cancel(Users loginUser) { // 사용자가 직접 취소
-		// 활성 매칭 요청 조회 (WAITING or MATCHING)
-		ProjectRequest myPr = projectRequestRepository
-			.findByUserIdAndStatusInWithLock(loginUser.getId(), List.of(Status.WAITING, Status.MATCHING))
-			.orElseThrow(() -> new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND));
-
-		// 활성 매칭 취소
-		cancelActiveRequest(myPr, loginUser.getId(), true);
+		cancelActiveRequest(loginUser.getId(), true);
 	}
 
 	@Transactional
 	public void cancelActiveMatchForWithdrawal(Long userId) { // 사용자가 탈퇴하면 활성 매칭 자동 취소
-		projectRequestRepository.findByUserIdAndStatusInWithLock(userId, List.of(Status.WAITING, Status.MATCHING))
-			.ifPresent(myPr -> cancelActiveRequest(myPr, userId, false));
+		cancelActiveRequest(userId, false);
 	}
 
 	// 정상 취소: strict=true, 탈퇴 시 자동 취소: strict=false
-	private void cancelActiveRequest(ProjectRequest myPr, Long userId, boolean strict) {
-		// WAITING: 단순 요청 취소
-		if (myPr.getStatus() == Status.WAITING) {
-			myPr.cancel();
-			log.info("매칭 요청 취소 - WAITING: prId={}", myPr.getId());
-			return;
-		}
-
-		// MATCHING: 세션 조회하여 matching member에서 제거
-
-		// 진행 중인 매칭 조회
+	private void cancelActiveRequest(Long userId, boolean strict) {
 		Optional<MatchingMember> currentMember = matchingMemberRepository.findCurrentActiveByUserId(userId);
-		if (currentMember.isEmpty()) {
-			if (strict) {
-				throw new ApplicationException(ErrorCode.MATCH_DATA_ERROR);
-			}
-			// 탈퇴용은 활성 매칭이 존재하지 않아도 예외 없이 리턴
-			myPr.cancel();
+		if (currentMember.isPresent()) {
+			cancelMatchingRequest(currentMember.get(), userId, strict);
 			return;
 		}
 
+		Optional<ProjectRequest> waitingRequest = projectRequestRepository
+			.findByUserIdAndStatusInWithLock(userId, List.of(Status.WAITING));
+		if (waitingRequest.isPresent()) {
+			cancelWaitingRequest(waitingRequest.get());
+			return;
+		}
+
+		currentMember = matchingMemberRepository.findCurrentActiveByUserId(userId);
+		if (currentMember.isPresent()) {
+			cancelMatchingRequest(currentMember.get(), userId, strict);
+			return;
+		}
+
+		if (strict) {
+			throw new ApplicationException(ErrorCode.PROJECT_REQUEST_NOT_FOUND);
+		}
+	}
+
+	private void cancelWaitingRequest(ProjectRequest myPr) {
+		myPr.cancel();
+		log.info("매칭 요청 취소 - WAITING: prId={}", myPr.getId());
+	}
+
+	private void cancelMatchingRequest(MatchingMember currentMember, Long userId, boolean strict) {
 		// 세션 조회 시 pessimistic lock 적용
 		Optional<MatchingSession> lockedSession = matchingSessionRepository
-			.findByIdWithLock(currentMember.get().getMatchingSession().getId());
+			.findByIdWithLock(currentMember.getMatchingSession().getId());
 		if (lockedSession.isEmpty()) {
 			if (strict) {
 				throw new ApplicationException(ErrorCode.MATCH_NOT_FOUND);
 			}
 			// 탈퇴용은 세션이 이미 정리된 경우에도 예외 없이 리턴
-			myPr.cancel();
+			lockAndCancelRequest(currentMember.getProjectRequest().getId());
 			return;
 		}
 
 		// 해당 매칭 세션의 멤버 조회
 		List<MatchingMember> sessionMembers = matchingMemberRepository
 			.findAllActiveBySessionIdWithFetch(lockedSession.get().getId());
+		lockProjectRequests(sessionMembers);
 
 		Optional<MatchingMember> me = sessionMembers.stream()
 			.filter(member -> member.getUser().getId().equals(userId))
@@ -371,16 +375,33 @@ public class MatchService {
 				throw new ApplicationException(ErrorCode.MATCH_NOT_FOUND);
 			}
 			// 탈퇴용은 세션이 이미 정리된 경우에도 예외 없이 리턴
-			myPr.cancel();
+			lockAndCancelRequest(currentMember.getProjectRequest().getId());
 			return;
 		}
 
 		// host 여부 확인 후 매칭 취소
-		if (myPr.isHostRequest()) {
+		if (me.get().getProjectRequest().isHostRequest()) {
 			cancelAsHost(me.get(), sessionMembers);
 		} else {
 			cancelAsMember(me.get(), sessionMembers);
 		}
+	}
+
+	private void lockProjectRequests(List<MatchingMember> sessionMembers) {
+		List<Long> requestIds = sessionMembers.stream()
+			.map(member -> member.getProjectRequest().getId())
+			.distinct()
+			.sorted()
+			.toList();
+		if (requestIds.isEmpty()) {
+			return;
+		}
+		projectRequestRepository.findAllByIdInWithLock(requestIds);
+	}
+
+	private void lockAndCancelRequest(Long projectRequestId) {
+		projectRequestRepository.findByIdWithLock(projectRequestId)
+			.ifPresent(ProjectRequest::cancel);
 	}
 
 	private void cancelAsMember(MatchingMember me, List<MatchingMember> sessionMembers) {
